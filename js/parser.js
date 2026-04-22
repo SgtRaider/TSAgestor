@@ -9,33 +9,42 @@
 const PDF_WORKER_SRC =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
+// PDF.js 3.x CDN build exposes itself as window.pdfjsLib
+function getPdfjsLib() {
+  const lib = window.pdfjsLib ?? window['pdfjs-dist/build/pdf'];
+  if (!lib) throw new Error(
+    'PDF.js no está disponible. Comprueba la conexión a internet (CDN).'
+  );
+  return lib;
+}
+
 // ── PDF text extraction ──────────────────────────────────────────────────────
 
 export async function extractTextFromPDF(arrayBuffer) {
-  const pdfjsLib = window['pdfjs-dist/build/pdf'];
+  const pdfjsLib = getPdfjsLib();
   pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC;
 
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   const pages = [];
 
   for (let p = 1; p <= pdf.numPages; p++) {
-    const page = await pdf.getPage(p);
+    const page    = await pdf.getPage(p);
     const content = await page.getTextContent();
 
-    // Group text items by row (same Y coordinate, ±3px tolerance)
+    // Group text items by row (same Y coordinate, ±4px tolerance)
     const rows = new Map();
     for (const item of content.items) {
       if (!item.str.trim()) continue;
-      const y = Math.round(item.transform[5]);
-      const bucket = [...rows.keys()].find(k => Math.abs(k - y) <= 3);
-      const key = bucket !== undefined ? bucket : y;
+      const y      = Math.round(item.transform[5]);
+      const bucket = [...rows.keys()].find(k => Math.abs(k - y) <= 4);
+      const key    = bucket !== undefined ? bucket : y;
       if (!rows.has(key)) rows.set(key, []);
       rows.get(key).push(item);
     }
 
-    // Sort rows top-to-bottom, items left-to-right within each row
+    // Sort rows top-to-bottom (descending Y), items left-to-right within row
     const sortedYs = [...rows.keys()].sort((a, b) => b - a);
-    const lines = sortedYs.map(y => {
+    const lines    = sortedYs.map(y => {
       const items = rows.get(y).sort((a, b) => a.transform[4] - b.transform[4]);
       return items.map(i => i.str).join(' ');
     });
@@ -66,7 +75,6 @@ function parseLon(str) {
 
 function parseCoordinates(text) {
   const coords = [];
-  // Match "DDMMSSN DDDMMSSX" pairs, tolerating variable whitespace
   const re = /(\d{6}[NS])\s+(\d{7}[EW])/gi;
   let m;
   while ((m = re.exec(text)) !== null) {
@@ -86,13 +94,12 @@ function parseAlt(str) {
   if (fl) return { label: `FL${fl[1]}`, ft: +fl[1] * 100 };
   const ft = s.match(/^(\d[\d,]*)\s*FT$/);
   if (ft) return { label: s, ft: +ft[1].replace(',', '') };
-  const m = s.match(/^(\d+)\s*M$/);
-  if (m) return { label: s, ft: Math.round(+m[1] * 3.28084) };
+  const mt = s.match(/^(\d+)\s*M$/);
+  if (mt) return { label: s, ft: Math.round(+mt[1] * 3.28084) };
   return { label: s, ft: 0 };
 }
 
 function parseVerticalLimits(text) {
-  // Handles "FL150/FL350", "GND/FL195", "1000FT/FL245"
   const m = text.match(/([A-Z0-9,]+(?:\s*FT|\s*M)?)\s*\/\s*([A-Z0-9,]+(?:\s*FT|\s*M)?)/i);
   if (!m) return { lower: '?', lowerFt: 0, upper: '?', upperFt: 0 };
   const lo = parseAlt(m[1]);
@@ -102,14 +109,12 @@ function parseVerticalLimits(text) {
 
 // ── Schedule parsing ─────────────────────────────────────────────────────────
 
-// e.g. "APR 27 HR 1830-2359"
-const SCHED_RE = /([A-Z]{3})\s+(\d{1,2})\s+HR\s+(\d{4})\s*-\s*(\d{4})/gi;
-
 function parseSchedules(text) {
   const schedules = [];
+  // e.g. "APR 27 HR 1830-2359"
+  const re = /([A-Z]{3})\s+(\d{1,2})\s+HR\s+(\d{4})\s*-\s*(\d{4})/gi;
   let m;
-  SCHED_RE.lastIndex = 0;
-  while ((m = SCHED_RE.exec(text)) !== null) {
+  while ((m = re.exec(text)) !== null) {
     schedules.push({
       month: m[1].toUpperCase(),
       day:   +m[2],
@@ -124,12 +129,12 @@ function parseSchedules(text) {
 // ── Main document parser ─────────────────────────────────────────────────────
 
 export function parseTSAText(rawText) {
-  // Normalise line endings
   const text = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-  // Split on TSA entry boundaries (line starting with "TSA ")
-  // Keep the delimiter by using a zero-width assertion
-  const entries = text.split(/(?=\nTSA\s)/);
+  // Insert a null-byte marker before every "TSA " that starts a line,
+  // then split on those markers — this correctly handles the first entry too.
+  const marked  = text.replace(/(^|\n)(TSA\s)/gm, '$1\x00$2');
+  const entries = marked.split('\x00');
 
   const tsas = [];
 
@@ -139,29 +144,26 @@ export function parseTSAText(rawText) {
 
     // Name = first line
     const nlIdx = trimmed.indexOf('\n');
-    const name = (nlIdx > -1 ? trimmed.slice(0, nlIdx) : trimmed).trim();
+    const name  = (nlIdx > -1 ? trimmed.slice(0, nlIdx) : trimmed).trim();
 
-    // Section extraction helpers
     const section = (from, to) => {
-      const reFrom = new RegExp(from + '\\s*:([\\s\\S]*?)(?=' + to + '|$)', 'i');
-      const m = trimmed.match(reFrom);
+      const re = new RegExp(from + '\\s*:([\\s\\S]*?)(?=' + to + '|$)', 'i');
+      const m  = trimmed.match(re);
       return m ? m[1] : '';
     };
 
-    const lateralRaw   = section('LIMITES\\s+LATERALES',  'LIMITES\\s+VERTICALES');
-    const verticalRaw  = section('LIMITES\\s+VERTICALES', 'FECHAS\\s+Y\\s+HORARIOS');
-    const scheduleRaw  = section('FECHAS\\s+Y\\s+HORARIOS', 'RMK\\s*:');
-    const remarkRaw    = (() => {
-      const m = trimmed.match(/RMK\s*:([\s\S]*?)(?=\nTSA\s|$)/i);
+    const lateralRaw  = section('LIMITES\\s+LATERALES',   'LIMITES\\s+VERTICALES');
+    const verticalRaw = section('LIMITES\\s+VERTICALES',  'FECHAS\\s+Y\\s+HORARIOS');
+    const schedRaw    = section('FECHAS\\s+Y\\s+HORARIOS', 'RMK\\s*:');
+    const rmkRaw      = (() => {
+      const m = trimmed.match(/RMK\s*:([\s\S]*?)(?=\x00|$)/i);
       return m ? m[1].trim() : '';
     })();
 
     const coordinates    = parseCoordinates(lateralRaw);
     const verticalLimits = parseVerticalLimits(verticalRaw.trim());
-    const schedules      = parseSchedules(scheduleRaw);
-    const remarks        = remarkRaw;
+    const schedules      = parseSchedules(schedRaw);
 
-    // Only include entries that start with TSA and have coordinates
     if (coordinates.length >= 3) {
       tsas.push({
         id: `tsa-${Date.now()}-${tsas.length}`,
@@ -169,7 +171,7 @@ export function parseTSAText(rawText) {
         coordinates,
         verticalLimits,
         schedules,
-        remarks,
+        remarks: rmkRaw,
       });
     }
   }
@@ -181,11 +183,13 @@ export function parseTSAText(rawText) {
 
 export async function parseDocument(file) {
   if (file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf') {
-    const buf = await file.arrayBuffer();
+    const buf  = await file.arrayBuffer();
     const text = await extractTextFromPDF(buf);
-    return parseTSAText(text);
+    console.debug('[TSAgestor] Texto extraído del PDF:\n', text.slice(0, 2000));
+    const tsas = parseTSAText(text);
+    console.debug('[TSAgestor] TSAs parseadas:', tsas.length, tsas.map(t => t.name));
+    return tsas;
   }
-  // Plain text fallback
   const text = await file.text();
   return parseTSAText(text);
 }
