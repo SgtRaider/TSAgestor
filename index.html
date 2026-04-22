@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TSAgestor</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div class="header-brand">
+      <span class="brand-icon">✈</span>
+      <h1>TSAgestor</h1>
+    </div>
+    <nav>
+      <button class="tab-btn active" data-tab="upload">Cargar</button>
+      <button class="tab-btn" data-tab="map">Mapa</button>
+      <button class="tab-btn" data-tab="cross-section">Corte Transversal</button>
+      <button class="tab-btn" data-tab="export">Exportar PDF</button>
+    </nav>
+  </header>
+
+  <div id="filter-bar" class="filter-bar hidden">
+    <label>
+      Fecha
+      <select id="filter-date"><option value="">Todas las fechas</option></select>
+    </label>
+    <label>
+      Hora desde
+      <input type="time" id="filter-start">
+    </label>
+    <label>
+      Hora hasta
+      <input type="time" id="filter-end">
+    </label>
+    <button id="btn-apply-filter">Aplicar</button>
+    <button id="btn-clear-filter">Limpiar</button>
+    <span id="filter-count"></span>
+  </div>
+
+  <!-- UPLOAD TAB -->
+  <div id="tab-upload" class="tab-content active">
+    <div id="dropzone">
+      <div class="drop-icon">📄</div>
+      <p class="drop-primary">Arrastra un PDF o haz clic para seleccionar</p>
+      <p class="drop-secondary">Soporta documentos de boletín de activación de espacios aéreos</p>
+      <input type="file" id="file-input" accept=".pdf,.txt">
+    </div>
+
+    <div id="parse-status"></div>
+
+    <div id="tsa-table-container" class="hidden">
+      <div class="section-header">
+        <h2>TSAs encontradas <span id="tsa-count" class="badge"></span></h2>
+      </div>
+      <div class="table-wrapper">
+        <table id="tsa-table">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Lím. Inferior</th>
+              <th>Lím. Superior</th>
+              <th>Fechas y Horarios</th>
+              <th>Vértices</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAP TAB -->
+  <div id="tab-map" class="tab-content">
+    <div id="map-toolbar">
+      <button id="btn-download-kml-all" class="toolbar-btn">⬇ KML Todas las TSAs</button>
+      <span id="map-status"></span>
+    </div>
+    <div id="map"></div>
+  </div>
+
+  <!-- CROSS SECTION TAB -->
+  <div id="tab-cross-section" class="tab-content">
+    <div id="cross-section-wrapper">
+      <div id="cross-section-scroll">
+        <svg id="cross-section-svg"></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXPORT TAB -->
+  <div id="tab-export" class="tab-content">
+    <div class="export-panel">
+      <h2>Exportar Informe PDF</h2>
+      <p class="export-desc">Genera un PDF con el filtro de fecha/hora activo que incluye:</p>
+      <ul class="export-features">
+        <li>Tabla completa de TSAs activas</li>
+        <li>Altitudes (límite inferior y superior)</li>
+        <li>Fechas y horarios de activación</li>
+        <li>Corte transversal del espacio aéreo</li>
+      </ul>
+      <div id="export-filter-summary"></div>
+      <button id="btn-export-pdf" class="btn-primary" disabled>Generar PDF</button>
+      <p id="export-hint" class="export-hint">Carga un documento para habilitar la exportación.</p>
+    </div>
+  </div>
+
+</div>
+
+<!-- CDN Libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
