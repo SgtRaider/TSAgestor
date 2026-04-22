@@ -50,8 +50,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 const dropzone  = document.getElementById('dropzone');
 const fileInput = document.getElementById('file-input');
 
-dropzone.addEventListener('click', () => fileInput.click());
-
+// Drag & drop (button label handles the click natively via for="file-input")
 dropzone.addEventListener('dragover', e => {
   e.preventDefault();
   dropzone.classList.add('drag-over');
