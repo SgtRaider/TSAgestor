@@ -12,7 +12,8 @@ window.TSAgestor.parser = (function () {
   const MONTHS = {
     JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5,
     JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11,
-    ENE: 0, ABR: 3, AGO: 7, DIC: 11, // alias ES
+    // Alias en español (MAR, MAY, JUN, JUL, SEP, OCT, NOV coinciden con los ingleses)
+    ENE: 0, ABR: 3, AGO: 7, DIC: 11,
   };
 
   // ── PDF text extraction ──────────────────────────────────────────────
@@ -122,20 +123,54 @@ window.TSAgestor.parser = (function () {
     return new Date(Date.UTC(year, month, day, Math.floor(mm / 60), mm % 60));
   }
 
-  // "APR 27 HR 1830-2359" (formato AIP)
+  // Parseo de horarios AIP: admite día único, rango de días y lista de días.
+  //   "APR 27 HR 1830-2359"
+  //   "APR 01-30 HR 0000-2359"          → genera una ventana por cada día
+  //   "APR 21,22,25 HR 0800-1800"       → genera una ventana por cada día
   function parseAIPSchedules(text, defaultYear) {
     const out = [];
-    const re = /([A-Z]{3})\s+(\d{1,2})\s+HR\s+(\d{4})\s*-\s*(\d{4})/gi;
+    const consumed = []; // pares [inicio,fin) de matches ya cubiertos por los patrones complejos
+
+    function pushWindow(year, month, day, hhmm1, hhmm2, raw) {
+      const s = makeUTC(year, month, day, hhmm1);
+      let e = makeUTC(year, month, day, hhmm2);
+      if (!s || !e) return;
+      if (e <= s) e = new Date(e.getTime() + 24 * 3600 * 1000);
+      out.push({ startUTC: s, endUTC: e, raw });
+    }
+
+    function consume(m) { consumed.push([m.index, m.index + m[0].length]); }
+    function isConsumed(idx) { return consumed.some(([a, b]) => idx >= a && idx < b); }
+
+    // 1. Rango: "MMM DD-DD HR HHMM-HHMM" (admite guion normal o en-dash)
+    const reRange = /\b([A-Z]{3})\s+(\d{1,2})\s*[-–]\s*(\d{1,2})\s+HR\s+(\d{4})\s*-\s*(\d{4})\b/gi;
     let m;
-    while ((m = re.exec(text)) !== null) {
+    while ((m = reRange.exec(text)) !== null) {
       const mo = MONTHS[m[1].toUpperCase()];
       if (mo === undefined) continue;
-      const day = +m[2];
-      const s = makeUTC(defaultYear, mo, day, m[3]);
-      let e = makeUTC(defaultYear, mo, day, m[4]);
-      if (!s || !e) continue;
-      if (e <= s) e = new Date(e.getTime() + 24 * 3600 * 1000); // cruza medianoche
-      out.push({ startUTC: s, endUTC: e, raw: m[0] });
+      const lo = Math.min(+m[2], +m[3]);
+      const hi = Math.max(+m[2], +m[3]);
+      for (let d = lo; d <= hi; d++) pushWindow(defaultYear, mo, d, m[4], m[5], m[0]);
+      consume(m);
+    }
+
+    // 2. Lista: "MMM D1,D2,D3[...] HR HHMM-HHMM"
+    const reList = /\b([A-Z]{3})\s+(\d{1,2}(?:\s*[,;/]\s*\d{1,2})+)\s+HR\s+(\d{4})\s*-\s*(\d{4})\b/gi;
+    while ((m = reList.exec(text)) !== null) {
+      const mo = MONTHS[m[1].toUpperCase()];
+      if (mo === undefined) continue;
+      const days = m[2].split(/\s*[,;/]\s*/).map(Number).filter(n => !Number.isNaN(n));
+      for (const d of days) pushWindow(defaultYear, mo, d, m[3], m[4], m[0]);
+      consume(m);
+    }
+
+    // 3. Día único: "MMM DD HR HHMM-HHMM" (saltando los ya consumidos).
+    const reSingle = /\b([A-Z]{3})\s+(\d{1,2})\s+HR\s+(\d{4})\s*-\s*(\d{4})\b/gi;
+    while ((m = reSingle.exec(text)) !== null) {
+      if (isConsumed(m.index)) continue;
+      const mo = MONTHS[m[1].toUpperCase()];
+      if (mo === undefined) continue;
+      pushWindow(defaultYear, mo, +m[2], m[3], m[4], m[0]);
     }
     return out;
   }
