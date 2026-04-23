@@ -169,7 +169,9 @@
       empty.classList.add('hidden');
       svg.style.display = 'block';
       btn.disabled = false;
-      info.textContent = `${res.extremes.A} → ${res.extremes.B} · ${res.distance.toFixed(1)} km · solapes: ${res.overlapCount}`;
+      info.textContent =
+        `${res.extremes.A} → ${res.extremes.B} · ${res.distance.toFixed(1)} km · ` +
+        `${res.panels} panel${res.panels === 1 ? '' : 'es'} · solapes: ${res.overlapCount}`;
     } else {
       empty.classList.remove('hidden');
       svg.style.display = 'none';
