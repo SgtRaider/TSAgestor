@@ -1,4 +1,6 @@
 // Controlador principal: navegación por pestañas, estado, wiring de UI.
+//
+// Visibilidad en Mapa / Corte / PDF = TSAs SELECCIONADAS ∩ TSAs QUE PASAN EL FILTRO.
 
 (function () {
   'use strict';
@@ -6,8 +8,8 @@
   const { parser, filters, mapView, crossSection, pdfExport } = window.TSAgestor;
 
   const state = {
-    tsas: [],
-    filtered: [],
+    tsas: [],                                                 // todas las parseadas
+    selected: new Set(),                                       // ids seleccionadas por el usuario
     filter: { dateFrom: '', dateTo: '', timeFrom: '', timeTo: '' },
     mapReady: false,
   };
@@ -29,6 +31,14 @@
     }[c]));
   }
 
+  // ── Conjunto visible = seleccionadas ∩ pasa-filtro ──────────────────
+
+  function getVisible() {
+    return state.tsas.filter(t =>
+      state.selected.has(t.id) && filters.matches(t, state.filter)
+    );
+  }
+
   // ── Tabs ─────────────────────────────────────────────────────────────
 
   function switchTab(name) {
@@ -36,7 +46,7 @@
     $$('.tab-content').forEach(s => s.classList.toggle('active', s.id === 'tab-' + name));
     if (name === 'map' && state.mapReady) {
       setTimeout(() => mapView.invalidateSize(), 50);
-      mapView.render(state.filtered);
+      mapView.render(getVisible());
     }
     if (name === 'cross') renderCross();
     if (name === 'export') refreshExportUI();
@@ -44,16 +54,25 @@
 
   // ── Tabla de TSAs ────────────────────────────────────────────────────
 
-  function renderTable(tsas) {
+  function renderTable() {
     const tbody = $('#tsa-table tbody');
     tbody.innerHTML = '';
-    for (const t of tsas) {
+
+    for (const t of state.tsas) {
+      const inFilter  = filters.matches(t, state.filter);
+      const isSelected = state.selected.has(t.id);
       const schedTxt = t.schedules.slice(0, 4).map(s =>
         `${s.startUTC.toISOString().slice(0, 10)} ` +
         `${s.startUTC.toISOString().slice(11, 16)}Z–${s.endUTC.toISOString().slice(11, 16)}Z`
       ).join('<br>') + (t.schedules.length > 4 ? `<br><i>+${t.schedules.length - 4}</i>` : '');
+
       const tr = document.createElement('tr');
+      tr.className = 'tsa-row' + (inFilter ? '' : ' out-of-filter') + (isSelected ? ' selected' : '');
+      tr.dataset.id = t.id;
       tr.innerHTML = `
+        <td class="col-check">
+          <input type="checkbox" class="tsa-check" data-id="${escapeHTML(t.id)}"${isSelected ? ' checked' : ''}>
+        </td>
         <td><b>${escapeHTML(t.name)}</b></td>
         <td>${t.format}</td>
         <td>${escapeHTML(t.vertical.lowerLabel)}</td>
@@ -63,8 +82,32 @@
       `;
       tbody.appendChild(tr);
     }
-    $('#tsa-count').textContent = tsas.length;
-    $('#tsa-table-wrap').classList.toggle('hidden', tsas.length === 0);
+
+    $('#tsa-count').textContent = state.tsas.length;
+    $('#tsa-table-wrap').classList.toggle('hidden', state.tsas.length === 0);
+    refreshSelectionUI();
+  }
+
+  function refreshSelectionUI() {
+    const total     = state.tsas.length;
+    const selected  = state.selected.size;
+    const visible   = getVisible().length;
+    const inFilter  = state.tsas.filter(t => filters.matches(t, state.filter)).length;
+
+    $('#selection-summary').textContent =
+      total === 0 ? '' :
+      `${selected} seleccionadas · ${visible} visibles (${inFilter} en filtro)`;
+
+    const masterCb = $('#tsa-select-all-cb');
+    if (masterCb) {
+      masterCb.checked       = total > 0 && selected === total;
+      masterCb.indeterminate = selected > 0 && selected < total;
+    }
+
+    $('#filter-summary').textContent =
+      total === 0
+        ? ''
+        : `${visible} visibles · ${selected}/${total} seleccionadas · ${filters.summaryText(state.filter)}`;
   }
 
   // ── Carga de archivo ─────────────────────────────────────────────────
@@ -75,7 +118,8 @@
     try {
       const tsas = await parser.parseFile(file);
       state.tsas = tsas;
-      applyFilter();
+      state.selected = new Set(tsas.map(t => t.id)); // por defecto todas
+      state.filter = readFilter();
       if (tsas.length === 0) {
         setStatus('No se han encontrado TSAs en el documento.', 'error');
       } else {
@@ -83,6 +127,7 @@
       }
       $('#filter-bar').classList.remove('hidden');
       ensureMap();
+      renderAll();
     } catch (err) {
       console.error(err);
       setStatus('Error al procesar el archivo: ' + err.message, 'error');
@@ -96,7 +141,7 @@
     fileInput.addEventListener('change', e => {
       const f = e.target.files[0];
       handleFile(f);
-      fileInput.value = ''; // permite re-seleccionar mismo archivo
+      fileInput.value = '';
     });
 
     ['dragenter', 'dragover'].forEach(ev =>
@@ -117,6 +162,43 @@
     });
   }
 
+  // ── Selección ────────────────────────────────────────────────────────
+
+  function wireSelection() {
+    // Delegación para los checkboxes de fila.
+    $('#tsa-table tbody').addEventListener('change', e => {
+      const cb = e.target.closest('.tsa-check');
+      if (!cb) return;
+      const id = cb.dataset.id;
+      if (cb.checked) state.selected.add(id);
+      else state.selected.delete(id);
+      const row = cb.closest('tr');
+      if (row) row.classList.toggle('selected', cb.checked);
+      refreshSelectionUI();
+      renderViews();
+    });
+
+    $('#tsa-select-all-cb').addEventListener('change', e => {
+      if (e.target.checked) selectAll();
+      else selectNone();
+    });
+
+    $('#btn-select-all').addEventListener('click', selectAll);
+    $('#btn-select-none').addEventListener('click', selectNone);
+  }
+
+  function selectAll() {
+    state.selected = new Set(state.tsas.map(t => t.id));
+    renderTable();
+    renderViews();
+  }
+
+  function selectNone() {
+    state.selected = new Set();
+    renderTable();
+    renderViews();
+  }
+
   // ── Filtro ───────────────────────────────────────────────────────────
 
   function readFilter() {
@@ -130,13 +212,7 @@
 
   function applyFilter() {
     state.filter = readFilter();
-    state.filtered = filters.filter(state.tsas, state.filter);
-    $('#filter-summary').textContent =
-      `${state.filtered.length} de ${state.tsas.length} TSAs · ${filters.summaryText(state.filter)}`;
-    renderTable(state.filtered);
-    if (state.mapReady) mapView.render(state.filtered);
-    renderCross();
-    refreshExportUI();
+    renderAll();
   }
 
   function clearFilter() {
@@ -153,7 +229,6 @@
     if (state.mapReady) return;
     mapView.init('map');
     state.mapReady = true;
-    mapView.render(state.filtered);
   }
 
   // ── Corte transversal ────────────────────────────────────────────────
@@ -164,7 +239,8 @@
     const btn = $('#btn-download-cross');
     const info = $('#cross-info');
 
-    const res = crossSection.render(svg, state.filtered);
+    const visible = getVisible();
+    const res = crossSection.render(svg, visible);
     if (res.ok) {
       empty.classList.add('hidden');
       svg.style.display = 'block';
@@ -176,9 +252,9 @@
       empty.classList.remove('hidden');
       svg.style.display = 'none';
       btn.disabled = true;
-      info.textContent = state.filtered.length
-        ? 'Una sola TSA tras el filtro'
-        : 'Sin TSAs tras el filtro';
+      info.textContent = visible.length === 0
+        ? 'No hay TSAs visibles (revisa selección y filtro)'
+        : 'Sólo hay 1 TSA visible: selecciona al menos 2 para generar el corte';
     }
   }
 
@@ -198,7 +274,8 @@
   // ── Exportar PDF ─────────────────────────────────────────────────────
 
   function refreshExportUI() {
-    const n = state.filtered.length;
+    const visible = getVisible();
+    const n = visible.length;
     const btn = $('#btn-export-pdf');
     const hint = $('#export-hint');
     const summary = $('#export-summary');
@@ -206,29 +283,44 @@
     summary.textContent =
       (state.tsas.length === 0
         ? 'Carga un documento NOTAM para empezar.'
-        : `${n} TSAs se incluirán en el informe.\nFiltro: ${filters.summaryText(state.filter)}`);
+        : `${n} TSAs se incluirán en el informe (${state.selected.size} seleccionadas).\n` +
+          `Filtro: ${filters.summaryText(state.filter)}`);
     hint.textContent = n === 0
-      ? 'Carga un documento y ajusta el filtro para habilitar la exportación.'
+      ? 'Selecciona TSAs y ajusta el filtro para habilitar la exportación.'
       : 'Se generará un PDF con la tabla y el corte transversal.';
   }
 
   async function exportPDF() {
     const svg = $('#cross-svg');
     const btn = $('#btn-export-pdf');
+    const visible = getVisible();
     btn.disabled = true;
     btn.textContent = 'Generando…';
     try {
       // Asegura que el SVG del corte esté actualizado aunque la pestaña no se haya visitado.
-      crossSection.render(svg, state.filtered);
-      const fname = await pdfExport.exportReport(state.filtered, state.filter, svg);
+      crossSection.render(svg, visible);
+      const fname = await pdfExport.exportReport(visible, state.filter, svg);
       console.log('[TSAgestor] PDF generado:', fname);
     } catch (err) {
       console.error(err);
       alert('Error al generar el PDF: ' + err.message);
     } finally {
-      btn.disabled = state.filtered.length === 0;
+      btn.disabled = getVisible().length === 0;
       btn.textContent = 'Generar PDF';
     }
+  }
+
+  // ── Pipelines de render ──────────────────────────────────────────────
+
+  function renderViews() {
+    if (state.mapReady) mapView.render(getVisible());
+    renderCross();
+    refreshExportUI();
+  }
+
+  function renderAll() {
+    renderTable();
+    renderViews();
   }
 
   // ── Bootstrap ────────────────────────────────────────────────────────
@@ -255,6 +347,7 @@
     wireUpload();
     wireFilter();
     wireActions();
+    wireSelection();
     refreshExportUI();
     console.log('[TSAgestor] listo.');
   });

@@ -59,11 +59,20 @@
       </div>
       <div id="parse-status" class="status"></div>
       <div id="tsa-table-wrap" class="table-wrap hidden">
-        <h2>TSAs detectadas <span id="tsa-count" class="badge"></span></h2>
+        <div class="table-header">
+          <h2>TSAs detectadas <span id="tsa-count" class="badge"></span></h2>
+          <div class="table-actions">
+            <span id="selection-summary" class="chip"></span>
+            <button id="btn-select-all" class="btn btn-ghost" type="button">Todas</button>
+            <button id="btn-select-none" class="btn btn-ghost" type="button">Ninguna</button>
+          </div>
+        </div>
+        <p class="hint">Marca cada TSA para incluirla en el Mapa, el Corte transversal y el PDF. Las filas atenuadas están fuera del filtro de fecha/hora.</p>
         <div class="table-scroll">
           <table id="tsa-table">
             <thead>
               <tr>
+                <th class="col-check"><input type="checkbox" id="tsa-select-all-cb" checked title="Seleccionar todas"></th>
                 <th>Nombre</th>
                 <th>Formato</th>
                 <th>Lím. inferior</th>
