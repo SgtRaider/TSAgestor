@@ -13,7 +13,7 @@ window.TSAgestor.crossSection = (function () {
   const BAND_COLORS = { low: '#22c55e', mid: '#f59e0b', high: '#ef4444' };
 
   const WIDTH = 1100;
-  const PANEL_H = 380;
+  const PANEL_H = 440;
   const PANEL_GAP = 28;
   const HEADER_H = 60;
   const FOOTER_H = 80;
@@ -118,19 +118,39 @@ window.TSAgestor.crossSection = (function () {
     return out;
   }
 
-  // Asigna cada etiqueta de nombre a una fila sin colisión horizontal (greedy).
-  function layoutNameLabels(panelRects, xScale, yScale) {
-    const LABEL_H = 14;
-    const rows = []; // cada fila: lista de {xL, xR}
-    const result = [];
+  // Medición real de texto con canvas 2D (cacheado). Permite stagger preciso.
+  let _measureCtx = null;
+  function measureText(str, fontSize, bold) {
+    if (!_measureCtx) _measureCtx = document.createElement('canvas').getContext('2d');
+    _measureCtx.font = (bold ? 'bold ' : '') + fontSize + 'px sans-serif';
+    return _measureCtx.measureText(str).width;
+  }
+
+  // Layout de callouts (nombre + altitud apilados) encima de cada rect.
+  //  - Ancho = max(anchoNombre, anchoAltitud) + padding
+  //  - Stagger greedy por filas sobre ese ancho real
+  //  - Devuelve las Y exactas de la línea de nombre y la línea de altitud
+  function layoutCallouts(panelRects, xScale, yScale) {
+    const NAME_SIZE = 12;
+    const ALT_SIZE  = 10;
+    const LINE_GAP  = 2;
+    const ROW_GAP   = 4;
+    const ROW_H     = NAME_SIZE + LINE_GAP + ALT_SIZE + ROW_GAP; // ~28 px
+    const H_PAD     = 6;
+    const rows = [];
+    const out = [];
     const ordered = [...panelRects].sort((a, b) => a.xMin - b.xMin);
 
     for (const r of ordered) {
-      const estW = Math.max(40, r.tsa.name.length * 7) + 6;
+      const altStr = `${r.tsa.vertical.lowerLabel} – ${r.tsa.vertical.upperLabel}`;
+      const wName  = measureText(r.tsa.name, NAME_SIZE, true);
+      const wAlt   = measureText(altStr, ALT_SIZE, false);
+      const blockW = Math.max(wName, wAlt) + H_PAD * 2;
+
       const cx = (xScale(r.xMin) + xScale(r.xMax)) / 2;
-      const xL = cx - estW / 2;
-      const xR = cx + estW / 2;
-      const topY = yScale(r.yMax);
+      const xL = cx - blockW / 2;
+      const xR = cx + blockW / 2;
+      const rectTopY = yScale(r.yMax);
 
       let row = 0;
       while (true) {
@@ -139,14 +159,20 @@ window.TSAgestor.crossSection = (function () {
         if (!collide) { rows[row].push({ xL, xR }); break; }
         row++;
       }
-      result.push({ r, cx, xL, xR, y: topY - 6 - row * LABEL_H, row, rectTopY: topY });
+      // Callout "anclado" arriba del rect:
+      //   baseY del bloque = rectTopY - 6 - row*ROW_H
+      //   altY (línea inferior)     = baseY
+      //   nameY (línea superior)    = baseY - LINE_GAP - ALT_SIZE
+      const altY  = rectTopY - 6 - row * ROW_H;
+      const nameY = altY - LINE_GAP - ALT_SIZE;
+      out.push({ r, cx, xL, xR, altStr, nameY, altY, rectTopY, row });
     }
-    return result;
+    return out;
   }
 
   // ── Render de un panel ───────────────────────────────────────────────
   function renderPanel(svg, panel, panelIndex, nPanels, topPx, maxY, defsAdded) {
-    const pad = { left: 80, right: 40, top: 46, bottom: 40 };
+    const pad = { left: 80, right: 40, top: 100, bottom: 40 };
     const plotW = WIDTH - pad.left - pad.right;
     const plotH = PANEL_H - pad.top - pad.bottom;
     const plotTop = topPx + pad.top;
@@ -232,14 +258,6 @@ window.TSAgestor.crossSection = (function () {
         'stroke-width': isPrimary ? 1.8 : 1,
         'stroke-dasharray': isPrimary ? '' : '4 3',
       }));
-
-      // Altitud dentro del rect si cabe
-      if (h >= 22 && w >= 60) {
-        const txt = `${r.tsa.vertical.lowerLabel} – ${r.tsa.vertical.upperLabel}`;
-        g.appendChild(haloText(x + w / 2, y + h / 2 + 4, txt, {
-          'text-anchor': 'middle', 'font-size': 11, 'font-weight': 600, fill: '#0f172a',
-        }));
-      }
     };
     secondary.forEach(r => drawRect(r, false));
     primary.forEach(r => drawRect(r, true));
@@ -268,28 +286,23 @@ window.TSAgestor.crossSection = (function () {
           fill: 'url(#overlapHatch)',
           stroke: '#0f172a', 'stroke-width': 1.2, 'stroke-dasharray': '3 2',
         }));
-        // Texto compacto dentro del solape si cabe
-        if (w >= 60 && h >= 14) {
-          g.appendChild(haloText(x + w / 2, y + h / 2 + 3,
-            `${formatFL(ov.yMin)}–${formatFL(ov.yMax)}`, {
-            'text-anchor': 'middle', 'font-size': 10, 'font-weight': 700, fill: '#0f172a',
-          }));
-        }
       }
     }
 
-    // Etiquetas de nombre (sólo para primarios para evitar repetir).
-    const labelPlacements = layoutNameLabels(primary, xScale, yScale);
-    for (const pl of labelPlacements) {
-      // Línea guía si la etiqueta se subió
-      if (pl.row > 0) {
+    // Callouts (nombre + altitud apilados) sólo para primarios.
+    const callouts = layoutCallouts(primary, xScale, yScale);
+    for (const co of callouts) {
+      if (co.row > 0) {
         svg.appendChild(el('line', {
-          x1: pl.cx, y1: pl.rectTopY, x2: pl.cx, y2: pl.y + 3,
+          x1: co.cx, y1: co.rectTopY, x2: co.cx, y2: co.altY + 3,
           stroke: '#94a3b8', 'stroke-width': 1, 'stroke-dasharray': '2 2',
         }));
       }
-      svg.appendChild(haloText(pl.cx, pl.y, pl.r.tsa.name, {
+      svg.appendChild(haloText(co.cx, co.nameY, co.r.tsa.name, {
         'text-anchor': 'middle', 'font-size': 12, 'font-weight': 700, fill: '#0f172a',
+      }));
+      svg.appendChild(haloText(co.cx, co.altY, co.altStr, {
+        'text-anchor': 'middle', 'font-size': 10, fill: '#334155',
       }));
     }
   }
