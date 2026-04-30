@@ -177,8 +177,74 @@ window.TSAgestor.parser = (function () {
 
   // ── AIP parser ───────────────────────────────────────────────────────
 
+  // Detecta el periodo de actividad del documento (cabecera del NOTAM).
+  // Soporta:
+  //   "CON PERIODO DE ACTIVIDAD: APR 01 06-10 13-17 20-24 27-30 0600-1830"
+  //   "DESDE 01/04/2026 06:00 HASTA 30/04/2026 18:30"  (fallback)
+  function parseDocumentLevelSchedules(text, defaultYear) {
+    const m = text.match(/CON\s+PERIODO\s+DE\s+ACTIVIDAD\s*:\s*([^\n]+)/i);
+    if (m) {
+      const out = parseMixedDaySpec(m[1].trim(), defaultYear);
+      if (out.length > 0) return out;
+    }
+    const m2 = text.match(/DESDE\s+(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})\s+HASTA\s+(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/i);
+    if (m2) {
+      const s = new Date(Date.UTC(+m2[3], +m2[2] - 1, +m2[1], +m2[4], +m2[5]));
+      const e = new Date(Date.UTC(+m2[8], +m2[7] - 1, +m2[6], +m2[9], +m2[10]));
+      return [{ startUTC: s, endUTC: e, raw: m2[0] }];
+    }
+    return [];
+  }
+
+  // "APR 01 06-10 13-17 20-24 27-30 0600-1830"
+  //   → mes APR, días [1, 6..10, 13..17, 20..24, 27..30], horario 0600-1830
+  function parseMixedDaySpec(line, defaultYear) {
+    const tokens = line.split(/\s+/);
+    if (tokens.length < 3) return [];
+    const lastTok = tokens[tokens.length - 1];
+    const tm = lastTok.match(/^(\d{4})\s*-\s*(\d{4})$/);
+    if (!tm) return [];
+    const month = MONTHS[tokens[0].toUpperCase()];
+    if (month === undefined) return [];
+    const days = [];
+    for (const tok of tokens.slice(1, -1)) {
+      if (/^\d{1,2}$/.test(tok)) { days.push(+tok); continue; }
+      const r = tok.match(/^(\d{1,2})\s*[-–]\s*(\d{1,2})$/);
+      if (r) {
+        const lo = Math.min(+r[1], +r[2]), hi = Math.max(+r[1], +r[2]);
+        for (let d = lo; d <= hi; d++) days.push(d);
+        continue;
+      }
+      for (const p of tok.split(/[,;]/)) if (/^\d{1,2}$/.test(p)) days.push(+p);
+    }
+    const out = [];
+    for (const d of days) {
+      const s = makeUTC(defaultYear, month, d, tm[1]);
+      let e = makeUTC(defaultYear, month, d, tm[2]);
+      if (!s || !e) continue;
+      if (e <= s) e = new Date(e.getTime() + 24 * 3600 * 1000);
+      out.push({ startUTC: s, endUTC: e, raw: line });
+    }
+    return out;
+  }
+
+  // "CIRCULO DE 08NM DE RADIO CENTRADO EN 385329N 0064917W"
+  // (también admite radios decimales con coma: "5,9NM")
+  function parseCircleDefinition(text) {
+    const re = /C[IÍ]RCULO\s+DE\s+([\d.,]+)\s*NM\s+DE\s+RADIO\s+CENTRADO\s+EN\s+(\d{6}(?:\.\d+)?[NS])\s+(\d{7}(?:\.\d+)?[EW])/i;
+    const m = text.match(re);
+    if (!m) return null;
+    const radiusNM = parseFloat(m[1].replace(',', '.'));
+    if (Number.isNaN(radiusNM)) return null;
+    const lat = parseLat(m[2]);
+    const lon = parseLon(m[3]);
+    if (lat === null || lon === null) return null;
+    return { center: [lat, lon], radiusKm: radiusNM * 1.852 };
+  }
+
   function parseAIP(rawText, defaultYear) {
     const text = rawText.replace(/\r\n?/g, '\n');
+    const docSchedules = parseDocumentLevelSchedules(text, defaultYear);
     // Inserta marcador antes de cada cabecera "TSA <nombre>" que arranca línea.
     const marked = text.replace(/(^|\n)(TSA\b[^\n]*)/g, '$1\x00$2');
     const blocks = marked.split('\x00').filter(b => /^TSA\b/.test(b.trim()));
@@ -199,9 +265,17 @@ window.TSAgestor.parser = (function () {
       const schedRaw    = section('FECHAS\\s+Y\\s+HORARIOS',   'RMK\\s*:|OBSERV');
       const rmkM        = block.match(/RMK\s*:([\s\S]*?)(?=\x00|$)/i);
 
-      const polygon  = parseCoordinates(lateralRaw);
+      let polygon = parseCoordinates(lateralRaw);
+      if (polygon.length < 3) {
+        const circle = parseCircleDefinition(lateralRaw);
+        if (circle) polygon = geom.circleToPolygon(circle.center, circle.radiusKm, 48);
+      }
       const vertical = parseVerticalBlock(verticalRaw);
-      const schedules = parseAIPSchedules(schedRaw, defaultYear);
+      let schedules = parseAIPSchedules(schedRaw, defaultYear);
+      if (schedules.length === 0 && docSchedules.length > 0) {
+        // El boletín define el periodo en cabecera; usarlo cuando la TSA no lo repite.
+        schedules = docSchedules;
+      }
 
       if (polygon.length >= 3 && schedules.length > 0) {
         tsas.push({

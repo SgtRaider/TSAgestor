@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  const { parser, filters, mapView, crossSection, pdfExport } = window.TSAgestor;
+  const { parser, filters, mapView, crossSection, pdfExport, geom } = window.TSAgestor;
 
   const state = {
     tsas: [],                                                 // todas las parseadas
@@ -127,6 +127,7 @@
       }
       $('#filter-bar').classList.remove('hidden');
       ensureMap();
+      populateRangeSelects();
       renderAll();
     } catch (err) {
       console.error(err);
@@ -185,6 +186,9 @@
 
     $('#btn-select-all').addEventListener('click', selectAll);
     $('#btn-select-none').addEventListener('click', selectNone);
+    $('#btn-select-between').addEventListener('click', selectBetween);
+    $('#select-from').addEventListener('change', updateRangeButton);
+    $('#select-to').addEventListener('change', updateRangeButton);
   }
 
   function selectAll() {
@@ -197,6 +201,46 @@
     state.selected = new Set();
     renderTable();
     renderViews();
+  }
+
+  // Selecciona todas las TSAs cuyo centroide proyectado en la geodésica
+  // (centroide A → centroide B) cae dentro del segmento [0, |AB|], con
+  // un margen de tolerancia para incluir los extremos sin recortes.
+  function selectBetween() {
+    const idA = $('#select-from').value;
+    const idB = $('#select-to').value;
+    if (!idA || !idB || idA === idB) return;
+    const A = state.tsas.find(t => t.id === idA);
+    const B = state.tsas.find(t => t.id === idB);
+    if (!A || !B) return;
+    const dAB = geom.greatCircleDistance(A.centroid, B.centroid);
+    const tol = Math.max(5, dAB * 0.02); // 2 % o 5 km mínimo
+    const next = new Set();
+    for (const t of state.tsas) {
+      if (t.id === idA || t.id === idB) { next.add(t.id); continue; }
+      const along = geom.alongTrackDistance(A.centroid, B.centroid, t.centroid);
+      if (along >= -tol && along <= dAB + tol) next.add(t.id);
+    }
+    state.selected = next;
+    renderTable();
+    renderViews();
+  }
+
+  function populateRangeSelects() {
+    const from = $('#select-from'), to = $('#select-to');
+    from.innerHTML = '<option value="">—</option>';
+    to.innerHTML   = '<option value="">—</option>';
+    for (const t of state.tsas) {
+      from.appendChild(new Option(t.name, t.id));
+      to.appendChild(new Option(t.name, t.id));
+    }
+    updateRangeButton();
+  }
+
+  function updateRangeButton() {
+    const a = $('#select-from').value;
+    const b = $('#select-to').value;
+    $('#btn-select-between').disabled = !a || !b || a === b;
   }
 
   // ── Filtro ───────────────────────────────────────────────────────────

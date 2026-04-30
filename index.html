@@ -67,6 +67,16 @@
             <button id="btn-select-none" class="btn btn-ghost" type="button">Ninguna</button>
           </div>
         </div>
+        <div class="range-selector">
+          <label>TSA inicial
+            <select id="select-from"><option value="">—</option></select>
+          </label>
+          <label>TSA final
+            <select id="select-to"><option value="">—</option></select>
+          </label>
+          <button id="btn-select-between" class="btn" type="button" disabled>Seleccionar intermedias</button>
+          <span class="hint inline">Selecciona todas las TSAs que caen geográficamente entre la inicial y la final.</span>
+        </div>
         <p class="hint">Marca cada TSA para incluirla en el Mapa, el Corte transversal y el PDF. Las filas atenuadas están fuera del filtro de fecha/hora.</p>
         <div class="table-scroll">
           <table id="tsa-table">
