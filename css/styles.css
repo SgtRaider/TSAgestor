@@ -268,6 +268,30 @@ tr.out-of-filter td:first-child { opacity: 1; }
 
 tr.tsa-row.selected { background: rgba(56, 189, 248, 0.06); }
 
+details.sched-details { font-size: 12px; }
+details.sched-details > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 2px 0;
+  user-select: none;
+}
+details.sched-details > summary::-webkit-details-marker { display: none; }
+details.sched-details > summary::before {
+  content: '▸ ';
+  display: inline-block;
+  width: 10px;
+  color: var(--text-mute);
+}
+details.sched-details[open] > summary::before { content: '▾ '; }
+.sched-list {
+  margin-top: 4px;
+  padding-left: 14px;
+  border-left: 2px solid var(--border);
+  font-size: 12px;
+}
+.sched-list .sched-item { padding: 1px 0; }
+.sched-list .muted { color: var(--text-mute); font-style: italic; }
+
 .range-selector {
   display: flex;
   flex-wrap: wrap;

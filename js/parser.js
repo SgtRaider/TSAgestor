@@ -82,31 +82,82 @@ window.TSAgestor.parser = (function () {
     return coords;
   }
 
-  // "FL150" | "1500FT" | "GND" | "SFC" | "UNL" | "3500 FT AGL" → pies
+  // "FL150" | "1500FT" | "GND" | "SFC" | "UNL" | "3500 FT AGL" | "500M AMSL" → pies
   function parseAltitudeToken(str) {
-    const s = str.trim().toUpperCase();
-    if (/^(GND|SFC|MSL)$/.test(s)) return { ft: 0, label: s };
+    if (!str) return { ft: 0, label: '?' };
+    const s = str.trim().toUpperCase().replace(/\s+/g, ' ');
+    if (!s) return { ft: 0, label: '?' };
+    if (/^(GND|SFC|MSL)$/.test(s)) return { ft: 0, label: 'GND' };
     if (/^UNL(IMITED)?$/.test(s)) return { ft: 99999, label: 'UNL' };
-    const fl = s.match(/^FL\s*0*(\d+)\b/);
+    // FL245 | FL 245 | FL0245 (con sufijo opcional)
+    const fl = s.match(/^FL\s*0*(\d+)(?:\s+[A-Z]+)?$/);
     if (fl) return { ft: +fl[1] * 100, label: `FL${fl[1]}` };
-    const ft = s.match(/^(\d[\d,]*)\s*FT\b/);
-    if (ft) return { ft: +ft[1].replace(/,/g, ''), label: s };
-    const mt = s.match(/^(\d+)\s*M\b/);
-    if (mt) return { ft: Math.round(+mt[1] * 3.28084), label: s };
+    // 5000FT | 5000 FT | 5000FT AMSL/AGL/MSL | 1,500FT
+    const ft = s.match(/^(\d[\d,.]*)\s*FT(?:\s+(AMSL|AGL|MSL|ASFC))?$/);
+    if (ft) {
+      const num = parseFloat(ft[1].replace(/,/g, ''));
+      const ref = ft[2] ? ' ' + ft[2] : '';
+      return { ft: Math.round(num), label: `${Math.round(num)}FT${ref}` };
+    }
+    // 500M | 500 M | 500M AGL
+    const mt = s.match(/^(\d+(?:[.,]\d+)?)\s*M(?:\s+(AMSL|AGL|MSL))?$/);
+    if (mt) {
+      const num = parseFloat(mt[1].replace(',', '.'));
+      const ref = mt[2] ? ' ' + mt[2] : '';
+      return { ft: Math.round(num * 3.28084), label: `${num}M${ref}` };
+    }
+    // Sólo número (ambiguo): tratar como pies
     const raw = s.match(/^(\d+)$/);
-    if (raw) return { ft: +raw[1], label: s };
-    return { ft: 0, label: s };
+    if (raw) return { ft: +raw[1], label: `${raw[1]}FT` };
+    return { ft: 0, label: '?' };
+  }
+
+  // Parsea formato "<inf>/<sup>" — el más habitual.
+  function parseSlashAlt(text) {
+    const cleaned = text.replace(/\n+/g, ' ').trim();
+    const m = cleaned.match(/([A-Z0-9,.\s]+?)\s*\/\s*([A-Z0-9,.\s]+?)(?=\s{2,}|$|\||;)/i)
+           || cleaned.match(/([A-Z0-9,.\s]+?)\s*\/\s*([A-Z0-9,.\s]+)/i);
+    if (!m) return null;
+    const lo = parseAltitudeToken(m[1]);
+    const hi = parseAltitudeToken(m[2]);
+    if (lo.label === '?' || hi.label === '?') return null;
+    return { lowerFt: lo.ft, lowerLabel: lo.label, upperFt: hi.ft, upperLabel: hi.label };
+  }
+
+  // Parsea formato "INF: <x> SUP: <y>" usado en cabeceras AENA.
+  // En este formato los valores numéricos sin sufijo SON niveles de vuelo
+  // (p.ej. "INF: 0  SUP: 350" → GND a FL350).
+  function parseINFSUP(text) {
+    const m = text.match(/\bINF\b\s*[:.]?\s*([A-Z0-9]+)\s+\bSUP\b\s*[:.]?\s*([A-Z0-9]+)/i);
+    if (!m) return null;
+    function toFL(s) {
+      const up = s.toUpperCase();
+      if (/^(GND|SFC|MSL|0)$/.test(up)) return { ft: 0, label: 'GND' };
+      if (/^UNL/.test(up)) return { ft: 99999, label: 'UNL' };
+      if (/^\d+$/.test(up)) return { ft: +up * 100, label: `FL${+up}` };
+      return parseAltitudeToken(s);
+    }
+    const lo = toFL(m[1]);
+    const hi = toFL(m[2]);
+    if (lo.label === '?' || hi.label === '?') return null;
+    return { lowerFt: lo.ft, lowerLabel: lo.label, upperFt: hi.ft, upperLabel: hi.label };
+  }
+
+  // Parsea "Inferior: X  Superior: Y" o "Lower: X Upper: Y"
+  function parseInfSupWords(text) {
+    const m = text.match(/(?:INFERIOR|LOWER|LIM\.?\s*INF\.?)\s*[:.]?\s*([A-Z0-9]+(?:\s*FT|\s*M)?(?:\s+(?:AMSL|AGL|MSL))?).*?(?:SUPERIOR|UPPER|LIM\.?\s*SUP\.?)\s*[:.]?\s*([A-Z0-9]+(?:\s*FT|\s*M)?(?:\s+(?:AMSL|AGL|MSL))?)/i);
+    if (!m) return null;
+    const lo = parseAltitudeToken(m[1]);
+    const hi = parseAltitudeToken(m[2]);
+    if (lo.label === '?' || hi.label === '?') return null;
+    return { lowerFt: lo.ft, lowerLabel: lo.label, upperFt: hi.ft, upperLabel: hi.label };
   }
 
   function parseVerticalBlock(text) {
-    // Acepta "GND/FL195", "FL150/FL350", "1500FT AGL / FL245", etc.
-    const cleaned = text.replace(/\n+/g, ' ').trim();
-    const m = cleaned.match(/([A-Z0-9,.\s]+?)\s*\/\s*([A-Z0-9,.\s]+?)(?=\s{2,}|$|\||;)/i)
-            || cleaned.match(/([A-Z0-9,.\s]+?)\s*\/\s*([A-Z0-9,.\s]+)/i);
-    if (!m) return { lowerFt: 0, lowerLabel: '?', upperFt: 0, upperLabel: '?' };
-    const lo = parseAltitudeToken(m[1]);
-    const hi = parseAltitudeToken(m[2]);
-    return { lowerFt: lo.ft, lowerLabel: lo.label, upperFt: hi.ft, upperLabel: hi.label };
+    return parseSlashAlt(text)
+        || parseINFSUP(text)
+        || parseInfSupWords(text)
+        || { lowerFt: 0, lowerLabel: '?', upperFt: 0, upperLabel: '?' };
   }
 
   // ── Schedule helpers ─────────────────────────────────────────────────
@@ -182,9 +233,10 @@ window.TSAgestor.parser = (function () {
   //   "CON PERIODO DE ACTIVIDAD: APR 01 06-10 13-17 20-24 27-30 0600-1830"
   //   "DESDE 01/04/2026 06:00 HASTA 30/04/2026 18:30"  (fallback)
   function parseDocumentLevelSchedules(text, defaultYear) {
-    const m = text.match(/CON\s+PERIODO\s+DE\s+ACTIVIDAD\s*:\s*([^\n]+)/i);
+    // Multi-línea: capturar hasta la siguiente sección reconocida o doble salto.
+    const m = text.match(/CON\s+PERIODO\s+DE\s+ACTIVIDAD\s*:\s*([\s\S]+?)(?=\n\s*(?:L[ÍI]MITES|TSA\b|RMK|FECHAS|AREAS\b|OBSERV|\n)|$)/i);
     if (m) {
-      const out = parseMixedDaySpec(m[1].trim(), defaultYear);
+      const out = parseMixedDaySpec(m[1].replace(/\s+/g, ' ').trim(), defaultYear);
       if (out.length > 0) return out;
     }
     const m2 = text.match(/DESDE\s+(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})\s+HASTA\s+(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/i);
@@ -194,6 +246,16 @@ window.TSAgestor.parser = (function () {
       return [{ startUTC: s, endUTC: e, raw: m2[0] }];
     }
     return [];
+  }
+
+  // Extrae los límites verticales del nivel de documento (cabecera AENA).
+  // Sólo busca en el texto ANTES de la primera línea "TSA …".
+  function parseDocumentLevelVertical(text) {
+    const idx = text.search(/(^|\n)TSA\b/);
+    const head = idx >= 0 ? text.slice(0, idx) : text;
+    const m = head.match(/L[ÍI]MITES\s+VERTICALES\s*:([^\n]+(?:\n[^\n]*)?)/i);
+    if (!m) return null;
+    return parseVerticalBlock(m[1]);
   }
 
   // "APR 01 06-10 13-17 20-24 27-30 0600-1830"
@@ -245,6 +307,7 @@ window.TSAgestor.parser = (function () {
   function parseAIP(rawText, defaultYear) {
     const text = rawText.replace(/\r\n?/g, '\n');
     const docSchedules = parseDocumentLevelSchedules(text, defaultYear);
+    const docVertical  = parseDocumentLevelVertical(text);
     // Inserta marcador antes de cada cabecera "TSA <nombre>" que arranca línea.
     const marked = text.replace(/(^|\n)(TSA\b[^\n]*)/g, '$1\x00$2');
     const blocks = marked.split('\x00').filter(b => /^TSA\b/.test(b.trim()));
@@ -270,7 +333,11 @@ window.TSAgestor.parser = (function () {
         const circle = parseCircleDefinition(lateralRaw);
         if (circle) polygon = geom.circleToPolygon(circle.center, circle.radiusKm, 48);
       }
-      const vertical = parseVerticalBlock(verticalRaw);
+      let vertical = parseVerticalBlock(verticalRaw);
+      if (vertical.lowerLabel === '?' && docVertical) {
+        // Sin bloque vertical propio o ilegible: usar el del documento.
+        vertical = docVertical;
+      }
       let schedules = parseAIPSchedules(schedRaw, defaultYear);
       if (schedules.length === 0 && docSchedules.length > 0) {
         // El boletín define el periodo en cabecera; usarlo cuando la TSA no lo repite.
@@ -428,9 +495,35 @@ window.TSAgestor.parser = (function () {
     if (fmt === 'ICAO' || fmt === 'BOTH' || fmt === 'UNKNOWN') {
       out = out.concat(parseICAO(rawText));
     }
-    // Renumerar ids (concat podría duplicarlos)
+    out = mergeSameTSA(out);
     out.forEach((t, i) => { t.id = `tsa-${i + 1}`; });
     return out;
+  }
+
+  // Fusiona TSAs con la misma identidad (nombre + altitudes) sumando sus
+  // ventanas horarias. Útil cuando el boletín repite la misma TSA con
+  // distintos periodos en bloques separados.
+  function mergeSameTSA(tsas) {
+    const map = new Map();
+    for (const t of tsas) {
+      const key = `${t.name}|${t.vertical.lowerLabel}|${t.vertical.upperLabel}`;
+      if (!map.has(key)) {
+        map.set(key, { ...t, schedules: [...t.schedules] });
+      } else {
+        const acc = map.get(key);
+        for (const s of t.schedules) acc.schedules.push(s);
+      }
+    }
+    for (const t of map.values()) {
+      const seen = new Set();
+      t.schedules = t.schedules.filter(s => {
+        const k = s.startUTC.getTime() + '-' + s.endUTC.getTime();
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      }).sort((a, b) => a.startUTC - b.startUTC);
+    }
+    return [...map.values()];
   }
 
   async function parseFile(file) {

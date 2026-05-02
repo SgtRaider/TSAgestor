@@ -162,14 +162,18 @@ window.TSAgestor.mapView = (function () {
   }
 
   function buildPopup(tsa) {
-    const lines = tsa.schedules.slice(0, 6).map(s => `• ${formatSchedule(s)}`).join('<br>');
-    const more = tsa.schedules.length > 6 ? `<br><i>…y ${tsa.schedules.length - 6} más</i>` : '';
+    const fmt = window.TSAgestor.scheduleFmt;
+    const lines = fmt
+      ? fmt.listText(tsa.schedules).slice(0, 8).map(l => `• ${escapeHTML(l)}`).join('<br>')
+      : tsa.schedules.slice(0, 6).map(s => `• ${formatSchedule(s)}`).join('<br>');
+    const totalGroups = fmt ? fmt.listText(tsa.schedules).length : tsa.schedules.length;
+    const more = totalGroups > 8 ? `<br><i>…y ${totalGroups - 8} grupos más</i>` : '';
     return `
       <b>${escapeHTML(tsa.name)}</b><br>
       <i>${tsa.format}</i><br>
       Altitud: <b>${escapeHTML(tsa.vertical.lowerLabel)}</b> → <b>${escapeHTML(tsa.vertical.upperLabel)}</b><br>
       Vértices: ${tsa.polygon.length}<br>
-      <b>Ventanas:</b><br>${lines}${more}
+      <b>Ventanas (${tsa.schedules.length} días):</b><br>${lines}${more}
     `;
   }
 

@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  const { parser, filters, mapView, crossSection, pdfExport, geom } = window.TSAgestor;
+  const { parser, filters, mapView, crossSection, pdfExport, geom, scheduleFmt } = window.TSAgestor;
 
   const state = {
     tsas: [],                                                 // todas las parseadas
@@ -61,10 +61,11 @@
     for (const t of state.tsas) {
       const inFilter  = filters.matches(t, state.filter);
       const isSelected = state.selected.has(t.id);
-      const schedTxt = t.schedules.slice(0, 4).map(s =>
-        `${s.startUTC.toISOString().slice(0, 10)} ` +
-        `${s.startUTC.toISOString().slice(11, 16)}Z–${s.endUTC.toISOString().slice(11, 16)}Z`
-      ).join('<br>') + (t.schedules.length > 4 ? `<br><i>+${t.schedules.length - 4}</i>` : '');
+      const schedHTML = `
+        <details class="sched-details">
+          <summary>${escapeHTML(scheduleFmt.summary(t.schedules))}</summary>
+          <div class="sched-list">${scheduleFmt.listHTML(t.schedules)}</div>
+        </details>`;
 
       const tr = document.createElement('tr');
       tr.className = 'tsa-row' + (inFilter ? '' : ' out-of-filter') + (isSelected ? ' selected' : '');
@@ -78,7 +79,7 @@
         <td>${escapeHTML(t.vertical.lowerLabel)}</td>
         <td>${escapeHTML(t.vertical.upperLabel)}</td>
         <td>${t.polygon.length}</td>
-        <td>${schedTxt}</td>
+        <td>${schedHTML}</td>
       `;
       tbody.appendChild(tr);
     }

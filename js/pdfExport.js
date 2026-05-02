@@ -14,22 +14,22 @@ window.TSAgestor.pdfExport = (function () {
   }
 
   function buildRows(tsas) {
+    const fmt = window.TSAgestor.scheduleFmt;
     const rows = [];
     for (const tsa of tsas) {
       if (!tsa.schedules.length) {
-        rows.push([tsa.name, tsa.vertical.lowerLabel, tsa.vertical.upperLabel, '—', '—', '—']);
+        rows.push([tsa.name, tsa.vertical.lowerLabel, tsa.vertical.upperLabel, '—']);
         continue;
       }
-      for (const s of tsa.schedules) {
-        rows.push([
-          tsa.name,
-          tsa.vertical.lowerLabel,
-          tsa.vertical.upperLabel,
-          s.startUTC.toISOString().slice(0, 10),
-          s.startUTC.toISOString().slice(11, 16) + 'Z',
-          s.endUTC.toISOString().slice(11, 16) + 'Z',
-        ]);
-      }
+      const groups = fmt ? fmt.listText(tsa.schedules) : tsa.schedules.map(s =>
+        `${s.startUTC.toISOString().slice(0,10)} ${s.startUTC.toISOString().slice(11,16)}Z–${s.endUTC.toISOString().slice(11,16)}Z`
+      );
+      rows.push([
+        tsa.name,
+        tsa.vertical.lowerLabel,
+        tsa.vertical.upperLabel,
+        groups.join('\n'),
+      ]);
     }
     return rows;
   }
@@ -65,7 +65,7 @@ window.TSAgestor.pdfExport = (function () {
     // Tabla
     doc.autoTable({
       startY: y,
-      head: [['Nombre', 'Lím. inferior', 'Lím. superior', 'Fecha (UTC)', 'Apertura', 'Cierre']],
+      head: [['Nombre', 'Lím. inferior', 'Lím. superior', 'Ventanas horarias (UTC)']],
       body: buildRows(tsas),
       styles: { fontSize: 9, cellPadding: 2 },
       headStyles: { fillColor: [30, 41, 59], textColor: 255 },
