@@ -47,14 +47,47 @@ window.TSAgestor.mapView = (function () {
   }
 
   function addAirwayLayers() {
-    const data = window.TSAgestor.airways;
-    if (!data) return;
-    const upperLayer = buildAirwaysLayer(data.upper, 'upper');
-    const lowerLayer = buildAirwaysLayer(data.lower, 'lower');
-    L.control.layers(null, {
-      'Aerovías alta cota (demo)': upperLayer,
-      'Aerovías baja cota (demo)': lowerLayer,
-    }, { position: 'topleft', collapsed: false }).addTo(map);
+    const overlays = {};
+    const aw = window.TSAgestor.airways;
+    if (aw) {
+      overlays['Aerovías alta cota (demo)'] = buildAirwaysLayer(aw.upper, 'upper');
+      overlays['Aerovías baja cota (demo)'] = buildAirwaysLayer(aw.lower, 'lower');
+    }
+    const sp = window.TSAgestor.airspace;
+    if (sp) {
+      overlays['TMAs (demo)']  = buildAirspaceLayer(sp.tmas, 'tma');
+      overlays['CTRs (demo)']  = buildAirspaceLayer(sp.ctrs, 'ctr');
+    }
+    if (Object.keys(overlays).length === 0) return;
+    L.control.layers(null, overlays, { position: 'topleft', collapsed: false }).addTo(map);
+  }
+
+  function buildAirspaceLayer(items, type) {
+    const group = L.layerGroup();
+    if (!items) return group;
+    const isTMA = type === 'tma';
+    const color = isTMA ? '#0369a1' : '#dc2626';
+    const labelClass = 'airspace-label ' + type;
+    for (const a of items) {
+      const poly = L.polygon(a.coords, {
+        color, weight: isTMA ? 1.5 : 1.2,
+        fillColor: color, fillOpacity: isTMA ? 0.06 : 0.10,
+        dashArray: isTMA ? null : '4 3',
+      });
+      const altText = `${formatAlt(a.lower)} – ${formatAlt(a.upper)}`;
+      poly.bindTooltip(`<b>${a.name}</b><br>${altText}`, { sticky: true });
+      poly.addTo(group);
+      L.tooltip({
+        permanent: true, direction: 'center', className: labelClass, interactive: false,
+      }).setLatLng([a.lat, a.lon]).setContent(a.name).addTo(group);
+    }
+    return group;
+  }
+
+  function formatAlt(ft) {
+    if (ft <= 0) return 'GND';
+    if (ft >= 10000) return 'FL' + Math.round(ft / 100);
+    return ft + 'FT';
   }
 
   function buildAirwaysLayer(airways, type) {
