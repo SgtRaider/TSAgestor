@@ -293,7 +293,9 @@ window.TSAgestor.parser = (function () {
   // "CIRCULO DE 08NM DE RADIO CENTRADO EN 385329N 0064917W"
   // (también admite radios decimales con coma: "5,9NM")
   function parseCircleDefinition(text) {
-    const re = /C[IÍ]RCULO\s+DE\s+([\d.,]+)\s*NM\s+DE\s+RADIO\s+CENTRADO\s+EN\s+(\d{6}(?:\.\d+)?[NS])\s+(\d{7}(?:\.\d+)?[EW])/i;
+    // Soporta español ("CIRCULO DE 08NM DE RADIO CENTRADO EN") e inglés
+    // ("CIRCLE OF 08NM RADIUS CENTRED ON" / "CENTERED ON").
+    const re = /(?:C[IÍ]RCULO\s+DE|CIRCLE\s+OF)\s+([\d.,]+)\s*NM\s+(?:DE\s+RADIO\s+CENTRADO\s+EN|RADIUS\s+CENT(?:E|RE)D\s+ON)\s+(\d{6}(?:\.\d+)?[NS])\s+(\d{7}(?:\.\d+)?[EW])/i;
     const m = text.match(re);
     if (!m) return null;
     const radiusNM = parseFloat(m[1].replace(',', '.'));
@@ -416,12 +418,13 @@ window.TSAgestor.parser = (function () {
   function parseAIP(rawText, defaultYear) {
     const text = rawText.replace(/\r\n?/g, '\n');
 
-    // Posiciones de las cabeceras TSA (cada bloque va de una a la siguiente).
-    const tsaRe = /(^|\n)(TSA\b[^\n]*)/g;
+    // Posiciones de las cabeceras TSA. Admite indentación (la versión inglesa
+    // del boletín lleva varios espacios antes de "TSA …").
+    const tsaRe = /(?:^|\n)([ \t]*)(TSA\b[^\n]*)/g;
     const positions = [];
     let tm;
     while ((tm = tsaRe.exec(text)) !== null) {
-      positions.push({ start: tm.index + tm[1].length, end: 0 });
+      positions.push({ start: tm.index + tm[0].length - tm[2].length, end: 0 });
     }
     for (let i = 0; i < positions.length; i++) {
       positions[i].end = i + 1 < positions.length ? positions[i+1].start : text.length;
@@ -442,7 +445,7 @@ window.TSAgestor.parser = (function () {
     }
 
     const verticalEntries = [];
-    const vertRe = /L[ÍI]MITES\s+VERTICALES\s*:\s*([^\n]+)/gi;
+    const vertRe = /(?:L[ÍI]MITES\s+VERTICALES|VERTICAL\s+LIMITS)\s*:\s*([^\n]+)/gi;
     let vm;
     while ((vm = vertRe.exec(text)) !== null) {
       if (!isInsideTSA(vm.index)) {
@@ -463,9 +466,13 @@ window.TSAgestor.parser = (function () {
         return m ? m[1] : '';
       };
 
-      const lateralRaw  = section('L[ÍI]MITES\\s+LATERALES',   'L[ÍI]MITES\\s+VERTICALES');
-      const verticalRaw = section('L[ÍI]MITES\\s+VERTICALES',  'FECHAS\\s+Y\\s+HORARIOS');
-      const schedRaw    = section('FECHAS\\s+Y\\s+HORARIOS',   'RMK\\s*:|OBSERV');
+      // Las secciones aceptan tanto la versión española como la inglesa.
+      const KW_LAT  = '(?:L[ÍI]MITES\\s+LATERALES|LATERAL\\s+LIMITS)';
+      const KW_VERT = '(?:L[ÍI]MITES\\s+VERTICALES|VERTICAL\\s+LIMITS)';
+      const KW_FECH = '(?:FECHAS\\s+Y\\s+HORARIOS|DATES\\s+AND\\s+TIMES)';
+      const lateralRaw  = section(KW_LAT,  KW_VERT);
+      const verticalRaw = section(KW_VERT, KW_FECH);
+      const schedRaw    = section(KW_FECH, 'RMK\\s*:|OBSERV|REMARKS\\s*:');
       const rmkM        = block.match(/RMK\s*:([\s\S]*?)$/i);
 
       let polygon = parseCoordinates(lateralRaw);
