@@ -304,16 +304,156 @@ window.TSAgestor.parser = (function () {
     return { center: [lat, lon], radiusKm: radiusNM * 1.852 };
   }
 
+  // Encuentra todos los DESDE/HASTA del documento con su posición.
+  // Estos delimitan secciones NOTAM y dan la VALIDEZ contextual de cada TSA.
+  function findDesdeHasta(text) {
+    const out = [];
+    const re = /DESDE\s+(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})\s+HASTA\s+(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      out.push({
+        index: m.index,
+        validity: {
+          start: new Date(Date.UTC(+m[3], +m[2] - 1, +m[1], +m[4], +m[5])),
+          end:   new Date(Date.UTC(+m[8], +m[7] - 1, +m[6], +m[9], +m[10])),
+          raw: m[0],
+        },
+      });
+    }
+    return out;
+  }
+
+  function lastBefore(entries, pos) {
+    let best = null;
+    for (const e of entries) {
+      if (e.index < pos) best = e; else break;
+    }
+    return best;
+  }
+
+  // Expande "CON PERIODO" dentro de un rango de validez.
+  // Soporta varios formatos:
+  //   "04 11 18 25 0600-1830"           → días sueltos del rango, una franja
+  //   "MAY 09 1900-1910, MAY 10 ..."    → cláusulas separadas por coma
+  //   "1300-1900"                       → cada día del rango con esa franja
+  //   "TUE 0830-1115"                   → cada martes del rango
+  //   "APR-OCT 0700-1800"               → cada día del rango cuyo mes esté en [APR..OCT]
+  //   "0000-2359"                       → cada día completo del rango
+  function expandPeriod(line, validity) {
+    if (!validity) return [];
+    const out = [];
+    for (const clause of line.split(',').map(s => s.trim()).filter(Boolean)) {
+      out.push(...expandPeriodClause(clause, validity));
+    }
+    return out;
+  }
+
+  const DOWS = { SUN: 0, MON: 1, TUE: 2, WED: 3, THU: 4, FRI: 5, SAT: 6 };
+
+  function expandPeriodClause(clause, validity) {
+    // 1. Extrae todas las franjas horarias HHMM-HHMM
+    const times = [];
+    const tre = /\b(\d{4})-(\d{4})\b/g;
+    let tm;
+    while ((tm = tre.exec(clause)) !== null) times.push([tm[1], tm[2]]);
+    if (!times.length) return [];
+
+    // 2. Quita las franjas y clasifica el resto (días, meses, DOW)
+    const noTimes = clause.replace(/\b\d{4}-\d{4}\b/g, ' ');
+    const days = [], months = [], dows = [];
+    for (const tok of noTimes.split(/\s+/).filter(Boolean)) {
+      const u = tok.toUpperCase();
+      if (/^\d{1,2}$/.test(u)) { days.push(+u); continue; }
+      if (/^\d{1,2}[-–]\d{1,2}$/.test(u)) {
+        const [a, b] = u.split(/[-–]/).map(Number);
+        for (let d = Math.min(a,b); d <= Math.max(a,b); d++) days.push(d);
+        continue;
+      }
+      if (MONTHS[u] !== undefined) { months.push(MONTHS[u]); continue; }
+      if (DOWS[u] !== undefined)   { dows.push(DOWS[u]);     continue; }
+      const mr = u.match(/^([A-Z]{3})[-–]([A-Z]{3})$/);
+      if (mr && MONTHS[mr[1]] !== undefined && MONTHS[mr[2]] !== undefined) {
+        let cur = MONTHS[mr[1]], end = MONTHS[mr[2]];
+        while (true) { months.push(cur); if (cur === end) break; cur = (cur + 1) % 12; }
+      }
+      // Tokens desconocidos (SR-SS, EST, etc.) se ignoran
+    }
+
+    // 3. Itera por cada día calendario dentro del rango de validez.
+    const out = [];
+    const startMs = Date.UTC(
+      validity.start.getUTCFullYear(),
+      validity.start.getUTCMonth(),
+      validity.start.getUTCDate()
+    );
+    const endMs = validity.end.getTime();
+    const validStart = validity.start.getTime();
+    const validEnd = validity.end.getTime();
+
+    for (let ms = startMs; ms <= endMs; ms += 86400000) {
+      const d = new Date(ms);
+      const yy = d.getUTCFullYear(), mo = d.getUTCMonth(), dd = d.getUTCDate(), dw = d.getUTCDay();
+      if (days.length   && !days.includes(dd))   continue;
+      if (months.length && !months.includes(mo)) continue;
+      if (dows.length   && !dows.includes(dw))   continue;
+      for (const t of times) {
+        const s = makeUTC(yy, mo, dd, t[0]);
+        let e = makeUTC(yy, mo, dd, t[1]);
+        if (!s || !e) continue;
+        if (e <= s) e = new Date(e.getTime() + 86400000);
+        // Recorta a la validez (NOTAM puede empezar/terminar a media franja)
+        if (e.getTime() < validStart || s.getTime() > validEnd) continue;
+        out.push({
+          startUTC: new Date(Math.max(s.getTime(), validStart)),
+          endUTC:   new Date(Math.min(e.getTime(), validEnd)),
+          raw: clause,
+        });
+      }
+    }
+    return out;
+  }
+
   function parseAIP(rawText, defaultYear) {
     const text = rawText.replace(/\r\n?/g, '\n');
-    const docSchedules = parseDocumentLevelSchedules(text, defaultYear);
-    const docVertical  = parseDocumentLevelVertical(text);
-    // Inserta marcador antes de cada cabecera "TSA <nombre>" que arranca línea.
-    const marked = text.replace(/(^|\n)(TSA\b[^\n]*)/g, '$1\x00$2');
-    const blocks = marked.split('\x00').filter(b => /^TSA\b/.test(b.trim()));
+
+    // Posiciones de las cabeceras TSA (cada bloque va de una a la siguiente).
+    const tsaRe = /(^|\n)(TSA\b[^\n]*)/g;
+    const positions = [];
+    let tm;
+    while ((tm = tsaRe.exec(text)) !== null) {
+      positions.push({ start: tm.index + tm[1].length, end: 0 });
+    }
+    for (let i = 0; i < positions.length; i++) {
+      positions[i].end = i + 1 < positions.length ? positions[i+1].start : text.length;
+    }
+    const isInsideTSA = (pos) => positions.some(t => pos >= t.start && pos < t.end);
+
+    // Índices de DESDE/HASTA, CON PERIODO, LIMITES VERTICALES — sólo a nivel de
+    // sección (no los que están DENTRO de los bloques TSA).
+    const desdeEntries = findDesdeHasta(text).filter(e => !isInsideTSA(e.index));
+
+    const periodEntries = [];
+    const periodRe = /CON\s+PERIODO\s+DE\s+ACTIVIDAD\s*:\s*([^\n]+)/gi;
+    let pm;
+    while ((pm = periodRe.exec(text)) !== null) {
+      if (!isInsideTSA(pm.index)) {
+        periodEntries.push({ index: pm.index, line: pm[1].trim() });
+      }
+    }
+
+    const verticalEntries = [];
+    const vertRe = /L[ÍI]MITES\s+VERTICALES\s*:\s*([^\n]+)/gi;
+    let vm;
+    while ((vm = vertRe.exec(text)) !== null) {
+      if (!isInsideTSA(vm.index)) {
+        const v = parseVerticalBlock(vm[1]);
+        if (v.lowerLabel !== '?') verticalEntries.push({ index: vm.index, vertical: v });
+      }
+    }
 
     const tsas = [];
-    for (const block of blocks) {
+    for (let i = 0; i < positions.length; i++) {
+      const block = text.slice(positions[i].start, positions[i].end);
       const firstLine = block.split('\n', 1)[0].trim();
       const name = firstLine.replace(/\s+/g, ' ');
 
@@ -326,22 +466,33 @@ window.TSAgestor.parser = (function () {
       const lateralRaw  = section('L[ÍI]MITES\\s+LATERALES',   'L[ÍI]MITES\\s+VERTICALES');
       const verticalRaw = section('L[ÍI]MITES\\s+VERTICALES',  'FECHAS\\s+Y\\s+HORARIOS');
       const schedRaw    = section('FECHAS\\s+Y\\s+HORARIOS',   'RMK\\s*:|OBSERV');
-      const rmkM        = block.match(/RMK\s*:([\s\S]*?)(?=\x00|$)/i);
+      const rmkM        = block.match(/RMK\s*:([\s\S]*?)$/i);
 
       let polygon = parseCoordinates(lateralRaw);
       if (polygon.length < 3) {
         const circle = parseCircleDefinition(lateralRaw);
         if (circle) polygon = geom.circleToPolygon(circle.center, circle.radiusKm, 48);
       }
+
+      // Contexto de sección
+      const sectionDesde    = lastBefore(desdeEntries, positions[i].start);
+      const sectionPeriod   = lastBefore(periodEntries, positions[i].start);
+      const sectionVertical = lastBefore(verticalEntries, positions[i].start);
+
       let vertical = parseVerticalBlock(verticalRaw);
-      if (vertical.lowerLabel === '?' && docVertical) {
-        // Sin bloque vertical propio o ilegible: usar el del documento.
-        vertical = docVertical;
-      }
+      if (vertical.lowerLabel === '?' && sectionVertical) vertical = sectionVertical.vertical;
+
       let schedules = parseAIPSchedules(schedRaw, defaultYear);
-      if (schedules.length === 0 && docSchedules.length > 0) {
-        // El boletín define el periodo en cabecera; usarlo cuando la TSA no lo repite.
-        schedules = docSchedules;
+      if (schedules.length === 0 && sectionPeriod && sectionDesde) {
+        schedules = expandPeriod(sectionPeriod.line, sectionDesde.validity);
+      }
+      if (schedules.length === 0 && sectionDesde) {
+        // Sin patrón explícito: una única ventana cubriendo toda la validez.
+        schedules = [{
+          startUTC: sectionDesde.validity.start,
+          endUTC:   sectionDesde.validity.end,
+          raw:      sectionDesde.validity.raw,
+        }];
       }
 
       if (polygon.length >= 3 && schedules.length > 0) {
