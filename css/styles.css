@@ -404,6 +404,22 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
 .leaflet-tooltip.city-label.capital { font-size: 11px; font-weight: 700; }
 .leaflet-tooltip.city-label::before { display: none; }
 
+.leaflet-tooltip.airway-label {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+.leaflet-tooltip.airway-label.upper { color: #6d28d9; border-color: #7c3aed; }
+.leaflet-tooltip.airway-label.lower { color: #0369a1; border-color: #0ea5e9; }
+.leaflet-tooltip.airway-label::before { display: none; }
+
+/* Control de capas: hacer obvio que las aerovías son demo */
+.leaflet-control-layers-overlays label { font-size: 12px; }
+
 /* ── Cross section ────────────────────────────────── */
 #cross-wrap {
   flex: 1;

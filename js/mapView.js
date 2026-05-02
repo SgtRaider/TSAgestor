@@ -42,7 +42,47 @@ window.TSAgestor.mapView = (function () {
 
     layerGroup = L.layerGroup().addTo(map);
     addLegend();
+    addAirwayLayers();
     return map;
+  }
+
+  function addAirwayLayers() {
+    const data = window.TSAgestor.airways;
+    if (!data) return;
+    const upperLayer = buildAirwaysLayer(data.upper, 'upper');
+    const lowerLayer = buildAirwaysLayer(data.lower, 'lower');
+    L.control.layers(null, {
+      'Aerovías alta cota (demo)': upperLayer,
+      'Aerovías baja cota (demo)': lowerLayer,
+    }, { position: 'topleft', collapsed: false }).addTo(map);
+  }
+
+  function buildAirwaysLayer(airways, type) {
+    const group = L.layerGroup();
+    if (!airways) return group;
+    const isUpper = type === 'upper';
+    const color = isUpper ? '#7c3aed' : '#0ea5e9';
+    const labelClass = 'airway-label ' + (isUpper ? 'upper' : 'lower');
+    for (const aw of airways) {
+      const line = L.polyline(aw.points, {
+        color, weight: isUpper ? 2.5 : 2, opacity: 0.85,
+        dashArray: isUpper ? '8 4' : null,
+      });
+      line.bindTooltip(aw.name + (isUpper ? ' · alta cota' : ' · baja cota'), { sticky: true });
+      line.addTo(group);
+      const mid = midpointOf(aw.points);
+      L.tooltip({
+        permanent: true, direction: 'center', className: labelClass, interactive: false,
+      }).setLatLng(mid).setContent(aw.name).addTo(group);
+    }
+    return group;
+  }
+
+  function midpointOf(pts) {
+    if (pts.length === 1) return pts[0];
+    if (pts.length % 2 === 1) return pts[Math.floor(pts.length / 2)];
+    const a = pts[pts.length / 2 - 1], b = pts[pts.length / 2];
+    return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
   }
 
   function drawOfflineBackground() {
