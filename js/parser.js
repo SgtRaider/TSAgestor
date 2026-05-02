@@ -502,7 +502,18 @@ window.TSAgestor.parser = (function () {
       const sectionVertical = lastBefore(verticalEntries, positions[i].start);
 
       let vertical = parseVerticalBlock(verticalRaw);
-      if (vertical.lowerLabel === '?' && sectionVertical) vertical = sectionVertical.vertical;
+      let verticalIsFallback = false;
+      if (vertical.lowerLabel === '?') {
+        // Fallback: a veces la extracción PDF mete las coordenadas dentro de
+        // la sección VERTICAL (columnas mal alineadas). Buscamos cualquier
+        // par altitud/altitud en el bloque completo.
+        const wholeBlock = parseVerticalBlock(text.slice(positions[i].start, positions[i].end));
+        if (wholeBlock.lowerLabel !== '?') vertical = wholeBlock;
+      }
+      if (vertical.lowerLabel === '?' && sectionVertical) {
+        vertical = sectionVertical.vertical;
+        verticalIsFallback = true;
+      }
 
       let schedules = parseAIPSchedules(schedRaw, defaultYear);
       if (schedules.length === 0 && sectionPeriod && sectionDesde) {
@@ -524,6 +535,7 @@ window.TSAgestor.parser = (function () {
           polygon,
           centroid: geom.centroid(polygon),
           vertical,
+          verticalIsFallback,
           schedules,
           format: 'AIP',
           remarks: rmkM ? rmkM[1].trim() : '',
@@ -677,17 +689,45 @@ window.TSAgestor.parser = (function () {
   // ventanas horarias. Útil cuando el boletín repite la misma TSA con
   // distintos periodos en bloques separados.
   function mergeSameTSA(tsas) {
+    // Pase 1 — fusión exacta por (nombre, ft inf, ft sup). Conserva etiqueta
+    // más descriptiva. Marca la entrada combinada como "fallback" sólo si
+    // todas las que la componen lo eran.
     const map = new Map();
     for (const t of tsas) {
-      const key = `${t.name}|${t.vertical.lowerLabel}|${t.vertical.upperLabel}`;
+      const key = `${t.name}|${t.vertical.lowerFt}|${t.vertical.upperFt}`;
       if (!map.has(key)) {
         map.set(key, { ...t, schedules: [...t.schedules] });
-      } else {
-        const acc = map.get(key);
-        for (const s of t.schedules) acc.schedules.push(s);
+        continue;
       }
+      const acc = map.get(key);
+      if (t.vertical.lowerLabel.length > acc.vertical.lowerLabel.length) acc.vertical.lowerLabel = t.vertical.lowerLabel;
+      if (t.vertical.upperLabel.length > acc.vertical.upperLabel.length) acc.vertical.upperLabel = t.vertical.upperLabel;
+      acc.verticalIsFallback = !!(acc.verticalIsFallback && t.verticalIsFallback);
+      for (const s of t.schedules) acc.schedules.push(s);
     }
-    for (const t of map.values()) {
+
+    // Pase 2 — para cada nombre con múltiples entradas, si al menos una NO es
+    // fallback, fusiona el resto (incluidas las fallback con altitudes "raras"
+    // por errores de extracción del PDF) en esa entrada autoritativa.
+    const byName = new Map();
+    for (const e of map.values()) {
+      if (!byName.has(e.name)) byName.set(e.name, []);
+      byName.get(e.name).push(e);
+    }
+    const out = [];
+    for (const group of byName.values()) {
+      if (group.length === 1) { out.push(group[0]); continue; }
+      const proper = group.filter(e => !e.verticalIsFallback);
+      const target = proper.length ? proper[0] : group[0];
+      for (const e of group) {
+        if (e === target) continue;
+        for (const s of e.schedules) target.schedules.push(s);
+      }
+      out.push(target);
+    }
+
+    // Dedupe + orden de schedules
+    for (const t of out) {
       const seen = new Set();
       t.schedules = t.schedules.filter(s => {
         const k = s.startUTC.getTime() + '-' + s.endUTC.getTime();
@@ -696,7 +736,7 @@ window.TSAgestor.parser = (function () {
         return true;
       }).sort((a, b) => a.startUTC - b.startUTC);
     }
-    return [...map.values()];
+    return out;
   }
 
   async function parseFile(file) {
