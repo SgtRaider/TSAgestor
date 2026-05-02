@@ -113,15 +113,30 @@ window.TSAgestor.parser = (function () {
   }
 
   // Parsea formato "<inf>/<sup>" — el más habitual.
+  // Itera línea a línea: la primera línea que contenga un único "/" entre dos
+  // tokens reconocibles de altitud es la respuesta. Antes se colapsaba todo
+  // a una línea con un único espacio, lo que confundía el "/" de la altitud
+  // con el "/" de cosas como "APP/TWR" dentro de los RMK.
   function parseSlashAlt(text) {
-    const cleaned = text.replace(/\n+/g, ' ').trim();
-    const m = cleaned.match(/([A-Z0-9,.\s]+?)\s*\/\s*([A-Z0-9,.\s]+?)(?=\s{2,}|$|\||;)/i)
-           || cleaned.match(/([A-Z0-9,.\s]+?)\s*\/\s*([A-Z0-9,.\s]+)/i);
-    if (!m) return null;
-    const lo = parseAltitudeToken(m[1]);
-    const hi = parseAltitudeToken(m[2]);
-    if (lo.label === '?' || hi.label === '?') return null;
-    return { lowerFt: lo.ft, lowerLabel: lo.label, upperFt: hi.ft, upperLabel: hi.label };
+    const lines = text.split('\n');
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line || line.indexOf('/') < 0) continue;
+      // Restringimos al primer "/" de la línea: parte izquierda y derecha.
+      const slashIdx = line.indexOf('/');
+      const leftRaw  = line.slice(0, slashIdx).trim();
+      const rightRaw = line.slice(slashIdx + 1).trim()
+                            // recorta basura típica al final ("(observaciones…)" o "RMK:…")
+                            .replace(/\s+RMK:.*$/i, '')
+                            .replace(/\s*\(.*$/, '')
+                            .trim();
+      const lo = parseAltitudeToken(leftRaw);
+      const hi = parseAltitudeToken(rightRaw);
+      if (lo.label !== '?' && hi.label !== '?') {
+        return { lowerFt: lo.ft, lowerLabel: lo.label, upperFt: hi.ft, upperLabel: hi.label };
+      }
+    }
+    return null;
   }
 
   // Parsea formato "INF: <x> SUP: <y>" usado en cabeceras AENA.
