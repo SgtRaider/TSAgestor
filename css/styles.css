@@ -388,6 +388,22 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   vertical-align: middle;
 }
 
+.leaflet-tooltip.city-label {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: #1f2937;
+  font-size: 10px;
+  padding: 0 2px;
+  text-shadow:
+    -1px -1px 0 #fff, 1px -1px 0 #fff,
+    -1px  1px 0 #fff, 1px  1px 0 #fff,
+     0   -1px 0 #fff, 0    1px 0 #fff,
+    -1px  0   0 #fff, 1px  0   0 #fff;
+}
+.leaflet-tooltip.city-label.capital { font-size: 11px; font-weight: 700; }
+.leaflet-tooltip.city-label::before { display: none; }
+
 /* ── Cross section ────────────────────────────────── */
 #cross-wrap {
   flex: 1;
