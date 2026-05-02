@@ -47,36 +47,29 @@ window.TSAgestor.mapView = (function () {
 
   function drawOfflineBackground() {
     const geo = window.TSAgestor.offlineGeo;
-    if (!geo) return;
-    const landStyle = {
-      color: LAND_LINE, weight: 1.2,
-      fillColor: LAND_FILL, fillOpacity: 1,
+    if (!geo || !geo.countries) return;
+    L.geoJSON(geo.countries, {
+      style: {
+        color: LAND_LINE,
+        weight: 0.8,
+        fillColor: LAND_FILL,
+        fillOpacity: 1,
+      },
       interactive: false,
-    };
-    const lineStyle = {
-      color: LAND_LINE, weight: 1.2, opacity: 0.85,
-      interactive: false, fill: false,
-    };
-
-    L.polygon(geo.iberia, landStyle).addTo(map);
-    for (const isl of geo.islands) {
-      L.polygon(isl.coords, landStyle).addTo(map);
-    }
-    for (const c of geo.coastlines) {
-      L.polyline(c.coords, lineStyle).addTo(map);
-    }
+    }).addTo(map);
   }
 
   function drawGraticule() {
     const opts = {
-      color: '#94a3b8', weight: 0.5, opacity: 0.5,
+      color: '#94a3b8', weight: 0.5, opacity: 0.45,
       interactive: false, dashArray: '2 4',
     };
-    for (let lat = 20; lat <= 60; lat += 5) {
-      L.polyline([[lat, -25], [lat, 35]], opts).addTo(map);
+    // Mundo entero cada 10°.
+    for (let lat = -80; lat <= 80; lat += 10) {
+      L.polyline([[lat, -180], [lat, 180]], opts).addTo(map);
     }
-    for (let lon = -25; lon <= 35; lon += 5) {
-      L.polyline([[20, lon], [60, lon]], opts).addTo(map);
+    for (let lon = -180; lon <= 180; lon += 10) {
+      L.polyline([[-80, lon], [80, lon]], opts).addTo(map);
     }
   }
 
@@ -84,7 +77,7 @@ window.TSAgestor.mapView = (function () {
     const geo = window.TSAgestor.offlineGeo;
     if (!geo || !geo.cities) return;
     for (const city of geo.cities) {
-      const isCap = city.type === 'capital';
+      const isCap = city.capital === true || city.type === 'capital';
       L.circleMarker([city.lat, city.lon], {
         radius: isCap ? 4 : 2.5,
         color: '#1f2937',
