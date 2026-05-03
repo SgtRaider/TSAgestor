@@ -134,16 +134,16 @@
       <div class="plan-form">
         <div class="plan-fields">
           <label>Origen
-            <input type="text" id="plan-origin" list="plan-wps" placeholder="LEMD" autocomplete="off">
+            <input type="text" id="plan-origin" list="plan-wps" value="LEBZ" placeholder="LEMD" autocomplete="off">
           </label>
           <label>Destino
-            <input type="text" id="plan-dest" list="plan-wps" placeholder="LEBL" autocomplete="off">
+            <input type="text" id="plan-dest" list="plan-wps" value="LEBZ" placeholder="LEBL" autocomplete="off">
           </label>
           <label>Nivel (FL)
-            <input type="number" id="plan-fl" value="350" min="50" max="600" step="10">
+            <input type="number" id="plan-fl" value="250" min="50" max="600" step="10">
           </label>
           <label>Velocidad (kt)
-            <input type="number" id="plan-speed" value="450" min="100" max="900" step="10">
+            <input type="number" id="plan-speed" value="120" min="50" max="900" step="10">
           </label>
           <label>Salida (UTC)
             <input type="datetime-local" id="plan-departure">
@@ -162,19 +162,19 @@
           <h4>Combustible</h4>
           <div class="plan-fields">
             <label>Inicial
-              <input type="number" id="plan-fuel-initial" value="5000" min="0" step="50">
+              <input type="number" id="plan-fuel-initial" value="2500" min="0" step="50">
             </label>
             <label>Consumo (/h)
-              <input type="number" id="plan-fuel-flow" value="800" min="0" step="10">
+              <input type="number" id="plan-fuel-flow" value="200" min="0" step="10">
             </label>
             <label>Unidad
-              <input type="text" id="plan-fuel-unit" value="kg" maxlength="6" autocomplete="off">
+              <input type="text" id="plan-fuel-unit" value="lb" maxlength="6" autocomplete="off">
             </label>
             <label>JOKER
               <input type="number" id="plan-joker" value="1500" min="0" step="50">
             </label>
             <label>BINGO
-              <input type="number" id="plan-bingo" value="800" min="0" step="50">
+              <input type="number" id="plan-bingo" value="400" min="0" step="50">
             </label>
           </div>
         </div>
