@@ -57,15 +57,27 @@ window.TSAgestor.mapView = (function () {
     return map;
   }
 
-  // Pane propio para los tiles meteorológicos (RainViewer / EUMETView).
-  // z-index 650 los sitúa por encima de polígonos (overlayPane=400),
-  // marcadores (markerPane=600) y tooltips (tooltipPane=650).
+  // Apilamiento de paneles (de abajo arriba):
+  //   overlayPane (400)  → fondo de países, retícula
+  //   meteoTiles (410)   → tiles RainViewer / EUMETView CTH
+  //   tsaPane (440)      → TSAs, aerovías, TMAs/CTRs
+  //   routePane (460)    → polilínea del plan + waypoints en círculo
+  //   markerPane (600)   → marcadores METAR/TAF y ciudades
+  //   tooltipPane (650)
+  //   popupPane (700)
   function setupMeteoPane() {
-    if (!map.getPane('meteoTiles')) {
-      map.createPane('meteoTiles');
-      map.getPane('meteoTiles').style.zIndex = 650;
-      map.getPane('meteoTiles').style.pointerEvents = 'none';
-    }
+    const ensure = (name, z, transparent) => {
+      if (!map.getPane(name)) {
+        map.createPane(name);
+        map.getPane(name).style.zIndex = String(z);
+        if (transparent) map.getPane(name).style.pointerEvents = 'none';
+      }
+    };
+    // Tiles meteo no deben capturar clics (transparentes a eventos).
+    ensure('meteoTiles', 410, true);
+    // TSAs y ruta sí son clicables (popup, tooltip).
+    ensure('tsaPane',    440, false);
+    ensure('routePane',  460, false);
   }
 
   function addAirwayLayers() {
@@ -301,6 +313,7 @@ window.TSAgestor.mapView = (function () {
         color: '#0f172a',
         fillColor: color,
         fillOpacity: hasData ? 0.9 : 0.4,
+        pane: 'markerPane',
       });
       const metarRaw = it.metar && it.metar.raw ? it.metar.raw : '— sin METAR —';
       const tafRaw   = it.taf   && it.taf.raw   ? it.taf.raw   : '— sin TAF —';
@@ -374,6 +387,7 @@ window.TSAgestor.mapView = (function () {
         color, weight: isTMA ? 1.5 : 1.2,
         fillColor: color, fillOpacity: isTMA ? 0.06 : 0.10,
         dashArray: isTMA ? null : '4 3',
+        pane: 'tsaPane',
       });
       const altText = `${formatAlt(a.lower)} – ${formatAlt(a.upper)}`;
       poly.bindTooltip(`<b>${a.name}</b><br>${altText}`, { sticky: true });
@@ -401,6 +415,7 @@ window.TSAgestor.mapView = (function () {
       const line = L.polyline(aw.points, {
         color, weight: isUpper ? 2.5 : 2, opacity: 0.85,
         dashArray: isUpper ? '8 4' : null,
+        pane: 'tsaPane',
       });
       line.bindTooltip(aw.name + (isUpper ? ' · alta cota' : ' · baja cota'), { sticky: true });
       line.addTo(group);
@@ -459,6 +474,7 @@ window.TSAgestor.mapView = (function () {
         fillOpacity: 1,
         weight: 1,
         interactive: false,
+        pane: 'markerPane',
       }).addTo(map);
       L.tooltip({
         permanent: true,
@@ -522,6 +538,7 @@ window.TSAgestor.mapView = (function () {
       const color = BAND_COLORS[band];
       const poly = L.polygon(tsa.polygon, {
         color, weight: 2, fillColor: color, fillOpacity: 0.30,
+        pane: 'tsaPane',
       });
       poly.bindPopup(buildPopup(tsa));
       poly.bindTooltip(tsa.name, { direction: 'center', className: 'tsa-tooltip' });
@@ -591,8 +608,8 @@ window.TSAgestor.mapView = (function () {
     const pts = plan.coords.map(c => [c.lat, c.lon]);
 
     // Halo oscuro (legibilidad sobre cualquier fondo) + línea principal
-    L.polyline(pts, { color: '#1f2937', weight: 7, opacity: 0.35 }).addTo(grp);
-    L.polyline(pts, { color: '#fbbf24', weight: 4, opacity: 0.95 }).addTo(grp);
+    L.polyline(pts, { color: '#1f2937', weight: 7, opacity: 0.35, pane: 'routePane' }).addTo(grp);
+    L.polyline(pts, { color: '#fbbf24', weight: 4, opacity: 0.95, pane: 'routePane' }).addTo(grp);
 
     plan.coords.forEach((c, i) => {
       const isExtreme = i === 0 || i === plan.coords.length - 1;
@@ -601,6 +618,7 @@ window.TSAgestor.mapView = (function () {
         color: '#1f2937',
         fillColor: isExtreme ? '#fbbf24' : '#fde68a',
         fillOpacity: 1, weight: 1.5,
+        pane: 'routePane',
       }).addTo(grp);
       const tip = c.name + (c.airway && c.airway !== '—' ? ' · ' + c.airway : '');
       m.bindTooltip(tip, { direction: 'top', offset: [0, -4] });
@@ -615,6 +633,7 @@ window.TSAgestor.mapView = (function () {
       for (const cf of plan.conflicts) {
         L.polygon(cf.tsa.polygon, {
           color: '#dc2626', weight: 3, fillOpacity: 0, dashArray: '6 4',
+          pane: 'routePane',
         }).bindTooltip('CONFLICTO: ' + cf.tsa.name, { sticky: true }).addTo(grp);
       }
     }
@@ -776,8 +795,8 @@ window.TSAgestor.mapView = (function () {
     drawState.layer.clearLayers();
     const seq = [drawState.origin].concat(drawState.points).concat([drawState.destination]);
     const ll = seq.map(p => [p.lat, p.lon]);
-    L.polyline(ll, { color: '#1f2937', weight: 7, opacity: 0.30 }).addTo(drawState.layer);
-    L.polyline(ll, { color: '#fbbf24', weight: 3, opacity: 0.95, dashArray: '5 4' }).addTo(drawState.layer);
+    L.polyline(ll, { color: '#1f2937', weight: 7, opacity: 0.30, pane: 'routePane' }).addTo(drawState.layer);
+    L.polyline(ll, { color: '#fbbf24', weight: 3, opacity: 0.95, dashArray: '5 4', pane: 'routePane' }).addTo(drawState.layer);
     seq.forEach((p, i) => {
       const isExtreme = i === 0 || i === seq.length - 1;
       const isTSA = !!p.tsa;
@@ -786,6 +805,7 @@ window.TSAgestor.mapView = (function () {
         color: isTSA ? '#dc2626' : '#1f2937',
         fillColor: isTSA ? '#dc2626' : (isExtreme ? '#fbbf24' : '#fde68a'),
         fillOpacity: 1, weight: 1.5,
+        pane: 'routePane',
       }).addTo(drawState.layer);
       const baseName = p.name || (p.lat.toFixed(3) + ',' + p.lon.toFixed(3));
       const label = p.fl ? baseName + ' · F' + p.fl : baseName;
