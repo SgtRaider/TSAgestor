@@ -365,16 +365,22 @@ window.TSAgestor.meteoApi = (function () {
   }
 
   // Fetch + fallback proxy CORS (igual que safeFetch pero soporta options).
+  // Si la URL es relativa (/api/...), NO usamos fallback: ya estamos en
+  // el mismo origen via Cloudflare Pages Function, no hay problema CORS
+  // y allorigins no sabe resolver relativas.
   async function _arFetch(url, options) {
     options = options || {};
     if (isFileProtocol()) {
       throw new Error('Las APIs externas no funcionan abriendo el HTML con file://. Sirve por HTTP (start.bat).');
     }
+    const isSameOrigin = url.startsWith('/');
     try {
       const res = await fetch(url, options);
       if (res.ok || (res.status >= 400 && res.status < 500)) return res;
+      if (isSameOrigin) return res;          // 5xx mismo origen: devuelve tal cual
       throw new Error('HTTP ' + res.status);
     } catch (e) {
+      if (isSameOrigin) throw e;             // sin fallback CORS para mismo origen
       console.warn('[autorouter] Fetch directo falló — reintentando vía CORS proxy.');
       const proxied = CORS_PROXY + encodeURIComponent(url);
       return await fetch(proxied, options);
@@ -428,9 +434,28 @@ window.TSAgestor.meteoApi = (function () {
     const res = await _arFetch(url, reqInit);
     if (res.status === 401) {
       if (!serverAuth) sessionStorage.removeItem(AR_TOKEN_KEY);
+      // Intentamos leer el JSON con el reason que devuelve la Function.
+      let reason = null;
+      try {
+        const data = await res.clone().json();
+        reason = data && data.reason;
+      } catch (_) {}
+      if (reason === 'no_credentials' || reason === 'server_auth_failed') {
+        const e = new Error('SERVER_NO_CREDS');
+        e.detail = reason;
+        throw e;
+      }
       throw new Error('TOKEN_REJECTED');
     }
-    if (!res.ok) throw new Error('GRAMET HTTP ' + res.status);
+    if (!res.ok) {
+      // Cuerpo JSON con mensaje (p.ej. de la Function) -> mejor diagnóstico.
+      let detail = '';
+      try {
+        const data = await res.clone().json();
+        detail = data && (data.error || data.detail) ? (' — ' + (data.error || data.detail)) : '';
+      } catch (_) {}
+      throw new Error('GRAMET HTTP ' + res.status + detail);
+    }
     return await res.blob();
   }
 

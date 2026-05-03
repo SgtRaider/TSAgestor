@@ -70,61 +70,93 @@ export async function onRequestOptions() {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
 
+function jsonResponse(status, payload) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+  });
+}
+
 export async function onRequest(context) {
-  const { request, params, env } = context;
-  const method = request.method;
-  if (method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: CORS_HEADERS });
-  }
-  if (method !== 'GET' && method !== 'POST') {
-    return new Response('Method Not Allowed', { status: 405, headers: CORS_HEADERS });
-  }
-
-  const segments = Array.isArray(params.path) ? params.path : (params.path ? [params.path] : []);
-  const path = segments.join('/');
-  const url = new URL(request.url);
-  const target = `${UPSTREAM}/${path}${url.search}`;
-
-  const headers = {
-    'User-Agent': 'TSAgestor-CFProxy/1.0 (+https://tsagestor.pages.dev)',
-  };
-
-  // Authorization: cliente -> server-side env -> ninguno.
-  let auth = request.headers.get('Authorization');
-  if (!auth && endpointNeedsAuth(path)) {
-    const token = await getServerToken(env);
-    if (token) auth = 'Bearer ' + token;
-  }
-  if (auth) headers['Authorization'] = auth;
-
-  const ct = request.headers.get('Content-Type');
-  if (ct) headers['Content-Type'] = ct;
-
-  const init = { method, headers };
-  if (method === 'POST') init.body = await request.text();
-
-  let upstream;
   try {
-    upstream = await fetch(target, init);
-  } catch (e) {
-    return new Response(JSON.stringify({ error: 'Upstream fetch failed', detail: String(e) }), {
-      status: 502,
+    const { request, params, env } = context;
+    const method = request.method;
+    if (method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+    if (method !== 'GET' && method !== 'POST') {
+      return new Response('Method Not Allowed', { status: 405, headers: CORS_HEADERS });
+    }
+
+    const segments = Array.isArray(params.path) ? params.path : (params.path ? [params.path] : []);
+    const path = segments.join('/');
+    const url = new URL(request.url);
+    const target = `${UPSTREAM}/${path}${url.search}`;
+
+    const headers = {
+      'User-Agent': 'TSAgestor-CFProxy/1.0 (+https://tsagestor.pages.dev)',
+    };
+
+    // Authorization: cliente -> server-side env -> ninguno.
+    let auth = request.headers.get('Authorization');
+    let serverAuthAttempted = false;
+    let serverAuthFailed = false;
+    if (!auth && endpointNeedsAuth(path)) {
+      const hasServerCreds = !!(env && env.AUTOROUTER_USER && env.AUTOROUTER_PASS);
+      if (hasServerCreds) {
+        serverAuthAttempted = true;
+        const token = await getServerToken(env);
+        if (token) {
+          auth = 'Bearer ' + token;
+        } else {
+          serverAuthFailed = true;
+        }
+      }
+    }
+
+    if (endpointNeedsAuth(path) && !auth) {
+      const reason = serverAuthFailed
+        ? 'server_auth_failed'
+        : (serverAuthAttempted ? 'server_auth_unknown' : 'no_credentials');
+      return jsonResponse(401, {
+        error: 'Authorization required',
+        reason,
+        hint: 'Configure AUTOROUTER_USER / AUTOROUTER_PASS en Cloudflare Pages → Settings → Environment Variables.',
+      });
+    }
+
+    if (auth) headers['Authorization'] = auth;
+    const ct = request.headers.get('Content-Type');
+    if (ct) headers['Content-Type'] = ct;
+
+    const init = { method, headers };
+    if (method === 'POST') init.body = await request.text();
+
+    let upstream;
+    try {
+      upstream = await fetch(target, init);
+    } catch (e) {
+      return jsonResponse(502, { error: 'Upstream fetch failed', detail: String(e) });
+    }
+
+    // Si upstream rechaza el token cacheado, lo invalidamos para que la
+    // siguiente petición pida uno nuevo.
+    if (upstream.status === 401 && auth && auth.startsWith('Bearer ')) {
+      _cachedToken = null;
+      _cachedTokenExp = 0;
+    }
+
+    const respHeaders = new Headers(CORS_HEADERS);
+    const upCT = upstream.headers.get('Content-Type');
+    if (upCT) respHeaders.set('Content-Type', upCT);
+    const cd = upstream.headers.get('Content-Disposition');
+    if (cd) respHeaders.set('Content-Disposition', cd);
+
+    return new Response(upstream.body, { status: upstream.status, headers: respHeaders });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: 'Function crashed', detail: String(err && err.stack || err) }), {
+      status: 500,
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     });
   }
-
-  // Si el upstream devuelve 401 con un token cacheado, lo invalidamos
-  // para que el siguiente intento renueve credenciales.
-  if (upstream.status === 401 && auth && auth.startsWith('Bearer ')) {
-    _cachedToken = null;
-    _cachedTokenExp = 0;
-  }
-
-  const respHeaders = new Headers(CORS_HEADERS);
-  const upCT = upstream.headers.get('Content-Type');
-  if (upCT) respHeaders.set('Content-Type', upCT);
-  const cd = upstream.headers.get('Content-Disposition');
-  if (cd) respHeaders.set('Content-Disposition', cd);
-
-  return new Response(upstream.body, { status: upstream.status, headers: respHeaders });
 }

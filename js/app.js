@@ -476,6 +476,14 @@
         showArLoginForm();
         return;
       }
+      if (err.message === 'SERVER_NO_CREDS') {
+        wrap.innerHTML = `<div class="plan-error">
+          El servidor no tiene credenciales configuradas para Autorouter.
+          <br><span class="dim">Configura <code>AUTOROUTER_USER</code> y <code>AUTOROUTER_PASS</code> en
+          Cloudflare Pages → Settings → Environment Variables, y vuelve a desplegar.</span>
+        </div>`;
+        return;
+      }
       if (err.message === 'BAD_CREDS' || err.message === 'TOKEN_REJECTED') {
         meteoApi.clearStoredArAuth();
         showArLoginForm('Credenciales rechazadas o tu cuenta no tiene acceso API habilitado.');
