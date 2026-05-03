@@ -130,10 +130,12 @@ window.TSAgestor.mapView = (function () {
   let cloudLegendCtl = null;
   function buildGibsLayer() {
     const grp = L.layerGroup();
-    grp.on('add', function () {
+    grp.on('add', async function () {
       if (cloudGibsTile) return;
       try {
-        const cfg = window.TSAgestor.meteoApi.getGibsCloudWMS();
+        // getGibsCloudWMS sondea el último día disponible la primera vez
+        // (cacheado 1 h), por eso es async.
+        const cfg = await window.TSAgestor.meteoApi.getGibsCloudWMS();
         cloudGibsTile = L.tileLayer.wms(cfg.url, Object.assign(
           { opacity: 0.75, maxZoom: 11, pane: 'meteoTiles' },
           cfg.options
@@ -149,6 +151,7 @@ window.TSAgestor.mapView = (function () {
         showCloudLegend(cfg);
       } catch (e) {
         console.warn('[meteo] GIBS:', e.message);
+        alert('Cloud Top Height no se pudo cargar:\n' + e.message);
       }
     });
     grp.on('remove', function () {
@@ -167,22 +170,20 @@ window.TSAgestor.mapView = (function () {
     cloudLegendCtl = L.control({ position: 'bottomleft' });
     cloudLegendCtl.onAdd = function () {
       const div = L.DomUtil.create('div', 'cloud-legend');
-      // Escala de Cloud Top Pressure (NASA GIBS · MODIS).
-      // Convertida a FL aproximado mediante atmósfera estándar:
-      //   50 hPa  ≈ FL650 (~20 km)
-      //   200 hPa ≈ FL400 (~12 km)
-      //   500 hPa ≈ FL180 (~5,5 km)
-      //   900 hPa ≈ FL030 (~1 km)
+      // Escala de Cloud Top Height (MODIS Aqua, en metros). Convertida a
+      // FL para uso aeronáutico:
+      //   1 km  ≈ FL033        5 km  ≈ FL164
+      //   10 km ≈ FL328        15 km ≈ FL492
       div.innerHTML = `
-        <div class="cloud-legend-title">${cfg.title || 'Cloud Top'}</div>
+        <div class="cloud-legend-title">${cfg.title || 'Cloud Top Height'}</div>
         <div class="cloud-legend-bar"></div>
         <div class="cloud-legend-ticks">
-          <span><b>FL650</b><br><i>50 hPa</i></span>
-          <span><b>FL400</b><br><i>200</i></span>
-          <span><b>FL180</b><br><i>500</i></span>
-          <span><b>FL030</b><br><i>900</i></span>
+          <span><b>FL030</b><br><i>1 km</i></span>
+          <span><b>FL165</b><br><i>5 km</i></span>
+          <span><b>FL330</b><br><i>10 km</i></span>
+          <span><b>FL490</b><br><i>15 km</i></span>
         </div>
-        <div class="cloud-legend-help">menor presión → tope más alto</div>
+        <div class="cloud-legend-help">altura del tope de nube</div>
         <div class="cloud-legend-attr">${cfg.options.attribution || '© NASA'}</div>
       `;
       L.DomEvent.disableClickPropagation(div);

@@ -933,14 +933,14 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
 }
 .cloud-legend .cloud-legend-bar {
   height: 14px;
-  /* MODIS Cloud Top Pressure: violeta (alta) → rojo (baja) */
+  /* MODIS Cloud Top Height: rojo (baja, ~1 km) → violeta (alta, ~15 km) */
   background: linear-gradient(to right,
-    #6b21a8 0%,
-    #1d4ed8 20%,
-    #06b6d4 40%,
-    #22c55e 60%,
-    #eab308 80%,
-    #ef4444 100%);
+    #ef4444 0%,
+    #eab308 20%,
+    #22c55e 40%,
+    #06b6d4 60%,
+    #1d4ed8 80%,
+    #6b21a8 100%);
   border: 1px solid #475569;
   border-radius: 2px;
 }

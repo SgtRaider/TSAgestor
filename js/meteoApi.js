@@ -25,16 +25,15 @@ window.TSAgestor.meteoApi = (function () {
     : 'https://aviationweather.gov/api/data';
   const RAINVIEWER_INDEX = 'https://api.rainviewer.com/public/weather-maps.json';
 
-  // NASA GIBS — Cloud Top Height (mosaico global, CORS abierto, no requiere
-  // key). El producto MODIS Cloud Top Pressure de Aqua/Terra es la mejor
-  // aproximación pública a "altura de tope de nube". El portal EUMETView
-  // expone el CTH MSG 0° pero sólo a usuarios autenticados con OAuth, no
-  // admite token en query — por eso usamos GIBS.
+  // NASA GIBS — Cloud Top Height de MODIS Aqua (mosaico global diario,
+  // CORS abierto, sin key). EUMETView CTH MSG 0° requiere OAuth real,
+  // por eso usamos GIBS. La capa devuelve la altura en metros.
+  // Importante: el endpoint "best" requiere TIME explícito; sin él
+  // devuelve un PNG vacío. Usamos la fecha de ayer (UTC) para asegurar
+  // que el mosaico está ya generado.
   const GIBS_WMS = 'https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi';
-  const GIBS_LAYER = 'MODIS_Aqua_Cloud_Top_Pressure_Day';
+  const GIBS_LAYER = 'MODIS_Aqua_Cloud_Top_Height_Day';
   const GIBS_LAYER_TITLE = 'Cloud Top Height (NASA GIBS · MODIS Aqua)';
-  // Imagen estática con la escala. Si el layer no tuviera leyenda, omite.
-  const GIBS_LEGEND = 'https://gibs.earthdata.nasa.gov/legend/MODIS_Aqua_Cloud_Top_Pressure_Day_H.svg';
 
   // Proxy CORS público, sólo se usa en local cuando el navegador bloquea
   // (en producción usamos las Cloudflare Pages Functions del mismo origen,
@@ -197,19 +196,58 @@ window.TSAgestor.meteoApi = (function () {
     throw new Error('RainViewer no devolvió ni satélite ni radar.');
   }
 
-  // NASA GIBS WMS — devuelve { url, options, title, legendUrl } para
-  // L.tileLayer.wms.
-  function getGibsCloudWMS() {
+  // Cache del día disponible más reciente (1 hora).
+  let _gibsCachedDate = null;
+  let _gibsCachedDateAt = 0;
+
+  // Sondea fechas de hoy hacia atrás hasta encontrar la primera que tenga
+  // datos reales (PNG > 3 KB). El endpoint "best" sin TIME devuelve un PNG
+  // vacío de ~1 KB cuando el mosaico aún no está publicado.
+  async function getLatestGibsDate() {
+    for (let back = 0; back <= 7; back++) {
+      const d = new Date(Date.now() - back * 24 * 3600 * 1000);
+      const ymd = d.toISOString().slice(0, 10);
+      const url = GIBS_WMS +
+        `?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=${GIBS_LAYER}` +
+        `&STYLES=&FORMAT=image/png&TRANSPARENT=true&SRS=EPSG:3857` +
+        `&BBOX=-20037508.34,-20037508.34,20037508.34,20037508.34` +
+        `&WIDTH=64&HEIGHT=64&TIME=${ymd}`;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const blob = await res.blob();
+        if (blob.size > 3000) {
+          console.log(`[meteo] GIBS Cloud Top Height último día disponible: ${ymd} (${blob.size} bytes)`);
+          return ymd;
+        }
+      } catch (e) {
+        // sigue intentando
+      }
+    }
+    // Fallback: ayer
+    const yest = new Date(Date.now() - 24 * 3600 * 1000);
+    return yest.toISOString().slice(0, 10);
+  }
+
+  // NASA GIBS WMS — devuelve { url, options, title } para L.tileLayer.wms.
+  // Async: la primera llamada sondea para hallar el día más reciente con
+  // mosaico real publicado. Se cachea 1 h para no sondear en cada activación.
+  async function getGibsCloudWMS() {
+    if (!_gibsCachedDate || Date.now() - _gibsCachedDateAt > 3600 * 1000) {
+      _gibsCachedDate = await getLatestGibsDate();
+      _gibsCachedDateAt = Date.now();
+    }
+    const ymd = _gibsCachedDate;
     return {
       url: GIBS_WMS,
       title: GIBS_LAYER_TITLE,
-      legendUrl: GIBS_LEGEND,
       options: {
         layers: GIBS_LAYER,
         format: 'image/png',
         transparent: true,
         version: '1.1.1',
-        attribution: '© NASA EOSDIS GIBS',
+        attribution: `© NASA EOSDIS GIBS · ${ymd}`,
+        time: ymd,
       },
     };
   }
