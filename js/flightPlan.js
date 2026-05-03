@@ -350,6 +350,158 @@ window.TSAgestor.flightPlan = (function () {
     return out;
   }
 
+  // ICAO Doc 4444 — Field 15 (Route).
+  //   <SPEED><LEVEL> [DCT|AIRWAY] WPT [DCT|AIRWAY] WPT …
+  // Origen va en el Field 13 y destino en el Field 16, así que strictamente
+  // ambos quedarían fuera de Field 15. En la práctica casi todos los
+  // sistemas operativos aceptan que se incluya el destino al final, por lo
+  // que lo incluimos para que la cadena se pueda pegar tal cual y revisar.
+  // Coordenadas no nominales se emiten en formato OACI 7 caracteres
+  // (DDMM[N|S]DDDMM[E|W]).
+  function buildICAOFPL15(plan) {
+    if (!plan || !plan.route || !plan.route.segments) return '';
+    const segs = plan.route.segments;
+    const speed = 'N' + String(Math.max(1, Math.round(plan.speedKt || 0))).padStart(4, '0');
+    const level = 'F' + String(Math.max(1, Math.round(plan.flightLevel || 0))).padStart(3, '0');
+    const head = speed + level;
+
+    if (!segs.length) return head + ' DCT';
+
+    const wpToken = (wp) => {
+      const isDecimal = /^-?\d+\.\d+,-?\d+\.\d+$/.test(wp.name || '');
+      if (wp.name && !isDecimal) return wp.name;
+      return formatICAOCoord(wp.lat, wp.lon);
+    };
+
+    let out = head;
+    let lastAirway = null;
+    let lastFL = (segs[0].from.fl != null) ? segs[0].from.fl : plan.flightLevel;
+    for (const seg of segs) {
+      const aw = seg.airway || 'DCT';
+      if (aw !== lastAirway) { out += ' ' + aw; lastAirway = aw; }
+      const segFL = (seg.to.fl != null) ? seg.to.fl : plan.flightLevel;
+      // Cambio de FL en el waypoint de llegada del tramo: se anota como
+      // "/N0420F340" pegado al token del waypoint (estándar ICAO).
+      let token = wpToken(seg.to);
+      if (segFL !== lastFL) {
+        token += '/' + speed + 'F' + String(Math.max(1, Math.round(segFL))).padStart(3, '0');
+        lastFL = segFL;
+      }
+      out += ' ' + token;
+    }
+    return out;
+  }
+
+  // Parser inverso de Field 15. Acepta también las formas relajadas que se
+  // ven en briefings: "FL250" en vez de "F250", origen y destino al inicio
+  // y final ("LEMD UN733 GCLP"), velocidad omitida, etc. Devuelve un objeto
+  // { origin, destination, flightLevel, speedKt, via } compatible con plan().
+  function parseICAOFPL15(text) {
+    if (!text || typeof text !== 'string') return { error: 'Cadena vacía.' };
+    const tokens = text.trim().toUpperCase().split(/[\s,]+/).filter(Boolean);
+    if (!tokens.length) return { error: 'Cadena vacía.' };
+
+    let speedKt = null;
+    let flightLevel = null;
+
+    const isAirport = (t) => /^[A-Z]{4}$/.test(t) && !!awMod().waypoints[t];
+    const isOACICoord = (t) => /^\d{4}[NS]\d{5}[EW]$/.test(t);
+    const isDecimalCoord = (t) =>
+      /^-?\d+(?:\.\d+)?\/-?\d+(?:\.\d+)?$/.test(t) ||
+      /^-?\d+(?:\.\d+)?$/.test(t);
+    const isAirwayCode = (t) => /^[A-Z]{1,2}\d{1,4}[A-Z]?$/.test(t) && !isAirport(t);
+
+    function parseSpeedLevel(tok) {
+      // N0420F340, K0834F340, M082F340, F340, FL340, A050, S1500, M0840
+      const m = tok.match(/^([NKM])(\d{3,4})([FAS])(\d{3,4})$/);
+      if (m) {
+        const sUnit = m[1], sVal = parseInt(m[2], 10);
+        const lUnit = m[3], lVal = parseInt(m[4], 10);
+        let kt;
+        if (sUnit === 'N') kt = sVal;
+        else if (sUnit === 'K') kt = sVal / 1.852;
+        else /* M */ kt = (sVal / 100) * 573;  // Mach → kt aproximado a FL alto
+        let fl;
+        if (lUnit === 'F') fl = lVal;
+        else if (lUnit === 'A') fl = Math.round(lVal / 100);
+        else /* S */ fl = Math.round(lVal / 5);
+        return { speedKt: Math.round(kt), flightLevel: fl };
+      }
+      const fOnly = tok.match(/^F(?:L)?(\d{2,3})$/);
+      if (fOnly) return { flightLevel: parseInt(fOnly[1], 10) };
+      return null;
+    }
+
+    function parseOACICoord(tok) {
+      const m = tok.match(/^(\d{2})(\d{2})([NS])(\d{3})(\d{2})([EW])$/);
+      if (!m) return null;
+      const lat = (parseInt(m[1], 10) + parseInt(m[2], 10) / 60) * (m[3] === 'N' ? 1 : -1);
+      const lon = (parseInt(m[4], 10) + parseInt(m[5], 10) / 60) * (m[6] === 'E' ? 1 : -1);
+      return { name: tok, lat, lon };
+    }
+
+    // Primera pasada: aislar SPEED/LEVEL y velocidades/niveles intermedios.
+    const remaining = [];
+    for (const tok of tokens) {
+      const sl = parseSpeedLevel(tok);
+      if (sl) {
+        if (sl.speedKt && !speedKt) speedKt = sl.speedKt;
+        if (sl.flightLevel && !flightLevel) flightLevel = sl.flightLevel;
+        continue;
+      }
+      // Cambios de nivel intermedios pegados al waypoint: "BCN/N0420F360"
+      // → mantenemos el waypoint, descartamos el cambio (no lo aplicamos
+      // porque en la app actual el plan tiene un único FL nominal).
+      const slash = tok.indexOf('/');
+      if (slash > 0 && parseSpeedLevel(tok.slice(slash + 1))) {
+        remaining.push(tok.slice(0, slash));
+        continue;
+      }
+      remaining.push(tok);
+    }
+
+    if (!remaining.length) return { error: 'No se ha encontrado ningún waypoint en la cadena.' };
+
+    // Detectar origen / destino: token de 4 letras al inicio/final.
+    // Una cadena estricta de Field 15 NO incluye origen ni destino (van
+    // en los campos 13 y 16), así que admitimos también las dos variantes:
+    //   - "LEMD UN733 LEZL GCLP" → origen y destino explícitos.
+    //   - "N0420F340 UN733 LEZL" → solo Field 15 puro; en este caso el
+    //     llamador debe rellenar origen/destino aparte (devolvemos null).
+    let origin = null, destination = null, middleStart = 0, middleEnd = remaining.length;
+    if (/^[A-Z]{4}$/.test(remaining[0])) {
+      origin = remaining[0];
+      middleStart = 1;
+    }
+    if (remaining.length > middleStart && /^[A-Z]{4}$/.test(remaining[remaining.length - 1])) {
+      destination = remaining[remaining.length - 1];
+      middleEnd = remaining.length - 1;
+    }
+
+    const middle = remaining.slice(middleStart, middleEnd);
+    const via = [];
+    const unknown = [];
+    for (const tok of middle) {
+      if (isAirwayCode(tok)) continue;       // aerovías ignoradas (ruta DCT entre waypoints)
+      const wp = findWP(tok);
+      if (wp) { via.push(tok); continue; }
+      const oaci = parseOACICoord(tok);
+      if (oaci) { via.push(oaci); continue; }
+      unknown.push(tok);
+    }
+
+    if (unknown.length) {
+      return { error: `Token(s) no reconocido(s) en la ruta: ${unknown.join(', ')}.` };
+    }
+
+    return {
+      origin, destination,
+      flightLevel: flightLevel || null,
+      speedKt:     speedKt     || null,
+      via,
+    };
+  }
+
   function findConflicts(route, tsas, fl, departureUTC, speedKt) {
     if (!route || !tsas || !tsas.length) return [];
     const out = [];
@@ -464,7 +616,7 @@ window.TSAgestor.flightPlan = (function () {
     const eta = new Date(depUTC.getTime() + timeMinutes * 60 * 1000);
     const conflicts = findConflicts(route, opts.tsas || [], fl, depUTC, speedKt);
 
-    return {
+    const result = {
       origin: origin.name,
       destination: destination.name,
       flightLevel: fl,
@@ -479,6 +631,8 @@ window.TSAgestor.flightPlan = (function () {
       timeMinutes,
       conflicts,
     };
+    result.fpl15 = buildICAOFPL15(result);
+    return result;
   }
 
   // Log de vuelo con cálculo de combustible por tramo. Recibe los coords de
@@ -674,5 +828,5 @@ window.TSAgestor.flightPlan = (function () {
     return { windSpeedKt: speed, windDir: dir };
   }
 
-  return { plan, listWaypoints, buildFuelLog };
+  return { plan, listWaypoints, buildFuelLog, buildICAOFPL15, parseICAOFPL15 };
 })();
