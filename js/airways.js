@@ -115,14 +115,26 @@ window.TSAgestor.airways = (function () {
     return out;
   }
 
+  // Distribucion por uso real de la aerovia, no por su FL minimo:
+  //   - lower: utilizable por debajo de FL245 (lowerFL < 245)
+  //   - upper: utilizable a FL245 o superior (upperFL >= 245)
+  // La mayoria de aerovias espanolas son mixtas (FL95-FL660): aparecen en
+  // las dos listas, lo que permite a flightPlan/Dijkstra elegir la entrada
+  // correcta segun el FL del plan (penaliza mismatches en su scoring).
+  const FL_DIVIDE = 245;
   const upper = [];
   const lower = [];
   for (const aw of (aip.airways || [])) {
     const points = airwayPoints(aw);
     if (points.length < 2) continue;
     const item = { name: aw.name, points };
-    if (aw.category === 'upper') upper.push(item);
-    else                          lower.push(item);
+    const lo = aw.lowerFL, hi = aw.upperFL;
+    const usableLow  = (lo == null) || lo <  FL_DIVIDE;
+    const usableHigh = (hi != null) && hi >= FL_DIVIDE;
+    if (usableLow)  lower.push(item);
+    if (usableHigh) upper.push(item);
+    // Si no encaja en ninguno (raro: FL ranges incompletos), va a lower por defecto.
+    if (!usableLow && !usableHigh) lower.push(item);
   }
 
   // --- Conexion airport <-> red de waypoints (DCT virtuales) --------------
