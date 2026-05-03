@@ -17,6 +17,34 @@ window.TSAgestor.pdfExport = (function () {
     const p = n => String(n).padStart(2, '0');
     return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}-${p(d.getUTCHours())}${p(d.getUTCMinutes())}`;
   }
+
+  // Carga el logo EA y lo cachea como dataURL para reutilizar entre exports.
+  let _logoCache = null;
+  async function loadLogoDataURL() {
+    if (_logoCache) return _logoCache;
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const c = document.createElement('canvas');
+          c.width = img.naturalWidth;
+          c.height = img.naturalHeight;
+          c.getContext('2d').drawImage(img, 0, 0);
+          _logoCache = {
+            dataUrl: c.toDataURL('image/png'),
+            w: img.naturalWidth,
+            h: img.naturalHeight,
+          };
+          resolve(_logoCache);
+        } catch (e) {
+          resolve(null);
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = 'assets/logo-ea-azul.png';
+    });
+  }
   function formatUTC(d) {
     if (!d) return '—';
     const p = n => String(n).padStart(2, '0');
@@ -396,20 +424,40 @@ window.TSAgestor.pdfExport = (function () {
     const pageW = doc.internal.pageSize.getWidth();
     let y = margin;
 
-    // Cabecera
+    // Cabecera institucional con logo EA + filete bandera
+    const logo = await loadLogoDataURL();
+    const logoMaxH = 18;   // mm de alto máximo
+    let logoW = 0;
+    if (logo) {
+      const aspect = logo.w / logo.h;
+      const logoH = logoMaxH;
+      logoW = logoH * aspect;
+      doc.addImage(logo.dataUrl, 'PNG', margin, y, logoW, logoH);
+    }
+    // Texto a la derecha del logo
+    const textX = margin + (logoW ? logoW + 5 : 0);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
-    doc.setTextColor(0);
+    doc.setFontSize(15);
+    doc.setTextColor(0, 55, 100);   // Gris aviador #003764
     const title = plan
       ? `TSAgestor — ${plan.origin} → ${plan.destination}`
       : 'TSAgestor — Informe de TSAs';
-    doc.text(title, margin, y);
-    y += 7;
+    doc.text(title, textX, y + 6);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(90);
-    doc.text(`Generado: ${iso(new Date())}`, margin, y);
-    y += 6;
+    doc.setFontSize(8);
+    doc.setTextColor(78, 115, 138); // Azul medio
+    doc.text('EJÉRCITO DEL AIRE Y DEL ESPACIO · VISOR TSA & PLANIFICADOR', textX, y + 11);
+    doc.setFontSize(8);
+    doc.setTextColor(120);
+    doc.text(`Generado: ${iso(new Date())}`, textX, y + 16);
+    // Filete bandera bicolor bajo la cabecera
+    y += logoMaxH + 2;
+    doc.setDrawColor(173, 46, 28);   // Rojo bandera
+    doc.setLineWidth(0.6);
+    doc.line(margin, y, pageW / 2, y);
+    doc.setDrawColor(250, 194, 0);   // Amarillo bandera
+    doc.line(pageW / 2, y, pageW - margin, y);
+    y += 5;
     doc.setTextColor(0);
 
     // Plan de vuelo + Log de combustible

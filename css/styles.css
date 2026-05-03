@@ -106,10 +106,10 @@ h1, h2, h3, .ea-title {
   line-height: 1.1;
 }
 
-.brand-icon {
-  font-size: 26px;
-  color: var(--ea-amarillo);
-  text-shadow: 0 0 8px rgba(250, 194, 0, 0.4);
+.brand-logo {
+  display: block;
+  height: 40px;
+  width: auto;
 }
 
 .brand h1 {
