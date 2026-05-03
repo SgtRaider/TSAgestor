@@ -677,8 +677,6 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   white-space: pre-wrap;
   word-break: break-word;
 }
-.plan-import { margin: 12px 0; }
-
 .notam-source {
   margin-top: 16px;
   padding: 12px 16px;
@@ -693,30 +691,51 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
 }
 .notam-source-text { font-size: 14px; }
 .notam-source-text .dim { display: block; margin-top: 2px; }
+.plan-import .hint { margin: 6px 0 10px; }
 .plan-import-row {
   display: flex;
   gap: 10px;
   align-items: stretch;
   margin-top: 8px;
 }
-.plan-import-row textarea {
+.plan-import-row textarea,
+textarea#fpl-import-text {
   flex: 1;
-  min-height: 44px;
-  padding: 8px 10px;
+  min-height: 56px;
+  padding: 10px 12px;
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 4px;
   font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
   font-size: 14px;
+  line-height: 1.4;
   resize: vertical;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
-.plan-import-row .btn { white-space: nowrap; }
+.plan-import-row textarea::placeholder,
+textarea#fpl-import-text::placeholder {
+  color: var(--text-mute);
+  opacity: 0.7;
+}
+.plan-import-row textarea:focus,
+textarea#fpl-import-text:focus {
+  border-color: var(--ea-amarillo);
+  box-shadow: 0 0 0 2px rgba(255, 197, 0, 0.18);
+}
+.plan-import-row .btn {
+  white-space: nowrap;
+  align-self: stretch;
+  padding: 0 18px;
+}
 .plan-import code {
   background: var(--bg);
   padding: 1px 5px;
   border-radius: 3px;
   font-size: 13px;
+  color: var(--accent);
 }
 .plan-block-head {
   display: flex;
