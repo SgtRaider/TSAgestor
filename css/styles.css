@@ -678,6 +678,21 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   word-break: break-word;
 }
 .plan-import { margin: 12px 0; }
+
+.notam-source {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.notam-source-text { font-size: 14px; }
+.notam-source-text .dim { display: block; margin-top: 2px; }
 .plan-import-row {
   display: flex;
   gap: 10px;
