@@ -304,17 +304,43 @@ window.TSAgestor.flightPlan = (function () {
     return String(d).padStart(isLon ? 3 : 2, '0') + String(m).padStart(2, '0') + sign;
   }
 
+  // Coordenadas en formato OACI corto para FPL (campo 15):
+  //   lat 40.49, lon -3.57 → 4029N00334W
+  //   (DDMM[N|S] + DDDMM[E|W], grados y minutos enteros)
+  function formatICAOCoord(lat, lon) {
+    const fmt = (v, deg, pos, neg) => {
+      const sign = v >= 0 ? pos : neg;
+      const a = Math.abs(v);
+      const d = Math.floor(a);
+      const m = Math.round((a - d) * 60);
+      // Si los minutos redondean a 60, normalizamos (raro pero posible).
+      const dd = m === 60 ? d + 1 : d;
+      const mm = m === 60 ? 0 : m;
+      return String(dd).padStart(deg, '0') + String(mm).padStart(2, '0') + sign;
+    };
+    return fmt(lat, 2, 'N', 'S') + fmt(lon, 3, 'E', 'W');
+  }
+
   function buildNarrative(route, fl) {
     if (!route.segments.length) return '';
     const segs = route.segments;
-    let out = segs[0].from.name || '—';
+    // Formato de etiqueta: "NOMBRE (4029N00334W)" — si el nombre ya es
+    // una pareja "lat,lon" decimal generada por dibujo en el mapa,
+    // lo sustituimos directamente por la versión OACI.
+    const fmtWp = wp => {
+      const isDecimalCoords = /^-?\d+\.\d+,-?\d+\.\d+$/.test(wp.name || '');
+      const icao = formatICAOCoord(wp.lat, wp.lon);
+      if (!wp.name || isDecimalCoords) return icao;
+      return `${wp.name} (${icao})`;
+    };
+    let out = fmtWp(segs[0].from);
     let lastFL = segs[0].from.fl != null ? segs[0].from.fl : fl;
     out += ' F' + lastFL;
     let lastAirway = null;
     for (const seg of segs) {
       const aw = seg.airway || 'DCT';
       if (aw !== lastAirway) { out += ' ' + aw; lastAirway = aw; }
-      out += ' ' + (seg.to.name || '—');
+      out += ' ' + fmtWp(seg.to);
       const segFL = seg.to.fl != null ? seg.to.fl : fl;
       if (segFL !== lastFL) {
         out += ' F' + segFL;
