@@ -84,9 +84,10 @@ window.TSAgestor.mapView = (function () {
     const mapi = window.TSAgestor.meteoApi;
     if (mapi) {
       overlays['Nubosidad (RainViewer IR)'] = buildRainviewerLayer();
-      const gibs = mapi.getGibsCloudWMS ? mapi.getGibsCloudWMS() : null;
-      overlays[gibs && gibs.title ? gibs.title : 'Cloud Top Height (NASA GIBS)'] = buildGibsLayer();
-      overlays['METAR / TAF']               = buildMetarLayer();
+      const cthCfg = mapi.getEumetCthWMS && mapi.getEumetCthWMS();
+      const cthTitle = cthCfg && cthCfg.title ? cthCfg.title : 'Cloud Top Height';
+      overlays[cthTitle] = buildCthLayer();
+      overlays['METAR / TAF'] = buildMetarLayer();
     }
     if (Object.keys(overlays).length === 0) return;
     L.control.layers(null, overlays, { position: 'topleft', collapsed: false }).addTo(map);
@@ -126,38 +127,36 @@ window.TSAgestor.mapView = (function () {
     return grp;
   }
 
-  let cloudGibsTile = null;
+  let cloudCthTile = null;
   let cloudLegendCtl = null;
-  function buildGibsLayer() {
+  function buildCthLayer() {
     const grp = L.layerGroup();
-    grp.on('add', async function () {
-      if (cloudGibsTile) return;
+    grp.on('add', function () {
+      if (cloudCthTile) return;
       try {
-        // getGibsCloudWMS sondea el último día disponible la primera vez
-        // (cacheado 1 h), por eso es async.
-        const cfg = await window.TSAgestor.meteoApi.getGibsCloudWMS();
-        cloudGibsTile = L.tileLayer.wms(cfg.url, Object.assign(
-          { opacity: 0.75, maxZoom: 11, pane: 'meteoTiles' },
+        const cfg = window.TSAgestor.meteoApi.getEumetCthWMS();
+        cloudCthTile = L.tileLayer.wms(cfg.url, Object.assign(
+          { opacity: 0.7, maxZoom: 11, pane: 'meteoTiles' },
           cfg.options
         ));
         let firstError = true;
-        cloudGibsTile.on('tileerror', function (ev) {
+        cloudCthTile.on('tileerror', function (ev) {
           if (firstError) {
             firstError = false;
-            console.warn('[meteo] GIBS tileerror:', ev.tile && ev.tile.src);
+            console.warn('[meteo] EUMETVIEW CTH tileerror:', ev.tile && ev.tile.src);
           }
         });
-        grp.addLayer(cloudGibsTile);
+        grp.addLayer(cloudCthTile);
         showCloudLegend(cfg);
       } catch (e) {
-        console.warn('[meteo] GIBS:', e.message);
-        alert('Cloud Top Height no se pudo cargar:\n' + e.message);
+        console.warn('[meteo] EUMETVIEW CTH:', e.message);
+        alert('Cloud Top Height (EUMETSAT) no se pudo cargar:\n' + e.message);
       }
     });
     grp.on('remove', function () {
-      if (cloudGibsTile) {
-        grp.removeLayer(cloudGibsTile);
-        cloudGibsTile = null;
+      if (cloudCthTile) {
+        grp.removeLayer(cloudCthTile);
+        cloudCthTile = null;
       }
       hideCloudLegend();
     });
@@ -170,21 +169,23 @@ window.TSAgestor.mapView = (function () {
     cloudLegendCtl = L.control({ position: 'bottomleft' });
     cloudLegendCtl.onAdd = function () {
       const div = L.DomUtil.create('div', 'cloud-legend');
-      // Escala de Cloud Top Height (MODIS Aqua, en metros). Convertida a
-      // FL para uso aeronáutico:
-      //   1 km  ≈ FL033        5 km  ≈ FL164
-      //   10 km ≈ FL328        15 km ≈ FL492
+      // Si la API expone una imagen de leyenda oficial (GetLegendGraphic),
+      // la mostramos. Si no, caemos a la escala manual genérica.
+      const legendImg = cfg.legendUrl
+        ? `<img src="${cfg.legendUrl}" alt="Escala de altura"
+                onerror="this.outerHTML='<div class=\\'cloud-legend-bar\\'></div>'">`
+        : `<div class="cloud-legend-bar"></div>
+           <div class="cloud-legend-ticks">
+             <span><b>FL030</b><br><i>1 km</i></span>
+             <span><b>FL165</b><br><i>5 km</i></span>
+             <span><b>FL330</b><br><i>10 km</i></span>
+             <span><b>FL490</b><br><i>15 km</i></span>
+           </div>`;
       div.innerHTML = `
         <div class="cloud-legend-title">${cfg.title || 'Cloud Top Height'}</div>
-        <div class="cloud-legend-bar"></div>
-        <div class="cloud-legend-ticks">
-          <span><b>FL030</b><br><i>1 km</i></span>
-          <span><b>FL165</b><br><i>5 km</i></span>
-          <span><b>FL330</b><br><i>10 km</i></span>
-          <span><b>FL490</b><br><i>15 km</i></span>
-        </div>
+        ${legendImg}
         <div class="cloud-legend-help">altura del tope de nube</div>
-        <div class="cloud-legend-attr">${cfg.options.attribution || '© NASA'}</div>
+        <div class="cloud-legend-attr">${cfg.options.attribution || '© EUMETSAT'}</div>
       `;
       L.DomEvent.disableClickPropagation(div);
       return div;

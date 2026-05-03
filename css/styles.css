@@ -914,7 +914,8 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   margin: 0 0 8px;
 }
 
-/* Leyenda de Cloud Top Height (NASA GIBS) — gradiente de presión + FL */
+/* Leyenda de Cloud Top Height — usa la oficial del WMS si existe (img),
+   o el gradiente manual si no. */
 .cloud-legend {
   background: rgba(255, 255, 255, 0.94);
   color: #0f172a;
@@ -923,7 +924,15 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   border-radius: 4px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
   font-size: 11px;
-  width: 240px;
+  width: 320px;
+  max-width: 90vw;
+}
+.cloud-legend img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #ffffff;
+  border-radius: 2px;
 }
 .cloud-legend .cloud-legend-title {
   font-weight: 700;
