@@ -495,13 +495,58 @@ window.TSAgestor.flightPlan = (function () {
     const bingo = opts.bingoFuel != null && opts.bingoFuel !== '' ? Number(opts.bingoFuel) : null;
     const unit = opts.unit || '';
     const overrides = Array.isArray(opts.legOverrides) ? opts.legOverrides : [];
-    // Vientos en altura por waypoint (mismo orden que coords). Si null o
-    // longitud distinta, se ignora (GS = TAS).
-    const winds = Array.isArray(opts.winds) && opts.winds.length === coords.length ? opts.winds : null;
+    // Pronósticos horarios completos por waypoint. Cada item:
+    //   { times: [iso strings], windSpeedKt: [...], windDir: [...] }
+    const windsHourly = Array.isArray(opts.windsHourly) && opts.windsHourly.length === coords.length
+      ? opts.windsHourly : null;
     const windLevel = opts.windLevel || null;
+    const windSource = opts.windSource || null;
 
+    // Hora de salida (Date o ISO string). Si falta, usamos "ahora".
+    const departureMs = opts.departureUTC instanceof Date
+      ? opts.departureUTC.getTime()
+      : (opts.departureUTC ? new Date(opts.departureUTC).getTime() : Date.now());
+
+    // TAS efectiva por leg (incluyendo overrides manuales).
+    const tasPerLeg = coords.map((_, i) => {
+      const ov = overrides[i] || {};
+      return Number.isFinite(ov.speedKt) && ov.speedKt > 0 ? ov.speedKt : speedKt;
+    });
+
+    // Calcula el array de ETAs (epoch ms) usando, opcionalmente, los vientos
+    // mirados al ETA estimado anterior de cada waypoint.
+    function computeEtas(prevEtas) {
+      const etas = [departureMs];
+      for (let i = 1; i < coords.length; i++) {
+        const legNM = (coords[i].legDistKm || 0) / NM_KM;
+        let gs = tasPerLeg[i];
+        if (windsHourly && prevEtas) {
+          const wA = lookupAt(windsHourly[i - 1], prevEtas[i - 1]);
+          const wB = lookupAt(windsHourly[i],     prevEtas[i]);
+          const avgW = avgWindVec(wA, wB);
+          if (avgW) {
+            const track = geom.bearing(
+              [coords[i - 1].lat, coords[i - 1].lon],
+              [coords[i].lat,     coords[i].lon]);
+            const hw = -avgW.windSpeedKt * Math.cos((avgW.windDir - track) * Math.PI / 180);
+            gs = Math.max(30, tasPerLeg[i] + hw);
+          }
+        }
+        const legMs = (legNM / gs) * 3600 * 1000;
+        etas.push(etas[i - 1] + legMs);
+      }
+      return etas;
+    }
+
+    // Iteración punto-fijo: 1ª pasada con TAS, después 3 refinamientos
+    // sustituyendo TAS por GS ya con vientos a las ETAs estimadas.
+    let etas = computeEtas(null);
+    if (windsHourly) {
+      for (let it = 0; it < 3; it++) etas = computeEtas(etas);
+    }
+
+    // Construcción final de filas con las ETAs convergidas.
     const rows = [];
-    let cumTimeMin = 0;
     let cumFuelUsed = 0;
     let firstJokerIdx = null;
     let firstBingoIdx = null;
@@ -509,33 +554,32 @@ window.TSAgestor.flightPlan = (function () {
     for (let i = 0; i < coords.length; i++) {
       const c = coords[i];
       const ov = overrides[i] || {};
-      const segSpeed = Number.isFinite(ov.speedKt) && ov.speedKt > 0 ? ov.speedKt : speedKt;
-      const segFlow  = Number.isFinite(ov.fuelFlow) && ov.fuelFlow >= 0 ? ov.fuelFlow : fuelFlow;
+      const segFlow = Number.isFinite(ov.fuelFlow) && ov.fuelFlow >= 0 ? ov.fuelFlow : fuelFlow;
       const legNM = i === 0 ? 0 : c.legDistKm / NM_KM;
 
-      // Cálculo de viento del tramo (si hay datos): track = bearing
-      // (waypoint anterior → actual), viento promediado vectorialmente.
-      let track = null, windInfo = null, gs = segSpeed;
-      if (i > 0 && winds) {
+      let track = null, windInfo = null, gs = tasPerLeg[i];
+      if (i > 0 && windsHourly) {
         const prev = coords[i - 1];
         track = geom.bearing([prev.lat, prev.lon], [c.lat, c.lon]);
-        const wA = winds[i - 1];
-        const wB = winds[i];
+        const wA = lookupAt(windsHourly[i - 1], etas[i - 1]);
+        const wB = lookupAt(windsHourly[i],     etas[i]);
         const avgW = avgWindVec(wA, wB);
-        if (avgW && Number.isFinite(avgW.windSpeedKt) && Number.isFinite(avgW.windDir)) {
-          // Headwind component: -ws * cos(wd - track) en grados.
-          // Positivo = viento de cola (suma a GS), negativo = viento en cara.
+        if (avgW) {
           const hw = -avgW.windSpeedKt * Math.cos((avgW.windDir - track) * Math.PI / 180);
-          gs = Math.max(30, segSpeed + hw);     // floor 30 kt para no dividir por cero
-          windInfo = { speedKt: avgW.windSpeedKt, dir: avgW.windDir, headwind: hw, track };
+          gs = Math.max(30, tasPerLeg[i] + hw);
+          windInfo = {
+            speedKt: avgW.windSpeedKt,
+            dir: avgW.windDir,
+            headwind: hw,
+            track,
+            atTime: wB && wB.atTime,           // hora de paso usada para este leg
+          };
         }
       }
 
-      const effectiveSpeed = gs;
-      const legHours = i === 0 ? 0 : legNM / effectiveSpeed;
+      const legHours = i === 0 ? 0 : legNM / gs;
       const legTimeMin = legHours * 60;
       const legFuel = legHours * segFlow;
-      cumTimeMin += legTimeMin;
       cumFuelUsed += legFuel;
       const remaining = initialFuel - cumFuelUsed;
 
@@ -554,22 +598,23 @@ window.TSAgestor.flightPlan = (function () {
         airway: c.airway,
         fl: c.fl,
         legDistNM: legNM,
-        legSpeedKt: segSpeed,           // TAS (input)
-        legGS: i === 0 ? null : effectiveSpeed,  // ground speed efectivo
+        legSpeedKt: tasPerLeg[i],                  // TAS
+        legGS: i === 0 ? null : gs,
         legFuelFlow: segFlow,
-        wind: windInfo,                 // null si no hay datos
+        wind: windInfo,
         speedOverridden: Number.isFinite(ov.speedKt) && ov.speedKt !== speedKt,
         flowOverridden:  Number.isFinite(ov.fuelFlow) && ov.fuelFlow !== fuelFlow,
         legTimeMin,
-        cumTimeMin,
+        cumTimeMin: (etas[i] - departureMs) / 60000,
         legFuel,
         cumFuelUsed,
         remaining,
         status,
-        etaUTC: c.etaUTC,
+        etaUTC: new Date(etas[i]),
       });
     }
 
+    const totalTimeMin = rows.length ? rows[rows.length - 1].cumTimeMin : 0;
     const reachesDestination = rows.length > 0 && rows[rows.length - 1].remaining > 0;
     return {
       rows,
@@ -581,12 +626,31 @@ window.TSAgestor.flightPlan = (function () {
       bingoFuel: bingo,
       totalFuelUsed: cumFuelUsed,
       finalRemaining: initialFuel - cumFuelUsed,
-      totalTimeMin: cumTimeMin,
+      totalTimeMin,
       firstJokerIdx,
       firstBingoIdx,
       reachesDestination,
-      hasWinds: !!winds,
-      windLevel,                       // {hPa, ft} si hay vientos
+      hasWinds: !!windsHourly,
+      windLevel,
+      windSource,
+      departureMs,
+      arrivalMs: rows.length ? rows[rows.length - 1].etaUTC.getTime() : null,
+    };
+  }
+
+  // Look-up del viento a una hora (ms) en el array horario de un punto.
+  function lookupAt(ph, atMs) {
+    if (!ph || !ph.times || !ph.times.length) return null;
+    let bestIdx = 0, bestDiff = Infinity;
+    for (let i = 0; i < ph.times.length; i++) {
+      const t = new Date(ph.times[i] + 'Z').getTime();
+      const diff = Math.abs(t - atMs);
+      if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+    }
+    return {
+      windSpeedKt: ph.windSpeedKt[bestIdx],
+      windDir:     ph.windDir[bestIdx],
+      atTime:      ph.times[bestIdx] + 'Z',
     };
   }
 

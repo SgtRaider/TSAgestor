@@ -243,25 +243,51 @@ window.TSAgestor.meteoApi = (function () {
   }
 
   // Vientos en altura para cada punto al nivel ISA más cercano al FL pedido.
-  // Devuelve { level: {hPa, ft}, points: [{windSpeedKt, windDir}, ...] }.
+  // Devuelve siempre los pronósticos HORARIOS completos por punto
+  // (past_days=2 + forecast_days=7) para que el caller pueda interpolar
+  // según la ETA de cada waypoint.
+  //   { level: {hPa, ft}, source: 'forecast',
+  //     pointsHourly: [{ times: [iso...], windSpeedKt: [...], windDir: [...] }, ...] }
   async function fetchWindsAloft(points, fl) {
-    if (!points || !points.length) return { level: null, points: [] };
+    if (!points || !points.length) return { level: null, pointsHourly: [] };
     const level = closestPressureLevel(fl);
     const lats = points.map(p => p.lat.toFixed(4)).join(',');
     const lons = points.map(p => p.lon.toFixed(4)).join(',');
     const vars = `wind_speed_${level.hPa}hPa,wind_direction_${level.hPa}hPa`;
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
-                `&current=${vars}&windspeed_unit=kn`;
-    const res = await safeFetch(url, 'Open-Meteo (vientos)');
+                `&hourly=${vars}&windspeed_unit=kn&past_days=2&forecast_days=7&timezone=UTC`;
+    const res = await safeFetch(url, 'Open-Meteo (vientos pronóstico)');
     if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
     const data = await res.json();
     const arr = Array.isArray(data) ? data : [data];
+
     return {
       level,
-      points: arr.map(d => ({
-        windSpeedKt: d.current && d.current[`wind_speed_${level.hPa}hPa`],
-        windDir:     d.current && d.current[`wind_direction_${level.hPa}hPa`],
-      })),
+      source: 'forecast',
+      pointsHourly: arr.map(d => {
+        const times = (d.hourly && d.hourly.time) || [];
+        const ws    = (d.hourly && d.hourly[`wind_speed_${level.hPa}hPa`]) || [];
+        const wd    = (d.hourly && d.hourly[`wind_direction_${level.hPa}hPa`]) || [];
+        return { times, windSpeedKt: ws, windDir: wd };
+      }),
+    };
+  }
+
+  // Devuelve {windSpeedKt, windDir, atTime} del pronóstico horario más cercano
+  // al timestamp atMs (en ms epoch). Útil para que un caller mire vientos por
+  // ETA distinta en cada waypoint.
+  function lookupWindAt(pointHourly, atMs) {
+    if (!pointHourly || !pointHourly.times || !pointHourly.times.length) return null;
+    let bestIdx = 0, bestDiff = Infinity;
+    for (let i = 0; i < pointHourly.times.length; i++) {
+      const t = new Date(pointHourly.times[i] + 'Z').getTime();
+      const diff = Math.abs(t - atMs);
+      if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+    }
+    return {
+      windSpeedKt: pointHourly.windSpeedKt[bestIdx],
+      windDir:     pointHourly.windDir[bestIdx],
+      atTime:      pointHourly.times[bestIdx] + 'Z',
     };
   }
 
@@ -402,7 +428,8 @@ window.TSAgestor.meteoApi = (function () {
   return {
     fetchMETAR, fetchTAF, fetchWeatherForAirports,
     getRainviewerCloudUrl, getEumetCthWMS,
-    fetchCloudsForPoints, fetchWindsAloft, getGrametUrl, fetchGramet,
+    fetchCloudsForPoints, fetchWindsAloft, lookupWindAt,
+    getGrametUrl, fetchGramet,
     hasArCreds, setStoredArCreds, clearStoredArAuth,
     // alias retro-compatible para código que aún usa el nombre antiguo
     getGibsCloudWMS: getEumetCthWMS,

@@ -260,7 +260,7 @@ window.TSAgestor.pdfExport = (function () {
       lines.push(`BINGO: ${fmtNum(fuel.bingoFuel)} ${u}` + (fuel.firstBingoIdx != null ? `  (alcanzado en wpt #${fuel.firstBingoIdx + 1})` : '  (no alcanzado)'));
     }
     if (fuel.hasWinds && fuel.windLevel) {
-      lines.push(`Vientos en altura: nivel ${fuel.windLevel.hPa} hPa (≈ FL${Math.round(fuel.windLevel.ft / 100)}) — fuente Open-Meteo`);
+      lines.push(`Vientos en altura: nivel ${fuel.windLevel.hPa} hPa (≈ FL${Math.round(fuel.windLevel.ft / 100)}) — pronóstico Open-Meteo, look-up por ETA real de cada waypoint`);
     }
     for (const line of lines) {
       y = ensureSpace(doc, y, 5, margin);

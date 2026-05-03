@@ -697,15 +697,17 @@
     // pueden haber cambiado). Los vientos cargados anteriormente también se
     // descartan (la ruta puede ser distinta y el FL puede haber cambiado).
     result.fuelOpts = {
-      initialFuel: $('#plan-fuel-initial').value,
-      fuelFlow:    $('#plan-fuel-flow').value,
+      initialFuel:  $('#plan-fuel-initial').value,
+      fuelFlow:     $('#plan-fuel-flow').value,
       speedKt,
-      jokerFuel:   $('#plan-joker').value,
-      bingoFuel:   $('#plan-bingo').value,
-      unit:        $('#plan-fuel-unit').value.trim() || 'kg',
+      jokerFuel:    $('#plan-joker').value,
+      bingoFuel:    $('#plan-bingo').value,
+      unit:         $('#plan-fuel-unit').value.trim() || 'kg',
       legOverrides: [],
-      winds:       null,
-      windLevel:   null,
+      windsHourly:  null,
+      windLevel:    null,
+      windSource:   null,
+      departureUTC: result.departureUTC,
     };
     result.fuel = flightPlan.buildFuelLog(result.coords, result.fuelOpts);
 
@@ -928,6 +930,9 @@
         : `${String(Math.round(r.wind.dir)).padStart(3, '0')}/${Math.round(r.wind.speedKt)}`;
       const windCls = r.wind && r.wind.headwind > 5 ? 'wind-tail'
                     : r.wind && r.wind.headwind < -5 ? 'wind-head' : '';
+      const windTooltip = r.wind && r.wind.atTime
+        ? ` title="Pronóstico válido ${escapeHTML(r.wind.atTime)} · headwind ${r.wind.headwind > 0 ? '+' : ''}${Math.round(r.wind.headwind)} kt"`
+        : '';
       const gsText = isFirst || r.legGS == null
         ? '—'
         : Math.round(r.legGS);
@@ -936,7 +941,7 @@
         <td><b>${escapeHTML(r.name)}</b></td>
         <td class="cell-leg-dist">${isFirst ? '—' : r.legDistNM.toFixed(1)}</td>
         ${velCell}
-        <td class="cell-wind ${windCls}">${windText}</td>
+        <td class="cell-wind ${windCls}"${windTooltip}>${windText}</td>
         <td class="cell-gs">${gsText}</td>
         <td class="cell-leg-time">${isFirst ? '—' : formatDuration(r.legTimeMin)}</td>
         <td class="cell-cum-time">${formatDuration(r.cumTimeMin)}</td>
@@ -965,7 +970,7 @@
       <div class="plan-log-stat"><span class="lbl">Total consumido:</span> <b>${fmtFuel(fuel.totalFuelUsed)} ${escapeHTML(u)}</b></div>
       <div class="plan-log-stat"><span class="lbl">Restante en destino:</span> <b class="${finalCls}">${fmtFuel(fuel.finalRemaining)} ${escapeHTML(u)}</b></div>
       <div class="plan-log-stat"><span class="lbl">Tiempo total:</span> <b>${formatDuration(fuel.totalTimeMin)}</b></div>
-      ${fuel.hasWinds && fuel.windLevel ? `<div class="plan-log-stat"><span class="lbl">Vientos:</span> <b>FL${Math.round(fuel.windLevel.ft / 100)}</b> <span class="dim">(${fuel.windLevel.hPa} hPa, Open-Meteo)</span></div>` : ''}
+      ${fuel.hasWinds && fuel.windLevel ? `<div class="plan-log-stat"><span class="lbl">Vientos:</span> <b>FL${Math.round(fuel.windLevel.ft / 100)}</b> <span class="dim">(${fuel.windLevel.hPa} hPa · pronóstico Open-Meteo · look-up por ETA real de cada waypoint)</span></div>` : ''}
       ${fuel.jokerFuel != null ? `<div class="plan-log-stat"><span class="lbl">JOKER:</span> <b>${fmtFuel(fuel.jokerFuel)} ${escapeHTML(u)}</b>${fuel.firstJokerIdx != null ? ` <span class="dim">(en wpt #${fuel.firstJokerIdx + 1})</span>` : ''}</div>` : ''}
       ${fuel.bingoFuel != null ? `<div class="plan-log-stat"><span class="lbl">BINGO:</span> <b>${fmtFuel(fuel.bingoFuel)} ${escapeHTML(u)}</b>${fuel.firstBingoIdx != null ? ` <span class="dim">(en wpt #${fuel.firstBingoIdx + 1})</span>` : ''}</div>` : ''}
       ${warning}
@@ -1156,19 +1161,21 @@
       const pts = state.lastPlan.coords.map(c => ({ lat: c.lat, lon: c.lon }));
       const fl = state.lastPlan.flightLevel;
       const result = await meteoApi.fetchWindsAloft(pts, fl);
-      if (!result.points || !result.points.length) {
+      if (!result.pointsHourly || !result.pointsHourly.length) {
         alert('Open-Meteo no devolvió datos de viento.');
         return;
       }
-      // Guardamos en fuelOpts y recomputamos el log con GS.
-      state.lastPlan.fuelOpts.winds = result.points;
-      state.lastPlan.fuelOpts.windLevel = result.level;
+      // Guardamos los pronósticos horarios completos: el cálculo del log
+      // hace look-up por la ETA real de cada waypoint, no por la hora de
+      // salida.
+      state.lastPlan.fuelOpts.windsHourly = result.pointsHourly;
+      state.lastPlan.fuelOpts.windLevel   = result.level;
+      state.lastPlan.fuelOpts.windSource  = result.source;
       state.lastPlan.fuel = flightPlan.buildFuelLog(state.lastPlan.coords, state.lastPlan.fuelOpts);
       renderFuelLog(state.lastPlan.fuel);
-      const fl_ft = result.level ? result.level.ft : '?';
-      const fl_label = result.level ? `FL${Math.round(result.level.ft / 100)}` : '?';
+      const flLabel = result.level ? `FL${Math.round(result.level.ft / 100)}` : '?';
       const hpa = result.level ? result.level.hPa : '?';
-      console.log(`[meteo] Vientos cargados al nivel ${hpa} hPa (≈ ${fl_label}, ${fl_ft} ft)`);
+      console.log(`[meteo] Vientos ${result.source} cargados al nivel ${hpa} hPa (≈ ${flLabel}). Look-up por ETA en cada waypoint.`);
     } catch (err) {
       console.error('[winds]', err);
       alert('No se pudieron cargar los vientos: ' + err.message);
