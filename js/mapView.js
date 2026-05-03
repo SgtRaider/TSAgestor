@@ -23,6 +23,15 @@ window.TSAgestor.mapView = (function () {
   let routeLayer = null;
   let legend = null;
   let drawState = null;
+  let countryLayer = null;
+  // Capas de aerovías y airspace creadas bajo demanda; las guardamos para
+  // poder actualizarles la opacidad cuando cambian los ajustes.
+  const _vectorLayerGroups = { airwaysUpper: null, airwaysLower: null, tmas: null, ctrs: null };
+
+  function settingsGet(path, fallback) {
+    const s = window.TSAgestor && window.TSAgestor.settings;
+    return s ? s.get(path, fallback) : fallback;
+  }
 
   // Bounding box que enmarca España peninsular + Baleares + sur de Francia,
   // pensado para ser la vista por defecto cuando no hay TSAs ni ruta.
@@ -54,6 +63,7 @@ window.TSAgestor.mapView = (function () {
     addLegend();
     setupMeteoPane();
     addAirwayLayers();
+    _initSettingsHook();
     return map;
   }
 
@@ -101,6 +111,12 @@ window.TSAgestor.mapView = (function () {
       overlays[cthTitle] = buildCthLayer();
       overlays['METAR / TAF'] = buildMetarLayer();
     }
+    // Guardamos referencias a las capas vectoriales para poder actualizar
+    // sus estilos cuando cambien las opacidades en Ajustes.
+    _vectorLayerGroups.airwaysUpper = overlays['Aerovías alta cota (demo)'] || null;
+    _vectorLayerGroups.airwaysLower = overlays['Aerovías baja cota (demo)'] || null;
+    _vectorLayerGroups.tmas         = overlays['TMAs (demo)'] || null;
+    _vectorLayerGroups.ctrs         = overlays['CTRs (demo)'] || null;
     if (Object.keys(overlays).length === 0) return;
     L.control.layers(null, overlays, { position: 'topleft', collapsed: false }).addTo(map);
   }
@@ -118,7 +134,8 @@ window.TSAgestor.mapView = (function () {
           ? '© RainViewer · satélite IR'
           : '© RainViewer · radar (precipitación)';
         cloudRVTile = L.tileLayer(data.url, {
-          opacity: 0.6, attribution: attr, maxZoom: 11,
+          opacity: settingsGet('opacity.cloudRV', 0.6),
+          attribution: attr, maxZoom: 11,
           pane: 'meteoTiles',
         });
         cloudRVTile.on('tileerror', function (ev) {
@@ -148,7 +165,7 @@ window.TSAgestor.mapView = (function () {
       try {
         const cfg = window.TSAgestor.meteoApi.getEumetCthWMS();
         cloudCthTile = L.tileLayer.wms(cfg.url, Object.assign(
-          { opacity: 0.7, maxZoom: 11, pane: 'meteoTiles' },
+          { opacity: settingsGet('opacity.cloudCTH', 0.7), maxZoom: 11, pane: 'meteoTiles' },
           cfg.options
         ));
         let firstError = true;
@@ -437,12 +454,12 @@ window.TSAgestor.mapView = (function () {
   function drawOfflineBackground() {
     const geo = window.TSAgestor.offlineGeo;
     if (!geo || !geo.countries) return;
-    L.geoJSON(geo.countries, {
+    countryLayer = L.geoJSON(geo.countries, {
       style: {
         color: LAND_LINE,
         weight: 0.8,
         fillColor: LAND_FILL,
-        fillOpacity: 1,
+        fillOpacity: settingsGet('opacity.country', 1.0),
       },
       interactive: false,
     }).addTo(map);
@@ -533,11 +550,12 @@ window.TSAgestor.mapView = (function () {
     if (!tsas || tsas.length === 0) return;
 
     const allLatLngs = [];
+    const tsaOpacity = settingsGet('opacity.tsaFill', 0.30);
     for (const tsa of tsas) {
       const band = geom.altitudeBand(tsa.vertical.upperFt);
       const color = BAND_COLORS[band];
       const poly = L.polygon(tsa.polygon, {
-        color, weight: 2, fillColor: color, fillOpacity: 0.30,
+        color, weight: 2, fillColor: color, fillOpacity: tsaOpacity,
         pane: 'tsaPane',
       });
       poly.bindPopup(buildPopup(tsa));
@@ -591,6 +609,51 @@ window.TSAgestor.mapView = (function () {
   function fitToDefault() {
     if (!map) return;
     map.fitBounds(DEFAULT_BOUNDS, { padding: [10, 10] });
+  }
+
+  // Aplica las opacidades actuales de settings a TODAS las capas vivas.
+  // Llamada al cambiar cualquier ajuste de opacidad.
+  function applyOpacities() {
+    if (!map) return;
+    if (countryLayer) {
+      countryLayer.setStyle({ fillOpacity: settingsGet('opacity.country', 1.0) });
+    }
+    const tsaOp = settingsGet('opacity.tsaFill', 0.30);
+    if (layerGroup) {
+      layerGroup.eachLayer(l => { if (l.setStyle) l.setStyle({ fillOpacity: tsaOp }); });
+    }
+    const awOp = settingsGet('opacity.airway', 0.85);
+    ['airwaysUpper', 'airwaysLower'].forEach(key => {
+      const grp = _vectorLayerGroups[key];
+      if (grp && grp.eachLayer) grp.eachLayer(l => { if (l.setStyle) l.setStyle({ opacity: awOp }); });
+    });
+    const tmaOp = settingsGet('opacity.tma', 0.06);
+    const ctrOp = settingsGet('opacity.ctr', 0.10);
+    if (_vectorLayerGroups.tmas) _vectorLayerGroups.tmas.eachLayer(l => { if (l.setStyle) l.setStyle({ fillOpacity: tmaOp }); });
+    if (_vectorLayerGroups.ctrs) _vectorLayerGroups.ctrs.eachLayer(l => { if (l.setStyle) l.setStyle({ fillOpacity: ctrOp }); });
+    if (cloudRVTile && cloudRVTile.setOpacity) cloudRVTile.setOpacity(settingsGet('opacity.cloudRV', 0.6));
+    if (cloudCthTile && cloudCthTile.setOpacity) cloudCthTile.setOpacity(settingsGet('opacity.cloudCTH', 0.7));
+    if (routeLayer) {
+      const rOp = settingsGet('opacity.route', 0.95);
+      routeLayer.eachLayer(l => {
+        if (l.setStyle) {
+          // Polilíneas amarillas y halos: usamos opacity general; los halos
+          // mantienen su opacidad propia más baja.
+          if (l.options && l.options.color === '#fbbf24') l.setStyle({ opacity: rOp });
+        }
+      });
+    }
+  }
+
+  function _initSettingsHook() {
+    const s = window.TSAgestor && window.TSAgestor.settings;
+    if (s && s.onChange) {
+      s.onChange((path) => {
+        if (typeof path === 'string' && (path.startsWith('opacity.') || path === '*')) {
+          applyOpacities();
+        }
+      });
+    }
   }
 
   function ensureRouteLayer() {
@@ -834,5 +897,6 @@ window.TSAgestor.mapView = (function () {
     renderFlightPlan, clearFlightPlan,
     startDrawingRoute, finishDrawingRoute, cancelDrawingRoute, undoDrawingPoint,
     setWeatherMarkers, clearWeatherMarkers,
+    applyOpacities,
   };
 })();

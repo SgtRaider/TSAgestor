@@ -5,7 +5,30 @@
 (function () {
   'use strict';
 
-  const { parser, filters, mapView, crossSection, pdfExport, scheduleFmt, flightPlan, geom, meteoApi } = window.TSAgestor;
+  const { parser, filters, mapView, crossSection, pdfExport, scheduleFmt, flightPlan, geom, meteoApi, settings } = window.TSAgestor;
+
+  // Mapeo entre IDs del formulario Plan y dot-paths de settings.plan.*
+  const PLAN_INPUT_TO_SETTING = {
+    'plan-origin':       'plan.origin',
+    'plan-dest':         'plan.destination',
+    'plan-fl':           'plan.flightLevel',
+    'plan-speed':        'plan.speedKt',
+    'plan-fuel-initial': 'plan.fuelInitial',
+    'plan-fuel-flow':    'plan.fuelFlow',
+    'plan-fuel-unit':    'plan.fuelUnit',
+    'plan-joker':        'plan.joker',
+    'plan-bingo':        'plan.bingo',
+  };
+
+  function applySettingsToPlanForm() {
+    if (!settings) return;
+    Object.keys(PLAN_INPUT_TO_SETTING).forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const v = settings.get(PLAN_INPUT_TO_SETTING[id], el.defaultValue);
+      if (v !== undefined && v !== null) el.value = v;
+    });
+  }
 
   const state = {
     tsas: [],                                                 // todas las parseadas
@@ -71,6 +94,56 @@
     if (name === 'cross') renderCross();
     if (name === 'plan') initPlanTab();
     if (name === 'export') refreshExportUI();
+    if (name === 'settings') initSettingsTab();
+  }
+
+  // ── Pestaña Ajustes ─────────────────────────────────────────────────
+
+  let _settingsWired = false;
+
+  function initSettingsTab() {
+    if (!settings) return;
+    // Sincroniza UI con valores actuales (cada vez que se entra).
+    document.querySelectorAll('#tab-settings [data-setting]').forEach(input => {
+      const path = input.dataset.setting;
+      const v = settings.get(path);
+      if (input.type === 'range') {
+        const pct = Math.round((Number(v) || 0) * 100);
+        input.value = pct;
+        const out = input.parentElement.querySelector('.settings-value');
+        if (out) out.textContent = pct + ' %';
+      } else if (v !== undefined && v !== null) {
+        input.value = v;
+      }
+    });
+    if (_settingsWired) return;
+    _settingsWired = true;
+    document.querySelectorAll('#tab-settings [data-setting]').forEach(input => {
+      input.addEventListener('input', () => {
+        const path = input.dataset.setting;
+        if (input.type === 'range') {
+          const pct = Number(input.value);
+          const out = input.parentElement.querySelector('.settings-value');
+          if (out) out.textContent = pct + ' %';
+          settings.set(path, pct / 100);
+        } else if (input.type === 'number') {
+          settings.set(path, Number(input.value));
+        } else {
+          settings.set(path, input.value);
+        }
+      });
+    });
+    $('#btn-settings-show-welcome').addEventListener('click', () => {
+      sessionStorage.removeItem('tsagestor_welcome_accepted');
+      alert('El aviso de seguridad se mostrará la próxima vez que cargues la web.');
+    });
+    $('#btn-settings-reset').addEventListener('click', () => {
+      if (!confirm('¿Restaurar todos los ajustes a valores de fábrica?')) return;
+      settings.reset();
+      initSettingsTab();          // re-sincroniza inputs
+      applySettingsToPlanForm();  // refleja en form de plan también
+      if (state.mapReady && mapView.applyOpacities) mapView.applyOpacities();
+    });
   }
 
   // ── Tabla de TSAs ────────────────────────────────────────────────────
@@ -467,6 +540,8 @@
       const p = n => String(n).padStart(2, '0');
       dep.value = `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}T${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
     }
+    // Sobreescribe los defaults del HTML con los valores guardados en Ajustes.
+    applySettingsToPlanForm();
     state.planWPsLoaded = true;
   }
 
@@ -546,15 +621,9 @@
     $('#plan-meteo-content').innerHTML = '';
     $('#plan-meteo-count').textContent = '';
 
-    // Resetea TODOS los campos del formulario a sus defaults declarados
-    // en el HTML (input.defaultValue), incluyendo origen/destino, FL,
-    // velocidad, combustible y umbrales JOKER/BINGO.
-    ['plan-origin', 'plan-dest', 'plan-fl', 'plan-speed',
-     'plan-fuel-initial', 'plan-fuel-flow', 'plan-fuel-unit',
-     'plan-joker', 'plan-bingo'].forEach(id => {
-      const el = $('#' + id);
-      if (el) el.value = el.defaultValue;
-    });
+    // Resetea los campos del formulario a los valores guardados en
+    // Ajustes (o, si no, a los defaults del HTML).
+    applySettingsToPlanForm();
     $('#plan-via').value = '';
     // Hora de salida → ahora UTC
     const dep = $('#plan-departure');
@@ -1102,6 +1171,8 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     showWelcomeIfNeeded();
+    if (settings) settings.load();
+    applySettingsToPlanForm();
     wireTabs();
     wireUpload();
     wireFilter();

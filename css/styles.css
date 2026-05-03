@@ -1290,6 +1290,84 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   font-size: 11px;
 }
 
+/* ── Pestaña Ajustes ──────────────────────────────── */
+.settings-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--ea-amarillo);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+}
+.settings-card h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #ffffff;
+}
+.settings-card p.hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--ea-azul-palido);
+}
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 8px 24px;
+}
+.settings-row {
+  display: grid;
+  grid-template-columns: 1fr 160px 56px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border);
+}
+.settings-row:last-child { border-bottom: none; }
+.settings-name {
+  font-size: 13px;
+  color: var(--text);
+}
+.settings-row input[type="range"] {
+  width: 100%;
+  accent-color: var(--ea-amarillo);
+  cursor: pointer;
+}
+.settings-value {
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-size: 12px;
+  color: var(--ea-azul-palido);
+  text-align: right;
+}
+.settings-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.settings-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ea-azul-palido);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.settings-fields input {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 13px;
+}
+.settings-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 /* ── Modal de bienvenida (overlay full-screen) ───── */
 .welcome-modal {
   position: fixed;

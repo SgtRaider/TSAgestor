@@ -96,6 +96,7 @@
       <button class="tab-btn" data-tab="cross">Corte transversal</button>
       <button class="tab-btn" data-tab="plan">Plan de vuelo</button>
       <button class="tab-btn" data-tab="export">Exportar</button>
+      <button class="tab-btn" data-tab="settings">Ajustes</button>
     </nav>
   </header>
 
@@ -419,6 +420,100 @@
       </div>
     </section>
 
+    <!-- AJUSTES -->
+    <section id="tab-settings" class="tab-content">
+
+      <div class="settings-card">
+        <h3>Opacidad de capas del mapa</h3>
+        <p class="hint">Cambios aplicados al instante. Los valores se guardan localmente en este navegador.</p>
+        <div class="settings-grid">
+          <label class="settings-row">
+            <span class="settings-name">Fondo de países</span>
+            <input type="range" min="0" max="100" data-setting="opacity.country">
+            <output class="settings-value"></output>
+          </label>
+          <label class="settings-row">
+            <span class="settings-name">TSAs (relleno)</span>
+            <input type="range" min="0" max="100" data-setting="opacity.tsaFill">
+            <output class="settings-value"></output>
+          </label>
+          <label class="settings-row">
+            <span class="settings-name">Aerovías</span>
+            <input type="range" min="0" max="100" data-setting="opacity.airway">
+            <output class="settings-value"></output>
+          </label>
+          <label class="settings-row">
+            <span class="settings-name">TMAs (relleno)</span>
+            <input type="range" min="0" max="100" data-setting="opacity.tma">
+            <output class="settings-value"></output>
+          </label>
+          <label class="settings-row">
+            <span class="settings-name">CTRs (relleno)</span>
+            <input type="range" min="0" max="100" data-setting="opacity.ctr">
+            <output class="settings-value"></output>
+          </label>
+          <label class="settings-row">
+            <span class="settings-name">Capa nubes RainViewer IR</span>
+            <input type="range" min="0" max="100" data-setting="opacity.cloudRV">
+            <output class="settings-value"></output>
+          </label>
+          <label class="settings-row">
+            <span class="settings-name">Capa Cloud Top Height (EUMETSAT)</span>
+            <input type="range" min="0" max="100" data-setting="opacity.cloudCTH">
+            <output class="settings-value"></output>
+          </label>
+          <label class="settings-row">
+            <span class="settings-name">Ruta del plan de vuelo</span>
+            <input type="range" min="0" max="100" data-setting="opacity.route">
+            <output class="settings-value"></output>
+          </label>
+        </div>
+      </div>
+
+      <div class="settings-card">
+        <h3>Valores por defecto del Plan de vuelo</h3>
+        <p class="hint">Se cargan al abrir la pestaña Plan o pulsar Limpiar. Cualquier cambio aquí no afecta a un plan ya calculado.</p>
+        <div class="settings-fields">
+          <label>Origen
+            <input type="text" data-setting="plan.origin" maxlength="5" autocomplete="off">
+          </label>
+          <label>Destino
+            <input type="text" data-setting="plan.destination" maxlength="5" autocomplete="off">
+          </label>
+          <label>Nivel (FL)
+            <input type="number" data-setting="plan.flightLevel" min="50" max="600" step="10">
+          </label>
+          <label>Velocidad (kt)
+            <input type="number" data-setting="plan.speedKt" min="50" max="900" step="10">
+          </label>
+          <label>Combustible inicial
+            <input type="number" data-setting="plan.fuelInitial" min="0" step="50">
+          </label>
+          <label>Consumo (/h)
+            <input type="number" data-setting="plan.fuelFlow" min="0" step="10">
+          </label>
+          <label>Unidad
+            <input type="text" data-setting="plan.fuelUnit" maxlength="6" autocomplete="off">
+          </label>
+          <label>JOKER
+            <input type="number" data-setting="plan.joker" min="0" step="50">
+          </label>
+          <label>BINGO
+            <input type="number" data-setting="plan.bingo" min="0" step="50">
+          </label>
+        </div>
+      </div>
+
+      <div class="settings-card">
+        <h3>Otros</h3>
+        <div class="settings-actions">
+          <button id="btn-settings-show-welcome" class="btn" type="button">Mostrar el aviso de seguridad la próxima vez</button>
+          <button id="btn-settings-reset" class="btn" type="button">Restaurar valores de fábrica</button>
+        </div>
+      </div>
+
+    </section>
+
   </main>
 
 </div>
@@ -435,6 +530,7 @@
 <script src="js/offlineGeo.js"></script>
 <script src="js/airways.js"></script>
 <script src="js/airspace.js"></script>
+<script src="js/settings.js"></script>
 <script src="js/meteoApi.js"></script>
 <script src="js/metarDecode.js"></script>
 <script src="js/parser.js"></script>
