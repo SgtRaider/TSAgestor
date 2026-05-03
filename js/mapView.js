@@ -809,13 +809,18 @@ window.TSAgestor.mapView = (function () {
         tsa,
         fl: adjustFLForTSA(drawState.initialFL, tsa),
       };
-    } else if (drawState.snapKm > 0) {
-      const snap = nearestWaypoint([lat, lon], drawState.snapKm);
+    } else {
+      // Snap a waypoint solo si al menos uno de los overlays de aerovias
+      // esta activado en el control de capas. Asi el usuario controla via
+      // checkbox si los clics se imantan a fixes o usan coords exactas.
+      const layerState = getAirwayLayerState();
+      const snapAllowed = drawState.snapKm > 0 && (layerState.upper || layerState.lower);
+      const snap = snapAllowed
+        ? nearestWaypoint([lat, lon], drawState.snapKm)
+        : null;
       pt = snap
         ? { name: snap.name, lat: snap.lat, lon: snap.lon, tsa: null, fl: drawState.initialFL }
         : { name: null, lat, lon, tsa: null, fl: drawState.initialFL };
-    } else {
-      pt = { name: null, lat, lon, tsa: null, fl: drawState.initialFL };
     }
     drawState.points.push(pt);
     redrawDrawing();

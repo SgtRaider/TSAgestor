@@ -801,11 +801,10 @@
       mapView.startDrawingRoute({
         origin: { name: oRaw, lat: oPt[0], lon: oPt[1] },
         destination: { name: dRaw, lat: dPt[0], lon: dPt[1] },
-        // snapKm: 0  -> usa la coordenada exacta del clic. La deteccion
-        // de TSA por containment sigue activa, pero NO se ajusta al
-        // waypoint mas cercano si esta solo "cerca". Si el usuario quiere
-        // un fix concreto, debe escribir su nombre en el campo Via.
-        snapKm: 0,
+        // snapKm 3 -> radio pequeno (~1.5 NM): solo se imanta cuando
+        // se clica EN el waypoint, no cerca. Ademas mapView solo aplica
+        // el snap si al menos un overlay de aerovias esta activado.
+        snapKm: 3,
         tsas: getVisible(),
         flightLevel: fl,
         onUpdate: pts => updateDrawCount(pts.length),
