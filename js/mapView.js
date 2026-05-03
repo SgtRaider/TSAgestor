@@ -20,7 +20,13 @@ window.TSAgestor.mapView = (function () {
 
   let map = null;
   let layerGroup = null;
+  let routeLayer = null;
   let legend = null;
+  let drawState = null;
+
+  // Bounding box que enmarca España peninsular + Baleares + sur de Francia,
+  // pensado para ser la vista por defecto cuando no hay TSAs ni ruta.
+  const DEFAULT_BOUNDS = [[35.5, -10], [44, 5]];
 
   function init(elId) {
     if (map) return map;
@@ -30,7 +36,11 @@ window.TSAgestor.mapView = (function () {
       minZoom: 3,
       maxZoom: 11,
       attributionControl: false,
-    }).setView([40.4, -3.7], 6);
+    });
+    // Vista mínima: el contenedor todavía puede tener tamaño 0×0 antes
+    // del primer layout. El caller (switchTab) llama a fitToDefault()
+    // dentro de un setTimeout cuando el browser ya ha medido el div.
+    map.setView([40, -4], 5);
 
     // Fondo "mar" en el contenedor del mapa.
     const container = document.getElementById(elId);
@@ -42,8 +52,20 @@ window.TSAgestor.mapView = (function () {
 
     layerGroup = L.layerGroup().addTo(map);
     addLegend();
+    setupMeteoPane();
     addAirwayLayers();
     return map;
+  }
+
+  // Pane propio para los tiles meteorológicos (RainViewer / EUMETView).
+  // z-index 650 los sitúa por encima de polígonos (overlayPane=400),
+  // marcadores (markerPane=600) y tooltips (tooltipPane=650).
+  function setupMeteoPane() {
+    if (!map.getPane('meteoTiles')) {
+      map.createPane('meteoTiles');
+      map.getPane('meteoTiles').style.zIndex = 650;
+      map.getPane('meteoTiles').style.pointerEvents = 'none';
+    }
   }
 
   function addAirwayLayers() {
@@ -58,8 +80,273 @@ window.TSAgestor.mapView = (function () {
       overlays['TMAs (demo)']  = buildAirspaceLayer(sp.tmas, 'tma');
       overlays['CTRs (demo)']  = buildAirspaceLayer(sp.ctrs, 'ctr');
     }
+    // Capas meteorológicas — sólo se añaden si el módulo meteoApi está cargado.
+    const mapi = window.TSAgestor.meteoApi;
+    if (mapi) {
+      overlays['Nubosidad (RainViewer IR)'] = buildRainviewerLayer();
+      const gibs = mapi.getGibsCloudWMS ? mapi.getGibsCloudWMS() : null;
+      overlays[gibs && gibs.title ? gibs.title : 'Cloud Top Height (NASA GIBS)'] = buildGibsLayer();
+      overlays['METAR / TAF']               = buildMetarLayer();
+    }
     if (Object.keys(overlays).length === 0) return;
     L.control.layers(null, overlays, { position: 'topleft', collapsed: false }).addTo(map);
+  }
+
+  // ── Capas meteorológicas ───────────────────────────────────────────
+
+  let cloudRVTile = null;
+  function buildRainviewerLayer() {
+    const grp = L.layerGroup();
+    grp.on('add', async function () {
+      if (cloudRVTile) return;
+      try {
+        const data = await window.TSAgestor.meteoApi.getRainviewerCloudUrl();
+        const attr = data.kind === 'satellite'
+          ? '© RainViewer · satélite IR'
+          : '© RainViewer · radar (precipitación)';
+        cloudRVTile = L.tileLayer(data.url, {
+          opacity: 0.6, attribution: attr, maxZoom: 11,
+          pane: 'meteoTiles',
+        });
+        cloudRVTile.on('tileerror', function (ev) {
+          console.warn('[meteo] RainViewer tileerror:', ev.tile && ev.tile.src);
+        });
+        grp.addLayer(cloudRVTile);
+      } catch (e) {
+        console.warn('[meteo] RainViewer:', e.message);
+        alert('RainViewer no se pudo cargar:\n' + e.message);
+      }
+    });
+    grp.on('remove', function () {
+      if (cloudRVTile) {
+        grp.removeLayer(cloudRVTile);
+        cloudRVTile = null;
+      }
+    });
+    return grp;
+  }
+
+  let cloudGibsTile = null;
+  let cloudLegendCtl = null;
+  function buildGibsLayer() {
+    const grp = L.layerGroup();
+    grp.on('add', function () {
+      if (cloudGibsTile) return;
+      try {
+        const cfg = window.TSAgestor.meteoApi.getGibsCloudWMS();
+        cloudGibsTile = L.tileLayer.wms(cfg.url, Object.assign(
+          { opacity: 0.75, maxZoom: 11, pane: 'meteoTiles' },
+          cfg.options
+        ));
+        let firstError = true;
+        cloudGibsTile.on('tileerror', function (ev) {
+          if (firstError) {
+            firstError = false;
+            console.warn('[meteo] GIBS tileerror:', ev.tile && ev.tile.src);
+          }
+        });
+        grp.addLayer(cloudGibsTile);
+        showCloudLegend(cfg);
+      } catch (e) {
+        console.warn('[meteo] GIBS:', e.message);
+      }
+    });
+    grp.on('remove', function () {
+      if (cloudGibsTile) {
+        grp.removeLayer(cloudGibsTile);
+        cloudGibsTile = null;
+      }
+      hideCloudLegend();
+    });
+    return grp;
+  }
+
+  function showCloudLegend(cfg) {
+    if (!map) return;
+    if (cloudLegendCtl) return;
+    cloudLegendCtl = L.control({ position: 'bottomleft' });
+    cloudLegendCtl.onAdd = function () {
+      const div = L.DomUtil.create('div', 'cloud-legend');
+      // Escala de Cloud Top Pressure (NASA GIBS · MODIS).
+      // Convertida a FL aproximado mediante atmósfera estándar:
+      //   50 hPa  ≈ FL650 (~20 km)
+      //   200 hPa ≈ FL400 (~12 km)
+      //   500 hPa ≈ FL180 (~5,5 km)
+      //   900 hPa ≈ FL030 (~1 km)
+      div.innerHTML = `
+        <div class="cloud-legend-title">${cfg.title || 'Cloud Top'}</div>
+        <div class="cloud-legend-bar"></div>
+        <div class="cloud-legend-ticks">
+          <span><b>FL650</b><br><i>50 hPa</i></span>
+          <span><b>FL400</b><br><i>200</i></span>
+          <span><b>FL180</b><br><i>500</i></span>
+          <span><b>FL030</b><br><i>900</i></span>
+        </div>
+        <div class="cloud-legend-help">menor presión → tope más alto</div>
+        <div class="cloud-legend-attr">${cfg.options.attribution || '© NASA'}</div>
+      `;
+      L.DomEvent.disableClickPropagation(div);
+      return div;
+    };
+    cloudLegendCtl.addTo(map);
+  }
+  function hideCloudLegend() {
+    if (cloudLegendCtl) {
+      cloudLegendCtl.remove();
+      cloudLegendCtl = null;
+    }
+  }
+
+  let meteoLayer = null;
+  let meteoLoadedAll = false;     // ya se cargaron todos los aeropuertos
+  let meteoBoundLoad = false;     // listener add/remove ya enganchado
+  function ensureMeteoLayer() {
+    if (meteoLayer) return meteoLayer;
+    meteoLayer = L.layerGroup();
+    return meteoLayer;
+  }
+
+  // Capa controlable desde el panel: al activarla, descarga METAR/TAF de
+  // todos los aeropuertos del listado y los pinta con popup.
+  function buildMetarLayer() {
+    const grp = ensureMeteoLayer();
+    if (meteoBoundLoad) return grp;
+    meteoBoundLoad = true;
+    grp.on('add', async function () {
+      if (meteoLoadedAll || (grp.getLayers && grp.getLayers().length > 0)) return;
+      await loadAllAirportsWeather(grp);
+    });
+    return grp;
+  }
+
+  async function loadAllAirportsWeather(grp) {
+    const aw = window.TSAgestor.airways;
+    const mapi = window.TSAgestor.meteoApi;
+    if (!aw || !mapi) return;
+    const icaos = Object.keys(aw.waypoints).filter(k => /^[A-Z]{4}$/.test(k));
+    if (!icaos.length) return;
+
+    // Banner provisional para que el usuario sepa que está cargando.
+    const loadingMsg = L.control({ position: 'topright' });
+    loadingMsg.onAdd = function () {
+      const d = L.DomUtil.create('div', 'meteo-loading');
+      d.textContent = 'Cargando METAR/TAF de ' + icaos.length + ' aeropuertos…';
+      return d;
+    };
+    if (map) loadingMsg.addTo(map);
+
+    let firstError = null;
+    try {
+      // Petición en lotes para evitar URLs gigantes.
+      const batch = 40;
+      const all = {};
+      for (let i = 0; i < icaos.length; i += batch) {
+        const chunk = icaos.slice(i, i + batch);
+        try {
+          const res = await mapi.fetchWeatherForAirports(chunk);
+          Object.assign(all, res.airports);
+          if (res.errors && (res.errors.metar || res.errors.taf) && !firstError) {
+            firstError = res.errors.metar || res.errors.taf;
+          }
+        } catch (e) {
+          console.warn('[meteo] lote falló:', e);
+          if (!firstError) firstError = e.message || String(e);
+        }
+      }
+      const haveAny = Object.values(all).some(v => v && (v.metar || v.taf));
+      if (!haveAny && firstError) {
+        alert('No se pudo descargar METAR/TAF:\n' + firstError);
+        return;
+      }
+      const names = aw.waypointNames || {};
+      const items = icaos.map(icao => ({
+        icao,
+        lat: aw.waypoints[icao][0],
+        lon: aw.waypoints[icao][1],
+        name: names[icao] || null,
+        metar: all[icao] && all[icao].metar,
+        taf:   all[icao] && all[icao].taf,
+      }));
+      grp.clearLayers();
+      addWeatherMarkersTo(grp, items);
+      meteoLoadedAll = true;
+    } finally {
+      if (map) loadingMsg.remove();
+    }
+  }
+
+  function addWeatherMarkersTo(layer, items) {
+    if (!items || !items.length) return;
+    for (const it of items) {
+      const cat = (it.metar && it.metar.category) || 'UNK';
+      const hasData = !!(it.metar || it.taf);
+      const color = hasData ? metarFlightCatColor(cat) : '#6b7280';
+      const marker = L.circleMarker([it.lat, it.lon], {
+        radius: hasData ? 8 : 4,
+        weight: 1.5,
+        color: '#0f172a',
+        fillColor: color,
+        fillOpacity: hasData ? 0.9 : 0.4,
+      });
+      const metarRaw = it.metar && it.metar.raw ? it.metar.raw : '— sin METAR —';
+      const tafRaw   = it.taf   && it.taf.raw   ? it.taf.raw   : '— sin TAF —';
+      const dec = window.TSAgestor.metarDecode;
+      const metarHTML = dec && it.metar && it.metar.raw
+        ? dec.toHtmlList(dec.decodeMETAR(it.metar.raw))
+        : '';
+      const tafHTML = dec && it.taf && it.taf.raw
+        ? dec.toHtmlList(dec.decodeTAF(it.taf.raw))
+        : '';
+      const html = `
+        <div class="meteo-popup">
+          <div class="meteo-popup-head">
+            <b>${it.icao}</b>${it.name ? ` · ${escapeHTMLLocal(it.name)}` : ''}
+            <span class="meteo-cat cat-${cat}">${cat}</span>
+          </div>
+          <div class="meteo-section">
+            <b>METAR</b><pre>${escapeHTMLLocal(metarRaw)}</pre>
+            ${metarHTML}
+          </div>
+          <div class="meteo-section">
+            <b>TAF</b><pre>${escapeHTMLLocal(tafRaw)}</pre>
+            ${tafHTML}
+          </div>
+        </div>`;
+      marker.bindPopup(html, { maxWidth: 520 });
+      marker.bindTooltip(`${it.icao}${hasData ? ' · ' + cat : ''}`, { direction: 'top' });
+      layer.addLayer(marker);
+    }
+  }
+
+  function metarFlightCatColor(cat) {
+    switch ((cat || '').toUpperCase()) {
+      case 'VFR':  return '#22c55e';
+      case 'MVFR': return '#3b82f6';
+      case 'IFR':  return '#ef4444';
+      case 'LIFR': return '#a855f7';
+      default:     return '#9ca3af';
+    }
+  }
+
+  // Reemplaza los marcadores con un subconjunto concreto (botón del plan).
+  function setWeatherMarkers(items) {
+    if (!map) return;
+    const layer = ensureMeteoLayer();
+    layer.clearLayers();
+    addWeatherMarkersTo(layer, items);
+    meteoLoadedAll = false;     // ya no es la lista completa
+    if (!map.hasLayer(layer)) layer.addTo(map);
+  }
+
+  function clearWeatherMarkers() {
+    if (meteoLayer) meteoLayer.clearLayers();
+    meteoLoadedAll = false;
+  }
+
+  function escapeHTMLLocal(s) {
+    return String(s || '').replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
   }
 
   function buildAirspaceLayer(items, type) {
@@ -233,18 +520,285 @@ window.TSAgestor.mapView = (function () {
   }
 
   function fitBounds() {
-    if (!map || !layerGroup) return;
-    const pts = [];
-    layerGroup.eachLayer(l => {
-      if (l.getLatLngs) {
-        const arr = l.getLatLngs()[0] || [];
-        arr.forEach(p => pts.push(p));
+    if (!map) return;
+    // 1) TSAs visibles
+    if (layerGroup) {
+      const pts = [];
+      layerGroup.eachLayer(l => {
+        if (l.getLatLngs) {
+          const arr = l.getLatLngs()[0] || [];
+          arr.forEach(p => pts.push(p));
+        }
+      });
+      if (pts.length) {
+        map.fitBounds(L.latLngBounds(pts), { padding: [30, 30] });
+        return;
       }
-    });
-    if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [30, 30] });
+    }
+    // 2) Ruta del plan dibujada
+    if (routeLayer) {
+      const pts = [];
+      routeLayer.eachLayer(l => {
+        if (l.getLatLngs) {
+          const arr = l.getLatLngs();
+          if (Array.isArray(arr)) arr.forEach(p => p && pts.push(p));
+        } else if (l.getLatLng) {
+          pts.push(l.getLatLng());
+        }
+      });
+      if (pts.length) {
+        map.fitBounds(L.latLngBounds(pts), { padding: [40, 40] });
+        return;
+      }
+    }
+    // 3) Vista por defecto: Iberia + Baleares
+    map.fitBounds(DEFAULT_BOUNDS, { padding: [10, 10] });
   }
 
   function invalidateSize() { if (map) map.invalidateSize(); }
 
-  return { init, render, fitBounds, invalidateSize };
+  function fitToDefault() {
+    if (!map) return;
+    map.fitBounds(DEFAULT_BOUNDS, { padding: [10, 10] });
+  }
+
+  function ensureRouteLayer() {
+    if (!map) return null;
+    if (!routeLayer) routeLayer = L.layerGroup().addTo(map);
+    return routeLayer;
+  }
+
+  function renderFlightPlan(plan) {
+    if (!map) return;
+    const grp = ensureRouteLayer();
+    grp.clearLayers();
+    if (!plan || !plan.coords || plan.coords.length < 2) return;
+
+    const pts = plan.coords.map(c => [c.lat, c.lon]);
+
+    // Halo oscuro (legibilidad sobre cualquier fondo) + línea principal
+    L.polyline(pts, { color: '#1f2937', weight: 7, opacity: 0.35 }).addTo(grp);
+    L.polyline(pts, { color: '#fbbf24', weight: 4, opacity: 0.95 }).addTo(grp);
+
+    plan.coords.forEach((c, i) => {
+      const isExtreme = i === 0 || i === plan.coords.length - 1;
+      const m = L.circleMarker([c.lat, c.lon], {
+        radius: isExtreme ? 6 : 4,
+        color: '#1f2937',
+        fillColor: isExtreme ? '#fbbf24' : '#fde68a',
+        fillOpacity: 1, weight: 1.5,
+      }).addTo(grp);
+      const tip = c.name + (c.airway && c.airway !== '—' ? ' · ' + c.airway : '');
+      m.bindTooltip(tip, { direction: 'top', offset: [0, -4] });
+      L.tooltip({
+        permanent: true, direction: 'right', offset: [6, 0],
+        className: 'route-label' + (isExtreme ? ' extreme' : ''),
+        interactive: false,
+      }).setLatLng([c.lat, c.lon]).setContent(c.name).addTo(grp);
+    });
+
+    if (plan.conflicts && plan.conflicts.length) {
+      for (const cf of plan.conflicts) {
+        L.polygon(cf.tsa.polygon, {
+          color: '#dc2626', weight: 3, fillOpacity: 0, dashArray: '6 4',
+        }).bindTooltip('CONFLICTO: ' + cf.tsa.name, { sticky: true }).addTo(grp);
+      }
+    }
+
+    map.fitBounds(L.latLngBounds(pts), { padding: [40, 40] });
+  }
+
+  function clearFlightPlan() {
+    if (routeLayer) routeLayer.clearLayers();
+  }
+
+  // ── Modo dibujo de ruta ─────────────────────────────────────────────
+  // opts: { origin, destination, snapKm, onUpdate, onFinish, onCancel }
+
+  function startDrawingRoute(opts) {
+    if (!map) return;
+    cancelDrawingRoute(true);
+    drawState = {
+      origin: opts.origin,
+      destination: opts.destination,
+      snapKm: opts.snapKm != null ? opts.snapKm : 30,
+      tsas: opts.tsas || [],
+      initialFL: opts.flightLevel || 350,
+      points: [],          // intermedios (objetos {name,lat,lon,tsa?,fl?})
+      onUpdate: opts.onUpdate,
+      onFinish: opts.onFinish,
+      onCancel: opts.onCancel,
+      layer: L.layerGroup().addTo(map),
+    };
+    map.getContainer().classList.add('drawing-route');
+    // Interceptamos los clics en FASE DE CAPTURA en el contenedor del mapa.
+    // Así llegan a nuestro handler antes de que cualquier polígono Leaflet
+    // (TSA / TMA / aerovía) los consuma para abrir su popup.
+    drawState.clickCapture = function (ev) {
+      if (ev.target && ev.target.closest && ev.target.closest('.leaflet-control')) return;
+      ev.stopPropagation();
+      ev.preventDefault();
+      if (!drawState) return;
+      handleDrawClick({ latlng: map.mouseEventToLatLng(ev) });
+    };
+    drawState.dblCapture = function (ev) {
+      if (ev.target && ev.target.closest && ev.target.closest('.leaflet-control')) return;
+      ev.stopPropagation();
+      ev.preventDefault();
+      finishDrawingRoute();
+    };
+    map.getContainer().addEventListener('click', drawState.clickCapture, true);
+    map.getContainer().addEventListener('dblclick', drawState.dblCapture, true);
+    map.doubleClickZoom.disable();
+    redrawDrawing();
+    const fitPts = [[opts.origin.lat, opts.origin.lon], [opts.destination.lat, opts.destination.lon]];
+    map.fitBounds(L.latLngBounds(fitPts), { padding: [60, 60] });
+  }
+
+  function finishDrawingRoute() {
+    if (!drawState) return;
+    const pts = drawState.points.slice();
+    const cb = drawState.onFinish;
+    teardownDrawing();
+    if (cb) cb(pts);
+  }
+
+  function cancelDrawingRoute(silent) {
+    if (!drawState) return;
+    const cb = drawState.onCancel;
+    teardownDrawing();
+    if (!silent && cb) cb();
+  }
+
+  function undoDrawingPoint() {
+    if (!drawState || !drawState.points.length) return;
+    drawState.points.pop();
+    redrawDrawing();
+    if (drawState.onUpdate) drawState.onUpdate(drawState.points.slice());
+  }
+
+  function teardownDrawing() {
+    if (!drawState) return;
+    if (drawState.clickCapture) {
+      map.getContainer().removeEventListener('click', drawState.clickCapture, true);
+    }
+    if (drawState.dblCapture) {
+      map.getContainer().removeEventListener('dblclick', drawState.dblCapture, true);
+    }
+    map.doubleClickZoom.enable();
+    map.getContainer().classList.remove('drawing-route');
+    if (drawState.layer) drawState.layer.remove();
+    drawState = null;
+  }
+
+  function handleDrawClick(e) {
+    if (!drawState) return;
+    const lat = e.latlng.lat, lon = e.latlng.lng;
+    // Detección de TSA (prioritaria sobre snap a waypoint).
+    const tsa = findTSAAt([lat, lon], drawState.tsas);
+    let pt;
+    if (tsa) {
+      pt = {
+        name: tsa.name,
+        lat, lon,
+        tsa,
+        fl: adjustFLForTSA(drawState.initialFL, tsa),
+      };
+    } else if (drawState.snapKm > 0) {
+      const snap = nearestWaypoint([lat, lon], drawState.snapKm);
+      pt = snap
+        ? { name: snap.name, lat: snap.lat, lon: snap.lon, tsa: null, fl: drawState.initialFL }
+        : { name: null, lat, lon, tsa: null, fl: drawState.initialFL };
+    } else {
+      pt = { name: null, lat, lon, tsa: null, fl: drawState.initialFL };
+    }
+    drawState.points.push(pt);
+    redrawDrawing();
+    if (drawState.onUpdate) drawState.onUpdate(drawState.points.slice());
+  }
+
+  function findTSAAt(latlon, tsas) {
+    if (!tsas) return null;
+    for (const tsa of tsas) {
+      if (pointInPoly(latlon, tsa.polygon)) return tsa;
+    }
+    return null;
+  }
+
+  function pointInPoly(pt, poly) {
+    let inside = false;
+    const x = pt[1], y = pt[0];
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i][1], yi = poly[i][0];
+      const xj = poly[j][1], yj = poly[j][0];
+      const cond = ((yi > y) !== (yj > y)) &&
+        (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+      if (cond) inside = !inside;
+    }
+    return inside;
+  }
+
+  // El vuelo cruza la TSA manteniéndose dentro de su banda vertical con
+  // 500 ft de margen respecto al techo y al suelo. Conserva el FL inicial
+  // si ya está dentro; si no, lo recorta al extremo más cercano.
+  function adjustFLForTSA(initialFL, tsa) {
+    if (!tsa || !tsa.vertical) return initialFL;
+    const lowerFt = tsa.vertical.lowerFt;
+    const upperFt = tsa.vertical.upperFt;
+    let flMin = Math.ceil((lowerFt + 500) / 500) * 5;
+    let flMax = Math.floor((upperFt - 500) / 500) * 5;
+    if (flMax < flMin) {
+      flMin = Math.ceil(lowerFt / 500) * 5;
+      flMax = Math.floor(upperFt / 500) * 5;
+      if (flMax < flMin) return Math.round((lowerFt + upperFt) / 1000) * 5;
+    }
+    if (initialFL < flMin) return flMin;
+    if (initialFL > flMax) return flMax;
+    return initialFL;
+  }
+
+  function redrawDrawing() {
+    if (!drawState) return;
+    drawState.layer.clearLayers();
+    const seq = [drawState.origin].concat(drawState.points).concat([drawState.destination]);
+    const ll = seq.map(p => [p.lat, p.lon]);
+    L.polyline(ll, { color: '#1f2937', weight: 7, opacity: 0.30 }).addTo(drawState.layer);
+    L.polyline(ll, { color: '#fbbf24', weight: 3, opacity: 0.95, dashArray: '5 4' }).addTo(drawState.layer);
+    seq.forEach((p, i) => {
+      const isExtreme = i === 0 || i === seq.length - 1;
+      const isTSA = !!p.tsa;
+      const m = L.circleMarker([p.lat, p.lon], {
+        radius: isExtreme ? 6 : 5,
+        color: isTSA ? '#dc2626' : '#1f2937',
+        fillColor: isTSA ? '#dc2626' : (isExtreme ? '#fbbf24' : '#fde68a'),
+        fillOpacity: 1, weight: 1.5,
+      }).addTo(drawState.layer);
+      const baseName = p.name || (p.lat.toFixed(3) + ',' + p.lon.toFixed(3));
+      const label = p.fl ? baseName + ' · F' + p.fl : baseName;
+      m.bindTooltip(label, { direction: 'top', offset: [0, -4] });
+      L.tooltip({
+        permanent: true, direction: 'right', offset: [6, 0],
+        className: 'route-label' + (isExtreme ? ' extreme' : '') + (isTSA ? ' tsa' : ''),
+        interactive: false,
+      }).setLatLng([p.lat, p.lon]).setContent(label).addTo(drawState.layer);
+    });
+  }
+
+  function nearestWaypoint(latlon, maxKm) {
+    const aw = window.TSAgestor.airways;
+    if (!aw || !aw.waypoints) return null;
+    let best = null, bestD = Infinity;
+    for (const [name, pt] of Object.entries(aw.waypoints)) {
+      const d = window.TSAgestor.geom.greatCircleDistance(latlon, pt);
+      if (d < bestD) { bestD = d; best = { name, lat: pt[0], lon: pt[1] }; }
+    }
+    return best && bestD <= maxKm ? best : null;
+  }
+
+  return {
+    init, render, fitBounds, invalidateSize, fitToDefault,
+    renderFlightPlan, clearFlightPlan,
+    startDrawingRoute, finishDrawingRoute, cancelDrawingRoute, undoDrawingPoint,
+    setWeatherMarkers, clearWeatherMarkers,
+  };
 })();

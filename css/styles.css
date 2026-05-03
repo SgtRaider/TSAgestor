@@ -215,6 +215,14 @@ main { flex: 1; display: flex; flex-direction: column; }
 
 .drop-primary { font-size: 16px; font-weight: 600; margin: 4px 0; }
 .drop-secondary { color: var(--text-mute); margin: 4px 0 16px; }
+.drop-skip {
+  margin: 18px 0 0;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
+  color: var(--text-mute);
+  font-size: 12px;
+}
+.drop-skip b { color: var(--text); font-weight: 600; }
 
 /* ── Status ───────────────────────────────────────── */
 .status {
@@ -291,40 +299,6 @@ details.sched-details[open] > summary::before { content: '▾ '; }
 }
 .sched-list .sched-item { padding: 1px 0; }
 .sched-list .muted { color: var(--text-mute); font-style: italic; }
-
-.range-selector {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px;
-  padding: 10px 12px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  margin: 10px 0;
-}
-
-.range-selector label {
-  display: flex;
-  flex-direction: column;
-  font-size: 11px;
-  color: var(--text-mute);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  gap: 4px;
-}
-
-.range-selector select {
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 8px;
-  font-size: 13px;
-  min-width: 200px;
-}
-
-.range-selector .hint.inline { margin: 0 0 0 auto; font-size: 11px; }
 
 .badge {
   background: var(--accent);
@@ -507,6 +481,706 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   color: var(--text-mute);
   font-size: 12px;
   margin-top: 8px;
+}
+
+/* ── Plan de vuelo ────────────────────────────────── */
+.plan-form {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.plan-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.plan-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-mute);
+}
+.plan-fields input {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+}
+.plan-via {
+  margin-top: 14px;
+}
+.plan-via > label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-mute);
+}
+.plan-via-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.plan-via-row input {
+  flex: 1;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-size: 13px;
+}
+
+.plan-actions {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.plan-actions .hint.inline {
+  margin: 0;
+}
+.plan-error {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(248, 113, 113, 0.15);
+  border: 1px solid var(--danger);
+  color: #fecaca;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.plan-results {
+  display: grid;
+  gap: 16px;
+}
+.plan-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 18px;
+  padding: 14px 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.plan-stat { font-size: 13px; color: var(--text); }
+.plan-stat .lbl { color: var(--text-mute); }
+.plan-stat .dim { color: var(--text-mute); font-size: 12px; }
+.plan-stat.warn {
+  grid-column: 1 / -1;
+  color: var(--warn);
+  font-weight: 500;
+}
+.plan-narrative,
+.plan-conflicts,
+.plan-coords {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.plan-narrative h3,
+.plan-conflicts h3,
+.plan-coords h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.plan-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.plan-block-head h3 { margin: 0; }
+#plan-narrative-text {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg);
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-size: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.plan-conflicts ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.plan-conflicts li {
+  padding: 8px 12px;
+  background: rgba(248, 113, 113, 0.12);
+  border-left: 3px solid var(--danger);
+  border-radius: 4px;
+  font-size: 13px;
+}
+.plan-conflicts li.ok {
+  background: rgba(74, 222, 128, 0.10);
+  border-left-color: var(--ok);
+  color: var(--text);
+}
+.plan-conflicts li .dim {
+  color: var(--text-mute);
+  font-size: 12px;
+}
+#plan-coords-table th,
+#plan-coords-table td { font-size: 13px; }
+#plan-coords-table td:nth-child(4),
+#plan-coords-table td:nth-child(5),
+#plan-coords-table td:nth-child(6),
+#plan-coords-table td:nth-child(7) {
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  text-align: right;
+}
+
+.route-label {
+  background: rgba(15, 23, 42, 0.85);
+  color: #fde68a;
+  border: 1px solid #fbbf24;
+  padding: 1px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 3px;
+  box-shadow: none;
+  white-space: nowrap;
+}
+.route-label.extreme {
+  background: #fbbf24;
+  color: #1f2937;
+}
+.route-label.tsa {
+  background: rgba(127, 29, 29, 0.95);
+  color: #fee2e2;
+  border-color: #dc2626;
+}
+.route-label::before { display: none; }
+
+#plan-coords-table tr.in-tsa td {
+  background: rgba(248, 113, 113, 0.08);
+}
+#plan-coords-table .fl-adj {
+  color: var(--warn);
+  border-bottom: 1px dashed var(--warn);
+  cursor: help;
+}
+
+/* Log de vuelo y combustible */
+.plan-fuel {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.plan-fuel h4 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.plan-log {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.plan-log h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.plan-log-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 6px 18px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.plan-log-stat {
+  font-size: 13px;
+  color: var(--text);
+}
+.plan-log-stat .lbl { color: var(--text-mute); }
+.plan-log-stat .dim { color: var(--text-mute); font-size: 12px; }
+.plan-log-stat b.joker { color: var(--warn); }
+.plan-log-stat b.bingo { color: var(--danger); }
+.plan-log-warn {
+  display: block;
+  grid-column: 1 / -1;
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: rgba(248, 113, 113, 0.18);
+  border-left: 3px solid var(--danger);
+  border-radius: 4px;
+  color: #fee2e2;
+  font-weight: 600;
+}
+#plan-log-table th,
+#plan-log-table td { font-size: 13px; }
+#plan-log-table .leg-input {
+  width: 70px;
+  padding: 2px 5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 3px;
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-size: 12px;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+#plan-log-table .leg-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg-elev);
+}
+#plan-log-table .leg-input::-webkit-outer-spin-button,
+#plan-log-table .leg-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+#plan-log-table td:nth-child(3),
+#plan-log-table td:nth-child(4),
+#plan-log-table td:nth-child(5),
+#plan-log-table td:nth-child(6),
+#plan-log-table td:nth-child(7) {
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  text-align: right;
+}
+#plan-log-table tr.row-joker td {
+  background: rgba(250, 204, 21, 0.15);
+}
+#plan-log-table tr.row-joker td:last-child {
+  color: var(--warn);
+  font-weight: 700;
+}
+#plan-log-table tr.row-bingo td {
+  background: rgba(248, 113, 113, 0.18);
+}
+#plan-log-table tr.row-bingo td:last-child {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+/* Meteorología (METAR / TAF en aeropuertos cerca de la ruta) */
+.plan-meteo {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.plan-meteo h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.plan-meteo-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.plan-meteo-radius {
+  font-size: 12px;
+  color: var(--text-mute);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.plan-meteo-radius input {
+  width: 60px;
+  padding: 4px 6px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+}
+.plan-meteo-content {
+  margin-top: 10px;
+}
+.meteo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 10px;
+}
+.meteo-card {
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--text-mute);
+  border-radius: 4px;
+}
+.meteo-card.cat-VFR  { border-left-color: #22c55e; }
+.meteo-card.cat-MVFR { border-left-color: #3b82f6; }
+.meteo-card.cat-IFR  { border-left-color: #ef4444; }
+.meteo-card.cat-LIFR { border-left-color: #a855f7; }
+.meteo-card-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.meteo-card-head .dim { color: var(--text-mute); font-size: 12px; }
+.meteo-cat-badge {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--bg-elev);
+  color: var(--text);
+}
+.meteo-cat-badge.cat-VFR  { background: #14532d; color: #d1fae5; }
+.meteo-cat-badge.cat-MVFR { background: #1e3a8a; color: #dbeafe; }
+.meteo-cat-badge.cat-IFR  { background: #7f1d1d; color: #fee2e2; }
+.meteo-cat-badge.cat-LIFR { background: #581c87; color: #f3e8ff; }
+.meteo-dist {
+  margin-left: 4px;
+}
+.meteo-section {
+  margin-top: 6px;
+  font-size: 12px;
+}
+.meteo-section .lbl {
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+}
+.meteo-section pre {
+  margin: 2px 0 0;
+  padding: 6px 8px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+/* Versión decodificada en español: lista compacta tras el raw. */
+.meteo-decoded {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 6px 8px 6px 10px;
+  background: rgba(56, 189, 248, 0.06);
+  border-left: 2px solid var(--accent);
+  border-radius: 0 3px 3px 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text);
+}
+.meteo-decoded li { padding: 1px 0; }
+.meteo-decoded li.lvl-1 { padding-left: 8px; }
+.meteo-decoded li.lvl-2 { padding-left: 18px; color: var(--text-mute); }
+.meteo-decoded .lbl {
+  display: inline-block;
+  min-width: 90px;
+  font-weight: 600;
+  color: var(--text-mute);
+}
+.meteo-decoded-empty { color: var(--text-mute); font-size: 11px; }
+.meteo-warn {
+  padding: 6px 10px;
+  background: rgba(250, 204, 21, 0.10);
+  border-left: 3px solid var(--warn);
+  border-radius: 4px;
+  color: var(--warn);
+  font-size: 12px;
+  margin: 0 0 8px;
+}
+
+/* Leyenda de Cloud Top Height (NASA GIBS) — gradiente de presión + FL */
+.cloud-legend {
+  background: rgba(255, 255, 255, 0.94);
+  color: #0f172a;
+  padding: 8px 10px;
+  border: 1px solid #94a3b8;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  font-size: 11px;
+  width: 240px;
+}
+.cloud-legend .cloud-legend-title {
+  font-weight: 700;
+  font-size: 12px;
+  margin-bottom: 6px;
+  color: #0f172a;
+}
+.cloud-legend .cloud-legend-bar {
+  height: 14px;
+  /* MODIS Cloud Top Pressure: violeta (alta) → rojo (baja) */
+  background: linear-gradient(to right,
+    #6b21a8 0%,
+    #1d4ed8 20%,
+    #06b6d4 40%,
+    #22c55e 60%,
+    #eab308 80%,
+    #ef4444 100%);
+  border: 1px solid #475569;
+  border-radius: 2px;
+}
+.cloud-legend .cloud-legend-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  margin-top: 3px;
+  color: #1e293b;
+  line-height: 1.2;
+  text-align: center;
+}
+.cloud-legend .cloud-legend-ticks b { font-weight: 700; }
+.cloud-legend .cloud-legend-ticks i {
+  font-style: normal;
+  color: #64748b;
+  font-size: 9px;
+}
+.cloud-legend .cloud-legend-help {
+  margin-top: 6px;
+  font-size: 10px;
+  color: #475569;
+  font-style: italic;
+}
+.cloud-legend .cloud-legend-attr {
+  margin-top: 4px;
+  font-size: 10px;
+  color: #475569;
+  text-align: right;
+}
+
+/* Banner mientras se cargan los METAR/TAF */
+.meteo-loading {
+  background: rgba(15, 23, 42, 0.92);
+  color: #fde68a;
+  border: 1px solid #fbbf24;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+
+/* Popups Leaflet — el tema oscuro general hace que el texto se herede en
+   gris claro sobre el fondo blanco del popup. Forzamos color oscuro con
+   !important porque .meteo-section pre del panel le gana en especificidad. */
+.leaflet-popup-content,
+.leaflet-popup-content *,
+.leaflet-popup-content pre,
+.leaflet-popup-content .meteo-section pre {
+  color: #0f172a !important;
+}
+.leaflet-popup-content b,
+.leaflet-popup-content strong { color: #020617 !important; }
+.leaflet-popup-content i,
+.leaflet-popup-content .dim { color: #475569 !important; }
+.leaflet-popup-content pre,
+.leaflet-popup-content .meteo-section pre {
+  background: #f1f5f9 !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+/* Popup de meteo en el mapa */
+.meteo-popup .meteo-popup-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.meteo-popup .meteo-cat {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  background: #e5e7eb;
+  color: #1f2937;
+}
+.meteo-popup .meteo-cat.cat-VFR  { background: #bbf7d0; color: #14532d; }
+.meteo-popup .meteo-cat.cat-MVFR { background: #bfdbfe; color: #1e3a8a; }
+.meteo-popup .meteo-cat.cat-IFR  { background: #fecaca; color: #7f1d1d; }
+.meteo-popup .meteo-cat.cat-LIFR { background: #e9d5ff; color: #581c87; }
+.meteo-popup .meteo-section {
+  margin-top: 6px;
+  font-size: 11px;
+}
+.meteo-popup pre {
+  margin: 2px 0 0;
+  padding: 4px 6px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+/* Decoded list dentro del popup blanco */
+.leaflet-popup-content .meteo-decoded {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 4px 6px 4px 8px;
+  background: #eff6ff !important;
+  border-left: 2px solid #2563eb;
+  border-radius: 0 3px 3px 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #0f172a !important;
+}
+.leaflet-popup-content .meteo-decoded li { padding: 1px 0; }
+.leaflet-popup-content .meteo-decoded li.lvl-1 { padding-left: 6px; }
+.leaflet-popup-content .meteo-decoded li.lvl-2 { padding-left: 14px; color: #475569 !important; }
+.leaflet-popup-content .meteo-decoded .lbl {
+  display: inline-block;
+  min-width: 82px;
+  font-weight: 600;
+  color: #475569 !important;
+}
+
+/* Banner de dibujo de ruta */
+.draw-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  margin-bottom: 8px;
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid #fbbf24;
+  border-radius: var(--radius);
+  flex-wrap: wrap;
+}
+.draw-banner-text {
+  font-size: 13px;
+  color: var(--text);
+}
+.draw-banner-text .dim { color: var(--text-mute); }
+.draw-banner-actions {
+  display: flex;
+  gap: 6px;
+}
+#map.drawing-route,
+.drawing-route .leaflet-container {
+  cursor: crosshair !important;
+}
+/* Mientras dibujas, los polígonos de TSA / TMA / aerovías no deben
+   capturar el clic: el mapa debe recibirlo para añadir el waypoint. */
+.drawing-route .leaflet-overlay-pane,
+.drawing-route .leaflet-marker-pane,
+.drawing-route .leaflet-tooltip-pane {
+  pointer-events: none;
+}
+
+/* GRAMET (Autorouter) — corte vertical meteorológico embebido */
+.gramet-container {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.gramet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.gramet-head h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.gramet-actions {
+  display: flex;
+  gap: 6px;
+}
+.gramet-img-wrap {
+  margin-top: 10px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+}
+.gramet-img-wrap img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.gramet-loading {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-mute);
+  font-size: 13px;
+}
+.gramet-loading .dim { color: var(--text-mute); font-size: 11px; }
+
+/* Formulario de login Autorouter */
+.ar-login-form {
+  display: grid;
+  gap: 10px;
+  max-width: 380px;
+  margin-top: 12px;
+  padding: 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.ar-login-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-mute);
+}
+.ar-login-form input {
+  padding: 6px 8px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 3px;
+  font-family: inherit;
+  font-size: 13px;
+}
+.ar-login-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.gramet-container code {
+  background: var(--bg-elev);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11px;
 }
 
 /* ── Utility ──────────────────────────────────────── */

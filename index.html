@@ -20,6 +20,7 @@
       <button class="tab-btn active" data-tab="upload">Cargar</button>
       <button class="tab-btn" data-tab="map">Mapa</button>
       <button class="tab-btn" data-tab="cross">Corte transversal</button>
+      <button class="tab-btn" data-tab="plan">Plan de vuelo</button>
       <button class="tab-btn" data-tab="export">Exportar</button>
     </nav>
   </header>
@@ -56,6 +57,7 @@
         <p class="drop-secondary">o selecciónalo desde tu equipo</p>
         <label class="btn btn-primary" for="file-input">Seleccionar archivo</label>
         <input type="file" id="file-input" accept=".pdf,.txt,application/pdf,text/plain" hidden>
+        <p class="drop-skip">Opcional — puedes ir directamente a <b>Mapa</b> o <b>Plan de vuelo</b> sin cargar ningún NOTAM.</p>
       </div>
       <div id="parse-status" class="status"></div>
       <div id="tsa-table-wrap" class="table-wrap hidden">
@@ -66,16 +68,6 @@
             <button id="btn-select-all" class="btn btn-ghost" type="button">Todas</button>
             <button id="btn-select-none" class="btn btn-ghost" type="button">Ninguna</button>
           </div>
-        </div>
-        <div class="range-selector">
-          <label>TSA inicial
-            <select id="select-from"><option value="">—</option></select>
-          </label>
-          <label>TSA final
-            <select id="select-to"><option value="">—</option></select>
-          </label>
-          <button id="btn-select-between" class="btn" type="button" disabled>Seleccionar intermedias</button>
-          <span class="hint inline">Selecciona todas las TSAs que caen geográficamente entre la inicial y la final.</span>
         </div>
         <p class="hint">Marca cada TSA para incluirla en el Mapa, el Corte transversal y el PDF. Las filas atenuadas están fuera del filtro de fecha/hora.</p>
         <div class="table-scroll">
@@ -103,6 +95,18 @@
         <span id="map-count" class="chip"></span>
         <button id="btn-fit-bounds" class="btn btn-ghost">Centrar</button>
       </div>
+      <div id="draw-banner" class="draw-banner hidden">
+        <div class="draw-banner-text">
+          <b>Modo dibujo:</b> haz clic en el mapa para añadir waypoints intermedios.
+          <span id="draw-banner-count">0 puntos</span> ·
+          <span class="dim">doble clic o «Listo» para terminar.</span>
+        </div>
+        <div class="draw-banner-actions">
+          <button id="btn-draw-undo" class="btn btn-ghost" type="button">Deshacer</button>
+          <button id="btn-draw-finish" class="btn btn-primary" type="button">Listo</button>
+          <button id="btn-draw-cancel" class="btn btn-ghost" type="button">Cancelar</button>
+        </div>
+      </div>
       <div id="map"></div>
     </section>
 
@@ -110,11 +114,152 @@
     <section id="tab-cross" class="tab-content">
       <div class="toolbar">
         <span id="cross-info" class="chip"></span>
+        <button id="btn-cross-clouds" class="btn btn-ghost" type="button">Cargar nubes (Open-Meteo)</button>
+        <button id="btn-cross-clouds-clear" class="btn btn-ghost" type="button" disabled>Quitar nubes</button>
+        <button id="btn-cross-gramet" class="btn btn-ghost" type="button">Cargar GRAMET (Autorouter)</button>
         <button id="btn-download-cross" class="btn btn-ghost" disabled>Descargar imagen (PNG)</button>
       </div>
       <div id="cross-wrap">
         <svg id="cross-svg" xmlns="http://www.w3.org/2000/svg"></svg>
-        <p id="cross-empty" class="empty">Carga un documento y filtra al menos 2 TSAs para generar el corte.</p>
+        <p id="cross-empty" class="empty">
+          Calcula un plan de vuelo (pestaña <b>Plan de vuelo</b>) o carga ≥2 TSAs para generar el corte.
+          <br>«Cargar nubes» y «Cargar GRAMET» requieren un plan calculado (no necesitan TSAs).
+        </p>
+      </div>
+      <div id="gramet-container" class="gramet-container hidden"></div>
+    </section>
+
+    <!-- PLAN DE VUELO -->
+    <section id="tab-plan" class="tab-content">
+      <div class="plan-form">
+        <div class="plan-fields">
+          <label>Origen
+            <input type="text" id="plan-origin" list="plan-wps" placeholder="LEMD" autocomplete="off">
+          </label>
+          <label>Destino
+            <input type="text" id="plan-dest" list="plan-wps" placeholder="LEBL" autocomplete="off">
+          </label>
+          <label>Nivel (FL)
+            <input type="number" id="plan-fl" value="350" min="50" max="600" step="10">
+          </label>
+          <label>Velocidad (kt)
+            <input type="number" id="plan-speed" value="450" min="100" max="900" step="10">
+          </label>
+          <label>Salida (UTC)
+            <input type="datetime-local" id="plan-departure">
+          </label>
+          <datalist id="plan-wps"></datalist>
+        </div>
+        <div class="plan-via">
+          <label>Vía (opcional, waypoints separados por espacio o coma)
+            <div class="plan-via-row">
+              <input type="text" id="plan-via" placeholder="vacío = ruta automática · ej: LEMD CCS BCN LEBL  · admite 40.5,-3.5">
+              <button id="btn-plan-draw" class="btn" type="button">Dibujar en mapa</button>
+            </div>
+          </label>
+        </div>
+        <div class="plan-fuel">
+          <h4>Combustible</h4>
+          <div class="plan-fields">
+            <label>Inicial
+              <input type="number" id="plan-fuel-initial" value="5000" min="0" step="50">
+            </label>
+            <label>Consumo (/h)
+              <input type="number" id="plan-fuel-flow" value="800" min="0" step="10">
+            </label>
+            <label>Unidad
+              <input type="text" id="plan-fuel-unit" value="kg" maxlength="6" autocomplete="off">
+            </label>
+            <label>JOKER
+              <input type="number" id="plan-joker" value="1500" min="0" step="50">
+            </label>
+            <label>BINGO
+              <input type="number" id="plan-bingo" value="800" min="0" step="50">
+            </label>
+          </div>
+        </div>
+        <div class="plan-actions">
+          <button id="btn-plan-calc" class="btn btn-primary" type="button">Calcular ruta</button>
+          <button id="btn-plan-clear" class="btn btn-ghost" type="button">Limpiar</button>
+          <span class="hint inline">Detecta conflictos contra las TSAs visibles (selección ∩ filtro).</span>
+        </div>
+        <div id="plan-error" class="plan-error hidden"></div>
+      </div>
+
+      <div id="plan-results" class="plan-results hidden">
+        <div class="plan-summary"></div>
+
+        <div class="plan-narrative">
+          <div class="plan-block-head">
+            <h3>Cadena de ruta</h3>
+            <button id="btn-plan-copy" class="btn btn-ghost" type="button">Copiar</button>
+          </div>
+          <pre id="plan-narrative-text"></pre>
+        </div>
+
+        <div class="plan-conflicts">
+          <h3>Conflictos con TSAs activas <span id="plan-conflicts-count" class="badge"></span></h3>
+          <ul id="plan-conflicts-list"></ul>
+        </div>
+
+        <div class="plan-meteo">
+          <div class="plan-block-head">
+            <h3>Meteorología en ruta <span id="plan-meteo-count" class="badge"></span></h3>
+            <div class="plan-meteo-actions">
+              <label class="plan-meteo-radius">Radio
+                <input type="number" id="plan-meteo-radius" value="50" min="10" max="300" step="10"> NM
+              </label>
+              <button id="btn-plan-meteo" class="btn" type="button">Cargar METAR / TAF</button>
+            </div>
+          </div>
+          <div id="plan-meteo-content" class="plan-meteo-content"></div>
+        </div>
+
+        <div class="plan-coords">
+          <h3>Waypoints y coordenadas</h3>
+          <div class="table-scroll">
+            <table id="plan-coords-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Waypoint</th>
+                  <th>FL</th>
+                  <th>Aerovía</th>
+                  <th>Latitud</th>
+                  <th>Longitud</th>
+                  <th>Tramo (NM)</th>
+                  <th>Acumulado (NM)</th>
+                  <th>ETA UTC</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="plan-log">
+          <h3>Log de vuelo y combustible</h3>
+          <div id="plan-log-summary" class="plan-log-summary"></div>
+          <div class="table-scroll">
+            <table id="plan-log-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Waypoint</th>
+                  <th>Tramo (NM)</th>
+                  <th title="Velocidad en este tramo">Vel (kt)</th>
+                  <th>Tiempo tramo</th>
+                  <th>Tiempo total</th>
+                  <th title="Consumo por hora en este tramo">Consumo (/h)</th>
+                  <th>Combustible tramo</th>
+                  <th>Combustible restante</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -145,11 +290,14 @@
 <script src="js/offlineGeo.js"></script>
 <script src="js/airways.js"></script>
 <script src="js/airspace.js"></script>
+<script src="js/meteoApi.js"></script>
+<script src="js/metarDecode.js"></script>
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
 <script src="js/filters.js"></script>
 <script src="js/mapView.js"></script>
 <script src="js/crossSection.js"></script>
+<script src="js/flightPlan.js"></script>
 <script src="js/pdfExport.js"></script>
 <script src="js/app.js"></script>
 </body>
