@@ -1,20 +1,35 @@
+/* Identidad corporativa Ejército del Aire y del Espacio (Manual v1.0).
+   Paleta principal de azules construida sobre "Gris aviador" (Pantone 2955),
+   con paleta ampliada para acentos (rojo / amarillo / azul cielo de bandera).
+   Tipografía oficial: Archivo (Google Fonts) + fallback Arial. */
 :root {
-  --bg: #0f172a;
-  --bg-panel: #1e293b;
-  --bg-elev: #273449;
-  --border: #334155;
-  --text: #e2e8f0;
-  --text-mute: #94a3b8;
-  --accent: #38bdf8;
-  --accent-dark: #0284c7;
-  --ok: #4ade80;
-  --warn: #facc15;
-  --danger: #f87171;
-  --low: #22c55e;
-  --mid: #f59e0b;
-  --high: #ef4444;
-  --radius: 8px;
-  --shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  /* Paleta principal EA */
+  --ea-gris-aviador: #003764;   /* Pantone 2955 — color institucional */
+  --ea-azul-medio:   #4e738a;   /* Pantone 5405 */
+  --ea-azul-claro:   #7a97ab;   /* Pantone 5425 */
+  --ea-azul-palido:  #b7c7d3;   /* Pantone 5445 */
+  /* Paleta ampliada (acentos puntuales) */
+  --ea-rojo:         #ad2e1c;   /* Rojo bandera */
+  --ea-amarillo:     #fac200;   /* Amarillo bandera */
+  --ea-azul-cielo:   #8dc6e8;
+
+  /* Tema oscuro derivado de la paleta institucional */
+  --bg:       #0a1f33;          /* fondo profundo derivado del Gris aviador */
+  --bg-panel: var(--ea-gris-aviador);
+  --bg-elev:  #1a4575;
+  --border:   #2c5683;
+  --text:     #ffffff;
+  --text-mute: var(--ea-azul-palido);
+  --accent:   var(--ea-azul-cielo);
+  --accent-dark: var(--ea-azul-medio);
+  --ok:       #4ade80;
+  --warn:     var(--ea-amarillo);
+  --danger:   var(--ea-rojo);
+  --low:      #22c55e;
+  --mid:      var(--ea-amarillo);
+  --high:     var(--ea-rojo);
+  --radius: 6px;
+  --shadow: 0 4px 12px rgba(0, 25, 60, 0.45);
 }
 
 * { box-sizing: border-box; }
@@ -23,10 +38,31 @@ html, body {
   margin: 0;
   padding: 0;
   height: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+  font-family: 'Archivo', Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   font-size: 14px;
+}
+
+/* Titulares: variante condensada/ancha de Archivo según el manual */
+h1, h2, h3, .ea-title {
+  font-family: 'Archivo', Arial, sans-serif;
+  font-stretch: 125%;
+  letter-spacing: 0.02em;
+}
+
+/* Sección H2 con filete bandera rojo+amarillo a la izquierda
+   (motivo recurrente en el manual de identidad EA) */
+.table-header h2,
+.export-card h2 {
+  position: relative;
+  padding-left: 14px;
+  border-left: 4px solid var(--ea-amarillo);
+  box-shadow: -8px 0 0 -4px var(--ea-rojo);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 16px;
+  color: #ffffff;
 }
 
 #app {
@@ -35,40 +71,61 @@ html, body {
   min-height: 100vh;
 }
 
-/* ── Header ───────────────────────────────────────── */
+/* ── Header (banda institucional EA) ───────────────── */
 .app-header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border);
+  padding: 14px 24px;
+  background: var(--ea-gris-aviador);
+  border-bottom: 3px solid var(--ea-amarillo);
   box-shadow: var(--shadow);
   gap: 16px;
+  position: relative;
+}
+/* Filete inferior bicolor rojo + amarillo (alusión a la bandera) */
+.app-header::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 50%;
+  bottom: -3px;
+  height: 3px;
+  background: var(--ea-rojo);
 }
 
 .brand {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  gap: 14px;
+}
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
 }
 
 .brand-icon {
-  font-size: 24px;
-  color: var(--accent);
+  font-size: 26px;
+  color: var(--ea-amarillo);
+  text-shadow: 0 0 8px rgba(250, 194, 0, 0.4);
 }
 
 .brand h1 {
-  font-size: 20px;
+  font-size: 22px;
   margin: 0;
-  font-weight: 700;
-  letter-spacing: 0.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffffff;
 }
 
 .brand-sub {
-  color: var(--text-mute);
-  font-size: 12px;
+  color: var(--ea-azul-palido);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .tabs {
@@ -78,21 +135,25 @@ html, body {
 
 .tab-btn {
   background: transparent;
-  color: var(--text-mute);
+  color: var(--ea-azul-palido);
   border: 1px solid transparent;
-  padding: 8px 14px;
-  border-radius: var(--radius);
+  padding: 8px 16px;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   transition: all 0.15s;
 }
 
-.tab-btn:hover { color: var(--text); background: var(--bg-elev); }
+.tab-btn:hover { color: #ffffff; background: rgba(141, 198, 232, 0.10); }
 
 .tab-btn.active {
-  color: var(--bg);
-  background: var(--accent);
+  color: var(--ea-gris-aviador);
+  background: var(--ea-amarillo);
+  border-color: var(--ea-amarillo);
+  box-shadow: 0 0 0 1px var(--ea-amarillo) inset;
 }
 
 /* ── Filter bar ───────────────────────────────────── */
@@ -181,14 +242,17 @@ main { flex: 1; display: flex; flex-direction: column; }
 }
 
 .btn-primary {
-  background: var(--accent);
-  color: var(--bg);
-  border-color: var(--accent);
+  background: var(--ea-amarillo);
+  color: var(--ea-gris-aviador);
+  border-color: var(--ea-amarillo);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--accent-dark);
-  border-color: var(--accent-dark);
+  background: #d8a700;
+  border-color: #d8a700;
 }
 
 .btn-ghost { background: transparent; }

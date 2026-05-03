@@ -3,7 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TSAgestor — Visor de TSAs</title>
+  <title>TSAgestor — Visor de TSAs · EA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Archivo+Narrow:wght@400;500;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="css/styles.css">
 </head>
@@ -12,9 +15,11 @@
 
   <header class="app-header">
     <div class="brand">
-      <span class="brand-icon">✈</span>
-      <h1>TSAgestor</h1>
-      <span class="brand-sub">Visor de Temporary Segregated Areas desde NOTAM</span>
+      <span class="brand-icon" aria-hidden="true">✈</span>
+      <div class="brand-text">
+        <h1>TSAgestor</h1>
+        <span class="brand-sub">Ejército del Aire y del Espacio · Visor TSA &amp; planificador</span>
+      </div>
     </div>
     <nav class="tabs">
       <button class="tab-btn active" data-tab="upload">Cargar</button>
