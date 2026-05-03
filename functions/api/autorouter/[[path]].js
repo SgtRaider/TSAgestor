@@ -17,6 +17,14 @@
 
 const UPSTREAM = 'https://api.autorouter.aero/v1.0';
 
+// Credenciales por defecto (cuenta DE PRUEBAS de Autorouter, embebidas
+// intencionalmente por decisión del operador). Las env vars de Cloudflare
+// AUTOROUTER_USER / AUTOROUTER_PASS, si existen, sobreescriben estas.
+// Para rotar a una cuenta real: configurar las env vars y vaciar estas
+// constantes, o sustituir directamente.
+const DEFAULT_USER = 'asraelus@gmail.com';
+const DEFAULT_PASS = 'Pamaloyo18';
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -34,13 +42,13 @@ async function getServerToken(env) {
   if (_cachedToken && Date.now() < _cachedTokenExp - 30_000) {
     return _cachedToken;
   }
-  if (!env || !env.AUTOROUTER_USER || !env.AUTOROUTER_PASS) {
-    return null;
-  }
+  const user = (env && env.AUTOROUTER_USER) || DEFAULT_USER;
+  const pass = (env && env.AUTOROUTER_PASS) || DEFAULT_PASS;
+  if (!user || !pass) return null;
   const body = new URLSearchParams({
     grant_type: 'client_credentials',
-    client_id:  env.AUTOROUTER_USER,
-    client_secret: env.AUTOROUTER_PASS,
+    client_id:  user,
+    client_secret: pass,
   }).toString();
   let r;
   try {
@@ -102,7 +110,9 @@ export async function onRequest(context) {
     let serverAuthAttempted = false;
     let serverAuthFailed = false;
     if (!auth && endpointNeedsAuth(path)) {
-      const hasServerCreds = !!(env && env.AUTOROUTER_USER && env.AUTOROUTER_PASS);
+      const user = (env && env.AUTOROUTER_USER) || DEFAULT_USER;
+      const pass = (env && env.AUTOROUTER_PASS) || DEFAULT_PASS;
+      const hasServerCreds = !!(user && pass);
       if (hasServerCreds) {
         serverAuthAttempted = true;
         const token = await getServerToken(env);
