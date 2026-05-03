@@ -18,6 +18,16 @@ window.TSAgestor.crossSection = (function () {
   const HEADER_H = 60;
   const FOOTER_H = 80;
 
+  // Bandas de nubes (Open-Meteo / WMO):
+  //   bajas:  0 – 2 km   ≈ 0 – 6 500 ft
+  //   medias: 2 – 7 km   ≈ 6 500 – 23 000 ft
+  //   altas:  7 – 13 km  ≈ 23 000 – 43 000 ft
+  const CLOUD_BANDS = [
+    { id: 'low',  ftMin:     0, ftMax:  6500, color: '#94a3b8', label: 'Bajas' },
+    { id: 'mid',  ftMin:  6500, ftMax: 23000, color: '#cbd5e1', label: 'Medias' },
+    { id: 'high', ftMin: 23000, ftMax: 43000, color: '#e2e8f0', label: 'Altas' },
+  ];
+
   // ── DOM helpers ──────────────────────────────────────────────────────
   function el(tag, attrs, children) {
     const e = document.createElementNS(NS, tag);
@@ -58,6 +68,27 @@ window.TSAgestor.crossSection = (function () {
     return { A: tsas[best.i], B: tsas[best.j], distance: best.d };
   }
 
+  // Decide qué eje usar: si hay plan, la distancia acumulada de la ruta
+  // (válida para circuitos donde origen = destino); si no, geodésica entre
+  // los dos TSAs más alejados.
+  function pickAxis(tsas, plan) {
+    if (plan && plan.coords && plan.coords.length >= 2) {
+      const f = plan.coords[0];
+      const l = plan.coords[plan.coords.length - 1];
+      const totalKm = l.cumDistKm || 0;
+      return {
+        A: { name: f.name, centroid: [f.lat, f.lon] },
+        B: { name: l.name, centroid: [l.lat, l.lon] },
+        distance: totalKm,
+        fromPlan: true,
+      };
+    }
+    if (tsas && tsas.length >= 2) {
+      return Object.assign({ fromPlan: false }, chooseExtremes(tsas));
+    }
+    return null;
+  }
+
   function buildRects(tsas, A, B) {
     return tsas.map((tsa, idx) => {
       const range = geom.polygonAlongTrackRange(tsa.polygon, A.centroid, B.centroid);
@@ -72,6 +103,76 @@ window.TSAgestor.crossSection = (function () {
         yMax: Math.max(tsa.vertical.lowerFt + 100, tsa.vertical.upperFt),
       };
     });
+  }
+
+  // Cuando el eje es la ruta del plan, mostramos un rect por cada CRUCE de
+  // la ruta a través de cada TSA. Un circuito (LEBZ → … → LEBZ) puede pasar
+  // por la misma TSA varias veces (ida y vuelta) y cada paso aparece como
+  // rectángulo independiente en su posición correcta del corte.
+  function buildRectsForPlan(tsas, planCoords) {
+    if (!tsas || !tsas.length || !planCoords || planCoords.length < 2) return [];
+    const result = [];
+    let nextIdx = 0;
+    for (const tsa of tsas) {
+      const ranges = routeInsideTSARanges(tsa.polygon, planCoords);
+      for (const r of ranges) {
+        result.push({
+          idx: nextIdx++,
+          tsa,
+          xMin: r.min,
+          xMax: r.max,
+          centreKm: (r.min + r.max) / 2,
+          yMin: tsa.vertical.lowerFt,
+          yMax: Math.max(tsa.vertical.lowerFt + 100, tsa.vertical.upperFt),
+        });
+      }
+    }
+    return result;
+  }
+
+  // Recorre la ruta muestreando cada segmento y devuelve un array de
+  // {min, max} de cumDistKm para CADA cruce (entrada→salida) por la TSA.
+  // Si la ruta nunca entra → array vacío. Si entra y sale varias veces →
+  // varios rangos.
+  function routeInsideTSARanges(polygon, planCoords) {
+    const ranges = [];
+    let current = null;
+    const SAMPLES = 60;     // por segmento (~1 km en tramos de 60 km)
+    for (let i = 0; i < planCoords.length - 1; i++) {
+      const a = planCoords[i], b = planCoords[i + 1];
+      const cumStart = a.cumDistKm || 0;
+      const cumEnd   = b.cumDistKm || 0;
+      const segLen   = cumEnd - cumStart;
+      if (segLen <= 0) continue;
+      for (let k = 0; k <= SAMPLES; k++) {
+        const t = k / SAMPLES;
+        const lat = a.lat + (b.lat - a.lat) * t;
+        const lon = a.lon + (b.lon - a.lon) * t;
+        const cumX = cumStart + segLen * t;
+        if (pointInPoly([lat, lon], polygon)) {
+          if (current === null) current = { min: cumX, max: cumX };
+          else current.max = cumX;
+        } else if (current !== null) {
+          ranges.push(current);
+          current = null;
+        }
+      }
+    }
+    if (current !== null) ranges.push(current);
+    return ranges;
+  }
+
+  function pointInPoly(pt, poly) {
+    let inside = false;
+    const x = pt[1], y = pt[0];
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i][1], yi = poly[i][0];
+      const xj = poly[j][1], yj = poly[j][0];
+      const cond = ((yi > y) !== (yj > y)) &&
+        (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+      if (cond) inside = !inside;
+    }
+    return inside;
   }
 
   function formatFL(ft) {
@@ -171,7 +272,7 @@ window.TSAgestor.crossSection = (function () {
   }
 
   // ── Render de un panel ───────────────────────────────────────────────
-  function renderPanel(svg, panel, panelIndex, nPanels, topPx, maxY, defsAdded) {
+  function renderPanel(svg, panel, panelIndex, nPanels, topPx, maxY, defsAdded, planPts, clouds) {
     const pad = { left: 80, right: 40, top: 100, bottom: 40 };
     const plotW = WIDTH - pad.left - pad.right;
     const plotH = PANEL_H - pad.top - pad.bottom;
@@ -237,6 +338,12 @@ window.TSAgestor.crossSection = (function () {
     const g = el('g', { 'clip-path': `url(#${clipId})` });
     svg.appendChild(g);
 
+    // ── Nubes (Open-Meteo) bajo todo lo demás ───────────────────────────
+    if (clouds && planPts && planPts.length === clouds.length) {
+      drawCloudBands(g, planPts, clouds, xScale, yScale, panel);
+      drawCloudBoundaryLabels(svg, yScale, plotTop, plotBottom, pad);
+    }
+
     // Rectángulos TSA: primero secundarios (cruzan el panel) con menor opacidad,
     // luego primarios encima.
     const primary = panel.members.filter(r => panel.primaryIds.has(r.idx));
@@ -289,6 +396,11 @@ window.TSAgestor.crossSection = (function () {
       }
     }
 
+    // ── Plan de vuelo: polilínea de la ruta y marcadores de waypoint ──
+    if (planPts && planPts.length >= 2) {
+      drawPlanRoute(g, svg, planPts, xScale, yScale, panel, plotTop, plotBottom);
+    }
+
     // Callouts (nombre + altitud apilados) sólo para primarios.
     const callouts = layoutCallouts(primary, xScale, yScale);
     for (const co of callouts) {
@@ -307,6 +419,123 @@ window.TSAgestor.crossSection = (function () {
     }
   }
 
+  // ── Helpers de plan + nubes ─────────────────────────────────────────
+
+  // Pinta franjas de cobertura nubosa por segmento de ruta. Para cada par
+  // (wp[i], wp[i+1]) usamos la cobertura media en cada banda y trazamos un
+  // rectángulo con opacidad proporcional.
+  function drawCloudBands(g, planPts, clouds, xScale, yScale, panel) {
+    const MAX_OP = 0.65;
+    for (let i = 0; i < planPts.length - 1; i++) {
+      const a = planPts[i], b = planPts[i + 1];
+      // Recorta a la región del panel.
+      const segMinKm = Math.min(a.xKm, b.xKm);
+      const segMaxKm = Math.max(a.xKm, b.xKm);
+      if (segMaxKm < panel.xMinKm || segMinKm > panel.xMaxKm) continue;
+      const x1 = xScale(Math.max(segMinKm, panel.xMinKm));
+      const x2 = xScale(Math.min(segMaxKm, panel.xMaxKm));
+      if (x2 - x1 < 1) continue;
+      const cA = clouds[i] || {}, cB = clouds[i + 1] || {};
+      const avg = (a, b) => {
+        const v = [a, b].filter(x => Number.isFinite(x));
+        return v.length ? v.reduce((s, x) => s + x, 0) / v.length : 0;
+      };
+      const covers = {
+        low:  avg(cA.coverLow,  cB.coverLow),
+        mid:  avg(cA.coverMid,  cB.coverMid),
+        high: avg(cA.coverHigh, cB.coverHigh),
+      };
+      for (const band of CLOUD_BANDS) {
+        const cv = covers[band.id];
+        if (!cv || cv < 5) continue;
+        const yTop = yScale(band.ftMax);
+        const yBot = yScale(band.ftMin);
+        g.appendChild(el('rect', {
+          x: x1, y: yTop, width: x2 - x1, height: yBot - yTop,
+          fill: band.color,
+          'fill-opacity': MAX_OP * (cv / 100),
+        }));
+        // Etiqueta numérica de % en el centro de la franja, sólo si cabe.
+        const cx = (x1 + x2) / 2;
+        const w = x2 - x1;
+        if (w > 60) {
+          g.appendChild(haloText(cx, (yTop + yBot) / 2 + 3,
+            Math.round(cv) + '%', {
+              'text-anchor': 'middle', 'font-size': 10,
+              'font-weight': 600, fill: '#1e293b',
+            }));
+        }
+      }
+    }
+  }
+
+  // Etiquetas a la derecha del plot indicando los límites de cada banda
+  // de nube (FL y altitud en pies). Sólo se llaman cuando hay nubes.
+  function drawCloudBoundaryLabels(svg, yScale, plotTop, plotBottom, pad) {
+    for (const band of CLOUD_BANDS) {
+      const y = yScale(band.ftMax);
+      if (y < plotTop || y > plotBottom) continue;
+      svg.appendChild(el('line', {
+        x1: WIDTH - pad.right, y1: y,
+        x2: WIDTH - pad.right + 6, y2: y,
+        stroke: '#475569', 'stroke-width': 1,
+      }));
+      svg.appendChild(text(WIDTH - pad.right + 8, y - 1, band.label + ' ↑', {
+        'font-size': 9, fill: '#475569', 'font-weight': 600,
+      }));
+      svg.appendChild(text(WIDTH - pad.right + 8, y + 9,
+        formatFL(band.ftMax), { 'font-size': 9, fill: '#64748b' }));
+    }
+  }
+
+  // Polilínea del plan de vuelo + marcadores de waypoints + etiquetas FL.
+  function drawPlanRoute(g, svg, planPts, xScale, yScale, panel, plotTop, plotBottom) {
+    // Filtra waypoints visibles en este panel (incluye uno fuera a cada lado
+    // para que la línea no se corte abrupta en los bordes).
+    const inPanel = (xKm) => xKm >= panel.xMinKm - 1 && xKm <= panel.xMaxKm + 1;
+    const visIdx = [];
+    for (let i = 0; i < planPts.length; i++) {
+      if (inPanel(planPts[i].xKm)) visIdx.push(i);
+    }
+    if (!visIdx.length) return;
+    if (visIdx[0] > 0) visIdx.unshift(visIdx[0] - 1);
+    if (visIdx[visIdx.length - 1] < planPts.length - 1) visIdx.push(visIdx[visIdx.length - 1] + 1);
+
+    // Línea principal: halo oscuro + amarillo brillante encima.
+    const points = visIdx.map(i => `${xScale(planPts[i].xKm)},${yScale(planPts[i].fl * 100)}`).join(' ');
+    g.appendChild(el('polyline', {
+      points, fill: 'none', stroke: '#1f2937',
+      'stroke-width': 6, 'stroke-opacity': 0.45,
+      'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+    }));
+    g.appendChild(el('polyline', {
+      points, fill: 'none', stroke: '#f59e0b',
+      'stroke-width': 3, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+    }));
+
+    // Marcadores y etiquetas
+    for (const i of visIdx) {
+      const wp = planPts[i];
+      const x = xScale(wp.xKm), y = yScale(wp.fl * 100);
+      const isExtreme = (i === 0 || i === planPts.length - 1);
+      const isTSA = !!wp.tsa;
+      g.appendChild(el('circle', {
+        cx: x, cy: y, r: isExtreme ? 5 : 4,
+        fill: isTSA ? '#dc2626' : (isExtreme ? '#f59e0b' : '#fde68a'),
+        stroke: '#1f2937', 'stroke-width': 1.5,
+      }));
+      // Etiqueta nombre + FL encima del marcador
+      svg.appendChild(haloText(x, y - 9, wp.name, {
+        'text-anchor': 'middle', 'font-size': 10,
+        'font-weight': 700, fill: '#0f172a',
+      }));
+      svg.appendChild(haloText(x, y + 16, 'FL' + wp.fl, {
+        'text-anchor': 'middle', 'font-size': 9,
+        fill: '#7c2d12', 'font-weight': 600,
+      }));
+    }
+  }
+
   function niceStep(v) {
     const pow = Math.pow(10, Math.floor(Math.log10(v)));
     const n = v / pow;
@@ -317,30 +546,64 @@ window.TSAgestor.crossSection = (function () {
   }
 
   // ── Render principal ─────────────────────────────────────────────────
-  function render(svgEl, tsas) {
+  // opts = { plan, clouds }
+  function render(svgEl, tsas, opts) {
+    opts = opts || {};
+    const plan = opts.plan || null;
+    const clouds = opts.clouds || null;
+    tsas = tsas || [];
+
     while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
 
-    if (!tsas || tsas.length < 2) {
+    const axis = pickAxis(tsas, plan);
+    if (!axis) {
       svgEl.setAttribute('viewBox', '0 0 600 200');
       svgEl.setAttribute('width', '600');
       svgEl.setAttribute('height', '200');
-      svgEl.appendChild(text(300, 100, 'Se necesitan al menos 2 TSAs para el corte', {
-        'text-anchor': 'middle', fill: '#64748b', 'font-size': 14,
-      }));
+      svgEl.appendChild(text(300, 100,
+        'Necesitas un plan de vuelo o ≥2 TSAs visibles para el corte',
+        { 'text-anchor': 'middle', fill: '#64748b', 'font-size': 14 }));
       return { ok: false };
     }
 
-    const { A, B, distance } = chooseExtremes(tsas);
-    const rects = buildRects(tsas, A, B);
+    const { A, B, distance, fromPlan } = axis;
+    // Cuando hay plan, las TSAs se proyectan sobre el segmento más cercano de
+    // la ruta; sin plan, sobre la geodésica A→B (extremos de TSAs).
+    const rects = fromPlan
+      ? buildRectsForPlan(tsas, plan.coords)
+      : buildRects(tsas, A, B);
 
-    // Normaliza a partir de 0 en A
-    const xMinRaw = Math.min(0, ...rects.map(r => r.xMin));
-    rects.forEach(r => { r.xMin -= xMinRaw; r.xMax -= xMinRaw; });
-    const totalXMax = Math.max(distance - xMinRaw, ...rects.map(r => r.xMax));
-    const maxY = Math.max(...rects.map(r => r.yMax), 10000) * 1.1;
+    // Normaliza a partir de 0. Cuando es plan, todo arranca en 0 (cumDist).
+    const xMinRaw = fromPlan ? 0 : Math.min(0, ...rects.map(r => r.xMin));
+    if (xMinRaw !== 0) rects.forEach(r => { r.xMin -= xMinRaw; r.xMax -= xMinRaw; });
+    const totalXMax = Math.max(distance - xMinRaw, ...rects.map(r => r.xMax), distance);
 
-    const nPanels = decidePanelCount(rects.length);
+    // Waypoints del plan: xKm = distancia acumulada desde el origen (válido
+    // para circuito y para ruta lineal por igual).
+    let planPts = null;
+    if (plan && plan.coords && plan.coords.length >= 2) {
+      planPts = plan.coords.map(c => ({
+        name: c.name,
+        fl: c.fl != null ? c.fl : (plan.flightLevel || 350),
+        tsa: c.tsa || null,
+        xKm: c.cumDistKm || 0,
+      }));
+    }
+
+    // maxY: máx entre TSAs, banda de nubes altas y FL del plan.
+    let maxYft = Math.max(10000, ...rects.map(r => r.yMax));
+    if (planPts) maxYft = Math.max(maxYft, ...planPts.map(p => p.fl * 100));
+    if (clouds && clouds.length) maxYft = Math.max(maxYft, 43000);
+    const maxY = maxYft * 1.12;
+
+    const nPanels = decidePanelCount(Math.max(rects.length, planPts ? 2 : 0));
     const panels = buildPanels(rects, nPanels, totalXMax);
+
+    // Si no había TSAs (solo plan), buildPanels devuelve []. Crea uno cubriendo
+    // toda la ruta para que se dibuje el plan.
+    if (!panels.length && planPts) {
+      panels.push({ xMinKm: 0, xMaxKm: totalXMax, members: [], primaryIds: new Set() });
+    }
 
     const height =
       HEADER_H +
@@ -356,12 +619,25 @@ window.TSAgestor.crossSection = (function () {
 
     // Cabecera
     svgEl.appendChild(text(WIDTH / 2, 26,
-      `Corte transversal: ${A.name}  →  ${B.name}`,
+      `Corte transversal: ${A.name}  →  ${B.name}` +
+        (fromPlan ? '  ·  ruta del plan de vuelo' : ''),
       { 'text-anchor': 'middle', 'font-size': 16, 'font-weight': 700, fill: '#0f172a' }
     ));
-    svgEl.appendChild(text(WIDTH / 2, 46,
-      `Distancia geodésica: ${distance.toFixed(1)} km · ${rects.length} TSAs · ` +
-      `${panels.length} panel${panels.length === 1 ? '' : 'es'}`,
+    const subParts = [
+      `${distance.toFixed(1)} km`,
+    ];
+    if (fromPlan) {
+      const uniqueTsas = new Set(rects.map(r => r.tsa)).size;
+      const passes = rects.length;
+      const passWord = passes === 1 ? 'paso' : 'pasos';
+      subParts.push(`${uniqueTsas} TSAs cruzadas (${passes} ${passWord}) / ${tsas.length} visibles`);
+    } else {
+      subParts.push(`${rects.length} TSAs`);
+    }
+    subParts.push(`${panels.length} panel${panels.length === 1 ? '' : 'es'}`);
+    if (planPts) subParts.push(`${planPts.length} waypoints`);
+    if (clouds && clouds.length) subParts.push('nubes Open-Meteo');
+    svgEl.appendChild(text(WIDTH / 2, 46, subParts.join(' · '),
       { 'text-anchor': 'middle', 'font-size': 12, fill: '#475569' }
     ));
 
@@ -369,7 +645,7 @@ window.TSAgestor.crossSection = (function () {
     const defsAdded = { hatch: false };
     panels.forEach((panel, idx) => {
       const topPx = HEADER_H + idx * (PANEL_H + PANEL_GAP);
-      renderPanel(svgEl, panel, idx, panels.length, topPx, maxY, defsAdded);
+      renderPanel(svgEl, panel, idx, panels.length, topPx, maxY, defsAdded, planPts, clouds);
     });
 
     // Lista global de solapes (para resumen textual al pie)
@@ -384,9 +660,9 @@ window.TSAgestor.crossSection = (function () {
       }
     }
 
-    // Leyenda inferior (bandas + solapes)
+    // Leyenda inferior (bandas TSA, plan y nubes)
     const footerY = height - FOOTER_H + 10;
-    svgEl.appendChild(text(40, footerY, 'Bandas:', {
+    svgEl.appendChild(text(40, footerY, 'TSA:', {
       'font-size': 11, 'font-weight': 700, fill: '#0f172a',
     }));
     const bandsLegend = [
@@ -396,13 +672,47 @@ window.TSAgestor.crossSection = (function () {
     ];
     bandsLegend.forEach((b, i) => {
       svgEl.appendChild(el('rect', {
-        x: 100 + i * 130, y: footerY - 10, width: 14, height: 12,
+        x: 80 + i * 110, y: footerY - 10, width: 14, height: 12,
         fill: b.color, 'fill-opacity': 0.38, stroke: b.color, 'stroke-width': 1.5,
       }));
-      svgEl.appendChild(text(118 + i * 130, footerY, b.label, {
+      svgEl.appendChild(text(98 + i * 110, footerY, b.label, {
         'font-size': 11, fill: '#0f172a',
       }));
     });
+
+    // Plan
+    if (planPts) {
+      const px = 460;
+      svgEl.appendChild(text(px, footerY, 'Plan:', {
+        'font-size': 11, 'font-weight': 700, fill: '#0f172a',
+      }));
+      svgEl.appendChild(el('line', {
+        x1: px + 35, y1: footerY - 4, x2: px + 70, y2: footerY - 4,
+        stroke: '#f59e0b', 'stroke-width': 3,
+      }));
+      svgEl.appendChild(text(px + 76, footerY, 'ruta · marcadores rojos = waypoints en TSA', {
+        'font-size': 10, fill: '#334155',
+      }));
+    }
+
+    // Nubes
+    if (clouds && clouds.length) {
+      const cx = 760;
+      svgEl.appendChild(text(cx, footerY, 'Nubes:', {
+        'font-size': 11, 'font-weight': 700, fill: '#0f172a',
+      }));
+      CLOUD_BANDS.forEach((b, i) => {
+        const x = cx + 45 + i * 90;
+        svgEl.appendChild(el('rect', {
+          x, y: footerY - 10, width: 12, height: 12,
+          fill: b.color, 'fill-opacity': 0.5,
+          stroke: '#475569', 'stroke-width': 0.5,
+        }));
+        svgEl.appendChild(text(x + 16, footerY,
+          `${b.label} ${(b.ftMin/1000).toFixed(0)}–${(b.ftMax/1000).toFixed(0)}k ft`,
+          { 'font-size': 10, fill: '#334155' }));
+      });
+    }
 
     svgEl.appendChild(text(40, footerY + 22, `Solapes (${overlaps.length}):`, {
       'font-size': 11, 'font-weight': 700, fill: '#0f172a',

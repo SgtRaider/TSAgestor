@@ -96,6 +96,30 @@ window.TSAgestor.geom = (function () {
     return 'high';
   }
 
+  // Distancia mínima de un punto P a un segmento geodésico AB (km).
+  function pointToSegmentKm(P, A, B) {
+    const dAB = greatCircleDistance(A, B);
+    if (dAB < 1e-6) return greatCircleDistance(P, A);
+    const along = alongTrackDistance(A, B, P);
+    if (along <= 0) return greatCircleDistance(P, A);
+    if (along >= dAB) return greatCircleDistance(P, B);
+    // Cross-track aproximado en plano local: √(dPA² − along²)
+    const dPA = greatCircleDistance(P, A);
+    return Math.sqrt(Math.max(0, dPA * dPA - along * along));
+  }
+
+  // Distancia mínima de un punto P a una polilínea (array de [lat,lon]).
+  function pointToPolylineKm(P, polyline) {
+    if (!polyline || polyline.length === 0) return Infinity;
+    if (polyline.length === 1) return greatCircleDistance(P, polyline[0]);
+    let best = Infinity;
+    for (let i = 0; i < polyline.length - 1; i++) {
+      const d = pointToSegmentKm(P, polyline[i], polyline[i + 1]);
+      if (d < best) best = d;
+    }
+    return best;
+  }
+
   return {
     centroid,
     greatCircleDistance,
@@ -106,5 +130,7 @@ window.TSAgestor.geom = (function () {
     destinationPoint,
     circleToPolygon,
     altitudeBand,
+    pointToSegmentKm,
+    pointToPolylineKm,
   };
 })();
