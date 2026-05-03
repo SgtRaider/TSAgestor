@@ -934,6 +934,40 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   background: #ffffff;
   border-radius: 2px;
 }
+/* Pila para la leyenda EUMETSAT: imagen + máscara que oculta las
+   etiquetas en metros + nuestras etiquetas FL en las mismas posiciones */
+.cth-legend-stack {
+  position: relative;
+  width: 100%;
+}
+.cth-legend-stack img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.cth-legend-mask {
+  position: absolute;
+  bottom: 0;
+  left: 14%;       /* desde donde empieza el color bar de la imagen */
+  right: 0;
+  height: 36%;     /* tapa la fila de "320 4240 8160 12080 16000" + "m" */
+  background: #ffffff;
+}
+.cth-legend-fl {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 6%;
+  font-size: 10px;
+  font-weight: 700;
+  color: #1e293b;
+  pointer-events: none;
+}
+.cth-legend-fl span {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
 .cloud-legend .cloud-legend-title {
   font-weight: 700;
   font-size: 12px;

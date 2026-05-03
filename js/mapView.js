@@ -169,11 +169,23 @@ window.TSAgestor.mapView = (function () {
     cloudLegendCtl = L.control({ position: 'bottomleft' });
     cloudLegendCtl.onAdd = function () {
       const div = L.DomUtil.create('div', 'cloud-legend');
-      // Si la API expone una imagen de leyenda oficial (GetLegendGraphic),
-      // la mostramos. Si no, caemos a la escala manual genérica.
-      const legendImg = cfg.legendUrl
-        ? `<img src="${cfg.legendUrl}" alt="Escala de altura"
-                onerror="this.outerHTML='<div class=\\'cloud-legend-bar\\'></div>'">`
+      // La imagen oficial de EUMETSAT etiqueta en metros (320, 4240, 8160,
+      // 12080, 16000). Mostramos su gradiente de colores intacto pero
+      // tapamos sus etiquetas con un overlay blanco y superponemos las
+      // nuestras en FL (mismas posiciones convertidas a niveles de vuelo).
+      const legendBlock = cfg.legendUrl
+        ? `<div class="cth-legend-stack">
+             <img src="${cfg.legendUrl}" alt="Escala de altura"
+                  onerror="this.parentNode.outerHTML='<div class=&quot;cloud-legend-bar&quot;></div>'">
+             <div class="cth-legend-mask"></div>
+             <div class="cth-legend-fl">
+               <span style="left:20.4%">FL010</span>
+               <span style="left:40.1%">FL140</span>
+               <span style="left:59.8%">FL270</span>
+               <span style="left:79.5%">FL400</span>
+               <span style="left:97%">FL525</span>
+             </div>
+           </div>`
         : `<div class="cloud-legend-bar"></div>
            <div class="cloud-legend-ticks">
              <span><b>FL030</b><br><i>1 km</i></span>
@@ -183,8 +195,8 @@ window.TSAgestor.mapView = (function () {
            </div>`;
       div.innerHTML = `
         <div class="cloud-legend-title">${cfg.title || 'Cloud Top Height'}</div>
-        ${legendImg}
-        <div class="cloud-legend-help">altura del tope de nube</div>
+        ${legendBlock}
+        <div class="cloud-legend-help">altura del tope de nube · niveles de vuelo</div>
         <div class="cloud-legend-attr">${cfg.options.attribution || '© EUMETSAT'}</div>
       `;
       L.DomEvent.disableClickPropagation(div);
