@@ -336,8 +336,32 @@ window.TSAgestor.meteoApi = (function () {
     sessionStorage.removeItem(AR_TOKEN_KEY);
   }
   function hasArCreds() {
+    if (_serverAuthConfigured === true) return true;
     const c = getStoredArCreds();
     return !!(c && c.email && c.password);
+  }
+
+  // Modo server-auth: si la Pages Function /api/autorouter/* tiene
+  // AUTOROUTER_USER/PASS en env vars, el frontend puede llamar a la API
+  // sin Authorization y la function inyecta el Bearer. Comprobamos via
+  // /api/autorouter-status. null = aun no comprobado, true/false = sabido.
+  let _serverAuthConfigured = null;
+
+  async function checkServerAuth() {
+    if (!ON_REMOTE) { _serverAuthConfigured = false; return false; }
+    if (_serverAuthConfigured !== null) return _serverAuthConfigured;
+    try {
+      const r = await fetch('/api/autorouter-status');
+      if (r.ok) {
+        const d = await r.json();
+        _serverAuthConfigured = !!d.configured;
+      } else {
+        _serverAuthConfigured = false;
+      }
+    } catch (_) {
+      _serverAuthConfigured = false;
+    }
+    return _serverAuthConfigured;
   }
 
   // Fetch + fallback proxy CORS (igual que safeFetch pero soporta options).
@@ -391,12 +415,19 @@ window.TSAgestor.meteoApi = (function () {
   async function fetchGramet(plan, format) {
     const url = getGrametUrl(plan, format);
     if (!url) throw new Error('Plan inválido');
-    const token = await getArToken();
-    const res = await _arFetch(url, {
-      headers: { 'Authorization': 'Bearer ' + token },
-    });
+
+    // Si el server-side tiene AUTOROUTER_USER/PASS en env vars, llamamos
+    // sin Authorization y la Pages Function inyecta el token.
+    const serverAuth = await checkServerAuth();
+    const reqInit = {};
+    if (!serverAuth) {
+      const token = await getArToken();
+      reqInit.headers = { 'Authorization': 'Bearer ' + token };
+    }
+
+    const res = await _arFetch(url, reqInit);
     if (res.status === 401) {
-      sessionStorage.removeItem(AR_TOKEN_KEY);
+      if (!serverAuth) sessionStorage.removeItem(AR_TOKEN_KEY);
       throw new Error('TOKEN_REJECTED');
     }
     if (!res.ok) throw new Error('GRAMET HTTP ' + res.status);
@@ -430,7 +461,7 @@ window.TSAgestor.meteoApi = (function () {
     getRainviewerCloudUrl, getEumetCthWMS,
     fetchCloudsForPoints, fetchWindsAloft, lookupWindAt,
     getGrametUrl, fetchGramet,
-    hasArCreds, setStoredArCreds, clearStoredArAuth,
+    hasArCreds, setStoredArCreds, clearStoredArAuth, checkServerAuth,
     // alias retro-compatible para código que aún usa el nombre antiguo
     getGibsCloudWMS: getEumetCthWMS,
   };

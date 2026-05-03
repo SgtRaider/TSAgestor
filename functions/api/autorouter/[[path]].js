@@ -4,6 +4,14 @@
 // Autorouter, propagando método, body y cabecera Authorization. Devuelve
 // la respuesta tal cual (PNG, PDF o JSON) con cabeceras CORS.
 //
+// Si el cliente NO envía Authorization y existen las env vars
+//   AUTOROUTER_USER  /  AUTOROUTER_PASS
+// configuradas en el dashboard de Cloudflare Pages
+//   (Project → Settings → Environment Variables, marcar "Encrypt"),
+// la función obtiene un token OAuth server-side, lo cachea en memoria
+// del isolate, y lo inyecta en la petición. Asi el frontend puede llamar
+// a /api/autorouter/met/gramet sin pasar por el flujo de login.
+//
 // Ruta: /api/autorouter/<endpoint>?<params>
 //   →   https://api.autorouter.aero/v1.0/<endpoint>?<params>
 
@@ -16,12 +24,54 @@ const CORS_HEADERS = {
   'Access-Control-Expose-Headers': 'Content-Type, Content-Disposition',
 };
 
+// Cache de token a nivel de isolate (mejor esfuerzo; CF Workers pueden
+// arrancar isolates nuevos sin estado, en cuyo caso simplemente pedimos
+// otro token la primera vez).
+let _cachedToken = null;
+let _cachedTokenExp = 0;
+
+async function getServerToken(env) {
+  if (_cachedToken && Date.now() < _cachedTokenExp - 30_000) {
+    return _cachedToken;
+  }
+  if (!env || !env.AUTOROUTER_USER || !env.AUTOROUTER_PASS) {
+    return null;
+  }
+  const body = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_id:  env.AUTOROUTER_USER,
+    client_secret: env.AUTOROUTER_PASS,
+  }).toString();
+  let r;
+  try {
+    r = await fetch(`${UPSTREAM}/oauth2/token`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+  } catch (_) {
+    return null;
+  }
+  if (!r.ok) return null;
+  let data;
+  try { data = await r.json(); } catch (_) { return null; }
+  if (!data || !data.access_token) return null;
+  _cachedToken = data.access_token;
+  _cachedTokenExp = Date.now() + ((data.expires_in || 3600) - 60) * 1000;
+  return _cachedToken;
+}
+
+function endpointNeedsAuth(path) {
+  // Todas las rutas excepto /oauth2/token requieren Bearer.
+  return path && !path.startsWith('oauth2/');
+}
+
 export async function onRequestOptions() {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
 
 export async function onRequest(context) {
-  const { request, params } = context;
+  const { request, params, env } = context;
   const method = request.method;
   if (method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
@@ -38,8 +88,15 @@ export async function onRequest(context) {
   const headers = {
     'User-Agent': 'TSAgestor-CFProxy/1.0 (+https://tsagestor.pages.dev)',
   };
-  const auth = request.headers.get('Authorization');
+
+  // Authorization: cliente -> server-side env -> ninguno.
+  let auth = request.headers.get('Authorization');
+  if (!auth && endpointNeedsAuth(path)) {
+    const token = await getServerToken(env);
+    if (token) auth = 'Bearer ' + token;
+  }
   if (auth) headers['Authorization'] = auth;
+
   const ct = request.headers.get('Content-Type');
   if (ct) headers['Content-Type'] = ct;
 
@@ -54,6 +111,13 @@ export async function onRequest(context) {
       status: 502,
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     });
+  }
+
+  // Si el upstream devuelve 401 con un token cacheado, lo invalidamos
+  // para que el siguiente intento renueve credenciales.
+  if (upstream.status === 401 && auth && auth.startsWith('Bearer ')) {
+    _cachedToken = null;
+    _cachedTokenExp = 0;
   }
 
   const respHeaders = new Headers(CORS_HEADERS);

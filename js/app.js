@@ -411,7 +411,10 @@
       alert('Necesitas un plan de vuelo calculado para generar el GRAMET.');
       return;
     }
-    if (!meteoApi.hasArCreds()) {
+    // Si el server-side tiene credenciales (AUTOROUTER_USER/PASS en env vars
+    // de Cloudflare Pages), saltamos el modal y vamos directo a GRAMET.
+    const serverAuth = meteoApi.checkServerAuth ? await meteoApi.checkServerAuth() : false;
+    if (!serverAuth && !meteoApi.hasArCreds()) {
       showArLoginForm();
       return;
     }
@@ -421,17 +424,21 @@
   async function actuallyFetchGramet() {
     const c = $('#gramet-container');
     const route = state.lastPlan.coords.map(co => co.name).join(' → ');
+    const serverAuth = meteoApi.checkServerAuth ? await meteoApi.checkServerAuth() : false;
+    const logoutBtn = serverAuth
+      ? ''
+      : `<button class="btn btn-ghost" type="button" id="btn-gramet-logout">Cerrar sesión Autorouter</button>`;
     c.innerHTML = `
       <div class="gramet-head">
         <h3>GRAMET — ${escapeHTML(state.lastPlan.origin)} → ${escapeHTML(state.lastPlan.destination)}</h3>
         <div class="gramet-actions">
-          <button class="btn btn-ghost" type="button" id="btn-gramet-logout">Cerrar sesión Autorouter</button>
+          ${logoutBtn}
           <button class="btn btn-ghost" type="button" id="btn-gramet-close">Cerrar</button>
         </div>
       </div>
       <p class="hint">Ruta: ${escapeHTML(route)} · FL${state.lastPlan.flightLevel} · salida ${formatUTC(state.lastPlan.departureUTC)}</p>
       <div class="gramet-img-wrap">
-        <div class="gramet-loading">Autenticando con Autorouter y generando GRAMET…<br><span class="dim">puede tardar 10–30 s la primera vez</span></div>
+        <div class="gramet-loading">Generando GRAMET…<br><span class="dim">puede tardar 10–30 s la primera vez</span></div>
       </div>
     `;
     c.classList.remove('hidden');
@@ -439,12 +446,14 @@
       c.classList.add('hidden');
       c.innerHTML = '';
     });
-    c.querySelector('#btn-gramet-logout').addEventListener('click', () => {
-      meteoApi.clearStoredArAuth();
-      c.classList.add('hidden');
-      c.innerHTML = '';
-      alert('Sesión de Autorouter cerrada. La próxima vez te pedirá las credenciales.');
-    });
+    if (!serverAuth) {
+      c.querySelector('#btn-gramet-logout').addEventListener('click', () => {
+        meteoApi.clearStoredArAuth();
+        c.classList.add('hidden');
+        c.innerHTML = '';
+        alert('Sesión de Autorouter cerrada. La próxima vez te pedirá las credenciales.');
+      });
+    }
 
     try {
       const blob = await meteoApi.fetchGramet(state.lastPlan, 'png');
