@@ -540,19 +540,51 @@
   }
 
   function clearPlan() {
+    // Resultados y errores
     $('#plan-results').classList.add('hidden');
     $('#plan-error').classList.add('hidden');
-    $('#plan-via').value = '';
     $('#plan-meteo-content').innerHTML = '';
     $('#plan-meteo-count').textContent = '';
+
+    // Resetea TODOS los campos del formulario a sus defaults declarados
+    // en el HTML (input.defaultValue), incluyendo origen/destino, FL,
+    // velocidad, combustible y umbrales JOKER/BINGO.
+    ['plan-origin', 'plan-dest', 'plan-fl', 'plan-speed',
+     'plan-fuel-initial', 'plan-fuel-flow', 'plan-fuel-unit',
+     'plan-joker', 'plan-bingo'].forEach(id => {
+      const el = $('#' + id);
+      if (el) el.value = el.defaultValue;
+    });
+    $('#plan-via').value = '';
+    // Hora de salida → ahora UTC
+    const dep = $('#plan-departure');
+    if (dep) {
+      const d = new Date();
+      const p = n => String(n).padStart(2, '0');
+      dep.value = `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}T${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+    }
+
+    // Estado interno
     state.lastPlan = null;
     state.drawnVia = null;
     state.crossClouds = null;
     $('#btn-cross-clouds-clear').disabled = true;
+
+    // Capas del mapa relacionadas con plan/meteo
     if (state.mapReady) {
       mapView.clearFlightPlan();
       mapView.clearWeatherMarkers();
     }
+
+    // Panel GRAMET (si estaba abierto en pestaña Corte)
+    const gc = $('#gramet-container');
+    if (gc) {
+      gc.classList.add('hidden');
+      gc.innerHTML = '';
+    }
+
+    // Re-render del corte (ahora vacío) y resumen del export
+    renderCross();
     refreshExportUI();
   }
 
