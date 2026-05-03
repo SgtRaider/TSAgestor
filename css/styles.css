@@ -601,6 +601,29 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
   font-size: 13px;
 }
+.plan-toggle {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px !important;
+  color: var(--text) !important;
+  cursor: pointer;
+  user-select: none;
+}
+.plan-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--ea-amarillo);
+  cursor: pointer;
+  margin: 0;
+}
+.plan-toggle-hint {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-mute);
+}
 
 .plan-actions {
   margin-top: 14px;

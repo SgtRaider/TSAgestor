@@ -182,6 +182,39 @@ window.TSAgestor.flightPlan = (function () {
     return { segments, totalDistKm: total, direct: false, manual: true };
   }
 
+  // Concatena rutas Dijkstra entre cada par consecutivo de puntos
+  // (origen, via1, via2, ..., destino). Cada leg trae sus propios fixes
+  // intermedios via aerovias.
+  function buildAirwayRouteVia(origin, viaList, destination, fl) {
+    const points = [origin].concat(viaList).concat([destination]);
+    const allSegments = [];
+    let totalDistKm = 0;
+    let anyManual = false;
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i];
+      const b = points[i + 1];
+      // Si los dos extremos son el mismo punto, lo saltamos.
+      if (a.lat === b.lat && a.lon === b.lon) continue;
+      const leg = findRoute(a, b, fl);
+      if (leg && leg.segments && leg.segments.length) {
+        for (const seg of leg.segments) allSegments.push(seg);
+        totalDistKm += leg.totalDistKm || 0;
+        if (leg.direct) anyManual = true;
+      } else {
+        // Fallback DCT directo si findRoute no devuelve nada utilizable.
+        const d = geom.greatCircleDistance([a.lat, a.lon], [b.lat, b.lon]);
+        allSegments.push({
+          from: { name: a.name, lat: a.lat, lon: a.lon },
+          to:   { name: b.name, lat: b.lat, lon: b.lon },
+          airway: 'DCT', type: null, dist: d,
+        });
+        totalDistKm += d;
+        anyManual = true;
+      }
+    }
+    return { segments: allSegments, totalDistKm, direct: anyManual, manual: false };
+  }
+
   function directRouteOf(origin, destination) {
     const d = geom.greatCircleDistance(
       [origin.lat, origin.lon], [destination.lat, destination.lon]
@@ -584,10 +617,15 @@ window.TSAgestor.flightPlan = (function () {
     const speedKt = Number(opts.speedKt) || 450;
     const depUTC = opts.departureUTC instanceof Date ? opts.departureUTC : new Date();
 
+    // followAirways=true (defecto): usa Dijkstra sobre el grafo AIP. Mete
+    // fixes intermedios entre origen, vias y destino.
+    // followAirways=false: ruta puramente DCT entre los puntos del usuario.
+    const followAirways = opts.followAirways !== false;
+
     let route;
     const rawVia = Array.isArray(opts.via) ? opts.via : [];
+    const viaList = [];
     if (rawVia.length) {
-      const viaList = [];
       const errors = [];
       for (const tok of rawVia) {
         const parsed = parseViaToken(tok);
@@ -598,13 +636,23 @@ window.TSAgestor.flightPlan = (function () {
       if (errors.length) {
         return { error: `Waypoint(s) desconocido(s) en la vía: ${errors.join(', ')}. Usa códigos del listado o "lat,lon".` };
       }
-      // Circuito (LEMD → ... → LEMD) permitido si hay al menos un waypoint intermedio.
+    }
+
+    if (!viaList.length && origin.name === destination.name) {
+      return { error: 'Origen y destino son el mismo punto. Añade waypoints en "Vía" o dibuja la ruta para definir un circuito.' };
+    }
+
+    if (!followAirways) {
+      // Modo manual: DCT origen -> vias -> destino, sin tocar la red AIP.
       route = buildManualRoute(origin, viaList, destination);
-    } else {
-      if (origin.name === destination.name) {
-        return { error: 'Origen y destino son el mismo punto. Añade waypoints en "Vía" o dibuja la ruta para definir un circuito.' };
-      }
+    } else if (!viaList.length) {
+      // Modo automatico clasico: Dijkstra origen -> destino.
       route = findRoute(origin, destination, fl);
+    } else {
+      // Modo mixto: Dijkstra entre cada par consecutivo (origen, via1, via2, ..., destino),
+      // concatenando los segmentos. Permite forzar puntos de paso obligatorios mientras
+      // el resto de la ruta sigue aerovias reales.
+      route = buildAirwayRouteVia(origin, viaList, destination, fl);
     }
 
     // Cada waypoint adopta el nombre de la TSA que lo contiene (si la hay) y

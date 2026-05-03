@@ -680,9 +680,12 @@
       return;
     }
 
+    const followAirways = $('#plan-follow-airways').checked;
+
     const result = flightPlan.plan({
       origin, destination, flightLevel: fl, speedKt,
       departureUTC, tsas: getVisible(), via: viaTokens,
+      followAirways,
     });
 
     if (result.error) {
