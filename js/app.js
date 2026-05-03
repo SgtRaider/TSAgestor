@@ -1072,7 +1072,36 @@
     $('#btn-cross-gramet').addEventListener('click', loadGramet);
   }
 
+  // Modal de bienvenida — se muestra una vez por sesión hasta que el
+  // usuario acepta el aviso de seguridad y la nota de acceso.
+  const WELCOME_KEY = 'tsagestor_welcome_accepted';
+  function showWelcomeIfNeeded() {
+    const modal = document.getElementById('welcome-modal');
+    if (!modal) return;
+    const accepted = sessionStorage.getItem(WELCOME_KEY) === '1';
+    if (accepted) {
+      modal.classList.add('hidden');
+      return;
+    }
+    modal.classList.remove('hidden');
+    document.body.classList.add('welcome-open');
+    const check = document.getElementById('welcome-check');
+    const btn = document.getElementById('welcome-accept');
+    if (check && btn) {
+      check.checked = false;
+      btn.disabled = true;
+      check.addEventListener('change', () => { btn.disabled = !check.checked; });
+      btn.addEventListener('click', () => {
+        if (!check.checked) return;
+        sessionStorage.setItem(WELCOME_KEY, '1');
+        modal.classList.add('hidden');
+        document.body.classList.remove('welcome-open');
+      });
+    }
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
+    showWelcomeIfNeeded();
     wireTabs();
     wireUpload();
     wireFilter();

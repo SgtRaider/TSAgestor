@@ -11,6 +11,73 @@
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
+
+<!-- Modal de bienvenida (aviso de seguridad + acceso a herramientas) -->
+<div id="welcome-modal" class="welcome-modal" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+  <div class="welcome-card">
+    <div class="welcome-head">
+      <img src="assets/rokiski-blanco.svg" alt="" class="welcome-logo">
+      <div>
+        <h2 id="welcome-title">TSAgestor</h2>
+        <div class="welcome-sub">Ejército del Aire y del Espacio · Visor TSA &amp; planificador</div>
+      </div>
+    </div>
+
+    <div class="welcome-body">
+      <div class="home-disclaimer disclaimer-warn">
+        <div class="disc-head">
+          <span class="disc-icon" aria-hidden="true">⚠</span>
+          <span class="disc-title">AVISO DE SEGURIDAD — INFORMACIÓN NO CLASIFICADA</span>
+        </div>
+        <p>
+          Esta aplicación <b>no está autorizada</b> para el tratamiento de información
+          clasificada. Bajo ningún concepto se introducirán datos catalogados como
+          <b>DIFUSIÓN LIMITADA, CONFIDENCIAL, RESERVADO</b> o categorías superiores en
+          ninguno de los campos de entrada (planes de vuelo, rutas, NOTAMs propios,
+          credenciales operativas, identificadores de aeronave, etc.).
+        </p>
+        <p>
+          Toda la información tratada debe corresponder a documentación de carácter
+          <b>público</b> (publicaciones AIP/NOTAM oficiales, datos meteorológicos
+          abiertos) o a ejercicios de instrucción sin valor operativo real.
+          La responsabilidad del cumplimiento de esta norma recae en el usuario.
+        </p>
+      </div>
+
+      <div class="home-disclaimer disclaimer-info">
+        <div class="disc-head">
+          <span class="disc-icon" aria-hidden="true">🔐</span>
+          <span class="disc-title">ACCESO A LAS HERRAMIENTAS METEOROLÓGICAS</span>
+        </div>
+        <p>
+          Para que las APIs externas integradas (METAR/TAF de AWC, capa de nubosidad
+          RainViewer, Cloud Top Height de EUMETView, GRAMET de Autorouter y datos
+          de Open-Meteo) funcionen correctamente, deberás haber <b>iniciado sesión
+          previamente con tu cuenta corporativa de acceso a Internet</b> del Ejército
+          del Aire y del Espacio.
+        </p>
+        <p>
+          De no estar autenticado en la red, las capas seguirán mostrándose pero las
+          consultas a servicios externos fallarán y verás avisos de error en cada
+          panel correspondiente. Las funciones puramente locales (cargar NOTAM,
+          mapa offline, corte transversal de TSAs, exportación PDF) <b>seguirán
+          funcionando sin acceso</b> a Internet.
+        </p>
+      </div>
+    </div>
+
+    <div class="welcome-footer">
+      <label class="welcome-confirm">
+        <input type="checkbox" id="welcome-check">
+        He leído y acepto las condiciones anteriores.
+      </label>
+      <button id="welcome-accept" class="btn btn-primary" type="button" disabled>
+        Aceptar y continuar
+      </button>
+    </div>
+  </div>
+</div>
+
 <div id="app">
 
   <header class="app-header">
@@ -64,47 +131,6 @@
           Aplicación web para la consulta de <b>Temporary Segregated Areas (TSA)</b>
           publicadas en NOTAMs ICARO XXI, planificación de rutas, log de combustible y
           consulta meteorológica integrada.
-        </p>
-      </div>
-
-      <div class="home-disclaimer disclaimer-warn">
-        <div class="disc-head">
-          <span class="disc-icon" aria-hidden="true">⚠</span>
-          <span class="disc-title">AVISO DE SEGURIDAD — INFORMACIÓN NO CLASIFICADA</span>
-        </div>
-        <p>
-          Esta aplicación <b>no está autorizada</b> para el tratamiento de información
-          clasificada. Bajo ningún concepto se introducirán datos catalogados como
-          <b>DIFUSIÓN LIMITADA, CONFIDENCIAL, RESERVADO</b> o categorías superiores en
-          ninguno de los campos de entrada (planes de vuelo, rutas, NOTAMs propios,
-          credenciales operativas, identificadores de aeronave, etc.).
-        </p>
-        <p>
-          Toda la información tratada debe corresponder a documentación de carácter
-          <b>público</b> (publicaciones AIP/NOTAM oficiales, datos meteorológicos
-          abiertos) o a ejercicios de instrucción sin valor operativo real.
-          La responsabilidad del cumplimiento de esta norma recae en el usuario.
-        </p>
-      </div>
-
-      <div class="home-disclaimer disclaimer-info">
-        <div class="disc-head">
-          <span class="disc-icon" aria-hidden="true">🔐</span>
-          <span class="disc-title">ACCESO A LAS HERRAMIENTAS METEOROLÓGICAS</span>
-        </div>
-        <p>
-          Para que las APIs externas integradas (METAR/TAF de AWC, capa de nubosidad
-          RainViewer, Cloud Top Height de EUMETView, GRAMET de Autorouter y datos
-          de Open-Meteo) funcionen correctamente, deberás haber <b>iniciado sesión
-          previamente con tu cuenta corporativa de acceso a Internet</b> del Ejército
-          del Aire y del Espacio.
-        </p>
-        <p>
-          De no estar autenticado en la red, las capas seguirán mostrándose pero las
-          consultas a servicios externos fallarán y verás avisos de error en cada
-          panel correspondiente. Las funciones puramente locales (cargar NOTAM,
-          mapa offline, corte transversal de TSAs, exportación PDF) <b>seguirán
-          funcionando sin acceso</b> a Internet.
         </p>
       </div>
 

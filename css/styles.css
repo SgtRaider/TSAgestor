@@ -1290,6 +1290,104 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   font-size: 11px;
 }
 
+/* ── Modal de bienvenida (overlay full-screen) ───── */
+.welcome-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(10, 31, 51, 0.96);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+}
+.welcome-modal.hidden { display: none !important; }
+body.welcome-open { overflow: hidden; }
+
+.welcome-card {
+  width: 100%;
+  max-width: 760px;
+  background: var(--ea-gris-aviador);
+  border: 1px solid var(--ea-azul-medio);
+  border-top: 4px solid var(--ea-amarillo);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 48px);
+}
+.welcome-head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  position: relative;
+}
+.welcome-head::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 50%;
+  bottom: -2px;
+  height: 2px;
+  background: var(--ea-rojo);
+}
+.welcome-head + * { border-top: 2px solid var(--ea-amarillo); }
+.welcome-logo {
+  height: 64px;
+  width: auto;
+  display: block;
+  flex-shrink: 0;
+}
+.welcome-head h2 {
+  margin: 0;
+  font-size: 22px;
+  color: #ffffff;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.welcome-sub {
+  font-size: 11px;
+  color: var(--ea-azul-palido);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+.welcome-body {
+  padding: 18px 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.welcome-footer {
+  padding: 16px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.welcome-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+.welcome-confirm input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--ea-amarillo);
+  cursor: pointer;
+}
+
 /* ── Página de Inicio ─────────────────────────────── */
 .home-hero {
   padding: 24px 28px;
