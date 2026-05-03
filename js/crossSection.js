@@ -133,7 +133,9 @@ window.TSAgestor.crossSection = (function () {
   // Recorre la ruta muestreando cada segmento y devuelve un array de
   // {min, max} de cumDistKm para CADA cruce (entrada→salida) por la TSA.
   // Si la ruta nunca entra → array vacío. Si entra y sale varias veces →
-  // varios rangos.
+  // varios rangos. Después fusiona rangos consecutivos separados por menos
+  // de MERGE_GAP_KM para eliminar artefactos donde la ruta roza la frontera
+  // del polígono y un sample queda fuera entre dos dentros.
   function routeInsideTSARanges(polygon, planCoords) {
     const ranges = [];
     let current = null;
@@ -159,7 +161,27 @@ window.TSAgestor.crossSection = (function () {
       }
     }
     if (current !== null) ranges.push(current);
-    return ranges;
+    return mergeNearbyRanges(ranges, 8);
+  }
+
+  // Fusiona rangos consecutivos cuya separación es <= mergeGapKm.
+  // Sirve para eliminar "huecos" artificiales debidos al muestreo cuando
+  // la ruta sigue una arista del polígono (un sample queda fuera por
+  // diferencias decimales). NO fusiona cruces realmente separados como
+  // los de un circuito (ida + vuelta), que están a cientos de km.
+  function mergeNearbyRanges(ranges, mergeGapKm) {
+    if (!ranges || ranges.length < 2) return ranges;
+    const out = [ranges[0]];
+    for (let i = 1; i < ranges.length; i++) {
+      const last = out[out.length - 1];
+      const next = ranges[i];
+      if (next.min - last.max <= mergeGapKm) {
+        last.max = Math.max(last.max, next.max);
+      } else {
+        out.push(next);
+      }
+    }
+    return out;
   }
 
   function pointInPoly(pt, poly) {
