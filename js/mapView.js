@@ -122,6 +122,11 @@ window.TSAgestor.mapView = (function () {
     _vectorLayerGroups.tmas         = overlays['TMAs (demo)'] || null;
     _vectorLayerGroups.ctrs         = overlays['CTRs (demo)'] || null;
     if (Object.keys(overlays).length === 0) return;
+    // Activamos por defecto las dos capas de aerovias (alta y baja cota) para
+    // que el planificador encuentre fixes intermedios sin que el usuario tenga
+    // que activar nada manualmente. Las demas overlays quedan apagadas.
+    if (overlays['Aerovías alta cota (AIP)']) overlays['Aerovías alta cota (AIP)'].addTo(map);
+    if (overlays['Aerovías baja cota (AIP)']) overlays['Aerovías baja cota (AIP)'].addTo(map);
     L.control.layers(null, overlays, { position: 'topleft', collapsed: false }).addTo(map);
   }
 
@@ -896,11 +901,26 @@ window.TSAgestor.mapView = (function () {
     return best && bestD <= maxKm ? best : null;
   }
 
+  // Devuelve si las capas de aerovias alta/baja cota estan ahora mismo
+  // anyadidas al mapa (es decir, ticks marcados en el control de capas).
+  // El planificador lo lee para saber que pool de waypoints usar.
+  function getAirwayLayerState() {
+    // Si el mapa aun no esta inicializado (el usuario no ha entrado a la
+    // pestana Mapa todavia), asumimos ambas activas como en el estado
+    // por defecto - evita que el primer plan caiga a DCT por sorpresa.
+    if (!map) return { upper: true, lower: true };
+    return {
+      upper: !!(_vectorLayerGroups.airwaysUpper && map.hasLayer(_vectorLayerGroups.airwaysUpper)),
+      lower: !!(_vectorLayerGroups.airwaysLower && map.hasLayer(_vectorLayerGroups.airwaysLower)),
+    };
+  }
+
   return {
     init, render, fitBounds, invalidateSize, fitToDefault,
     renderFlightPlan, clearFlightPlan,
     startDrawingRoute, finishDrawingRoute, cancelDrawingRoute, undoDrawingPoint,
     setWeatherMarkers, clearWeatherMarkers,
     applyOpacities,
+    getAirwayLayerState,
   };
 })();

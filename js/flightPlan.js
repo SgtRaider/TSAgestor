@@ -21,9 +21,17 @@ window.TSAgestor.flightPlan = (function () {
     return pt[0].toFixed(4) + ',' + pt[1].toFixed(4);
   }
 
-  let _graph = null;
-  function graph() {
-    if (_graph) return _graph;
+  // Cache de grafo por filtro: la clave es 'U', 'L', 'UL' o '' (sin filtros).
+  // Los conectores DCT virtuales aeropuerto-fix SIEMPRE se incluyen — sin
+  // ellos, los aeropuertos no entran en la red y todas las rutas degeneran
+  // a DCT directo, anulando el efecto de seleccionar aerovias.
+  const _graphCache = new Map();
+
+  function graph(filter) {
+    filter = filter || { upper: true, lower: true };
+    const key = (filter.upper ? 'U' : '') + (filter.lower ? 'L' : '');
+    if (_graphCache.has(key)) return _graphCache.get(key);
+
     const aw = awMod();
     const nodes = new Map();
     const wpByKey = new Map();
@@ -31,15 +39,15 @@ window.TSAgestor.flightPlan = (function () {
       wpByKey.set(coordKey(pt), name);
     }
     function ensure(pt) {
-      const key = coordKey(pt);
-      if (!nodes.has(key)) {
-        nodes.set(key, {
-          key, lat: pt[0], lon: pt[1],
-          name: wpByKey.get(key) || null,
+      const k = coordKey(pt);
+      if (!nodes.has(k)) {
+        nodes.set(k, {
+          key: k, lat: pt[0], lon: pt[1],
+          name: wpByKey.get(k) || null,
           neighbors: [],
         });
       }
-      return nodes.get(key);
+      return nodes.get(k);
     }
     function addAirway(rt, type) {
       for (let i = 0; i < rt.points.length - 1; i++) {
@@ -50,10 +58,27 @@ window.TSAgestor.flightPlan = (function () {
         b.neighbors.push({ to: a.key, dist: d, airway: rt.name, type });
       }
     }
-    for (const r of (aw.upper || [])) addAirway(r, 'upper');
-    for (const r of (aw.lower || [])) addAirway(r, 'lower');
-    _graph = { nodes, wpByKey };
-    return _graph;
+
+    // Upper: solo si el overlay esta activado.
+    if (filter.upper) {
+      for (const r of (aw.upper || [])) {
+        if (r.name === 'DCT') continue;          // los DCT viven en lower
+        addAirway(r, 'upper');
+      }
+    }
+    // Lower y conectores DCT siempre van: sin DCTs, los aeropuertos no
+    // entran en el grafo. Los segmentos lower no-DCT solo si esta activado.
+    for (const r of (aw.lower || [])) {
+      if (r.name === 'DCT') {
+        addAirway(r, 'lower');                   // siempre
+      } else if (filter.lower) {
+        addAirway(r, 'lower');
+      }
+    }
+
+    const g = { nodes, wpByKey };
+    _graphCache.set(key, g);
+    return g;
   }
 
   function listWaypoints() {
@@ -185,7 +210,7 @@ window.TSAgestor.flightPlan = (function () {
   // Concatena rutas Dijkstra entre cada par consecutivo de puntos
   // (origen, via1, via2, ..., destino). Cada leg trae sus propios fixes
   // intermedios via aerovias.
-  function buildAirwayRouteVia(origin, viaList, destination, fl) {
+  function buildAirwayRouteVia(origin, viaList, destination, fl, filter) {
     const points = [origin].concat(viaList).concat([destination]);
     const allSegments = [];
     let totalDistKm = 0;
@@ -195,7 +220,7 @@ window.TSAgestor.flightPlan = (function () {
       const b = points[i + 1];
       // Si los dos extremos son el mismo punto, lo saltamos.
       if (a.lat === b.lat && a.lon === b.lon) continue;
-      const leg = findRoute(a, b, fl);
+      const leg = findRoute(a, b, fl, filter);
       if (leg && leg.segments && leg.segments.length) {
         for (const seg of leg.segments) allSegments.push(seg);
         totalDistKm += leg.totalDistKm || 0;
@@ -233,8 +258,9 @@ window.TSAgestor.flightPlan = (function () {
   }
 
   // Dijkstra. Penaliza usar la cota equivocada para el FL elegido.
-  function findRoute(origin, destination, flightLevel) {
-    const g = graph();
+  // filter: { upper: bool, lower: bool } controla que aerovias entran en el grafo.
+  function findRoute(origin, destination, flightLevel, filter) {
+    const g = graph(filter);
     const oKey = coordKey([origin.lat, origin.lon]);
     const dKey = coordKey([destination.lat, destination.lon]);
     const direct = directRouteOf(origin, destination);
@@ -617,10 +643,19 @@ window.TSAgestor.flightPlan = (function () {
     const speedKt = Number(opts.speedKt) || 450;
     const depUTC = opts.departureUTC instanceof Date ? opts.departureUTC : new Date();
 
-    // followAirways=true (defecto): usa Dijkstra sobre el grafo AIP. Mete
-    // fixes intermedios entre origen, vias y destino.
-    // followAirways=false: ruta puramente DCT entre los puntos del usuario.
-    const followAirways = opts.followAirways !== false;
+    // El filtro de aerovias depende de los ticks "alta cota" / "baja cota"
+    // en el control de capas del mapa. Si ambos estan apagados, no hay
+    // waypoints AIP en el grafo y la ruta cae a DCT directo entre los
+    // puntos del usuario. El llamador puede forzar un filtro especifico
+    // pasando opts.airwayFilter.
+    let filter = opts.airwayFilter;
+    if (!filter) {
+      const mv = window.TSAgestor && window.TSAgestor.mapView;
+      filter = (mv && mv.getAirwayLayerState)
+        ? mv.getAirwayLayerState()
+        : { upper: true, lower: true };
+    }
+    const useAirways = !!(filter.upper || filter.lower);
 
     let route;
     const rawVia = Array.isArray(opts.via) ? opts.via : [];
@@ -642,17 +677,17 @@ window.TSAgestor.flightPlan = (function () {
       return { error: 'Origen y destino son el mismo punto. Añade waypoints en "Vía" o dibuja la ruta para definir un circuito.' };
     }
 
-    if (!followAirways) {
-      // Modo manual: DCT origen -> vias -> destino, sin tocar la red AIP.
+    if (!useAirways) {
+      // Sin overlays activos: DCT puro origen -> vias -> destino.
       route = buildManualRoute(origin, viaList, destination);
     } else if (!viaList.length) {
-      // Modo automatico clasico: Dijkstra origen -> destino.
-      route = findRoute(origin, destination, fl);
+      // Con overlays activos y sin via: Dijkstra origen -> destino.
+      route = findRoute(origin, destination, fl, filter);
     } else {
-      // Modo mixto: Dijkstra entre cada par consecutivo (origen, via1, via2, ..., destino),
-      // concatenando los segmentos. Permite forzar puntos de paso obligatorios mientras
-      // el resto de la ruta sigue aerovias reales.
-      route = buildAirwayRouteVia(origin, viaList, destination, fl);
+      // Con overlays activos y via forzada: Dijkstra entre cada par
+      // consecutivo. Permite forzar puntos de paso obligatorios mientras
+      // el resto de la ruta sigue aerovias.
+      route = buildAirwayRouteVia(origin, viaList, destination, fl, filter);
     }
 
     // Cada waypoint adopta el nombre de la TSA que lo contiene (si la hay) y
