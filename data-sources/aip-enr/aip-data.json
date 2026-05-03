@@ -1,0 +1,5476 @@
+{
+ "source": "AIP Espana - ENR 3.2 + ENR 4.1 (parser propio TSAgestor)",
+ "airac": "WEF 16-APR-26",
+ "generated_from": [
+  "ENR_3_2.pdf",
+  "ENR_4_1.pdf"
+ ],
+ "waypoints": {
+  "VNV": {
+   "lat": 41.21056,
+   "lon": 1.70583,
+   "type": "NAVAID",
+   "name": "VILLANUEVA"
+  },
+  "NEPAL": {
+   "lat": 40.69278,
+   "lon": 1.92472,
+   "type": "RNAV",
+   "name": "NEPAL"
+  },
+  "ESPOR": {
+   "lat": 40.28306,
+   "lon": 2.09556,
+   "type": "RNAV",
+   "name": "ESPOR"
+  },
+  "ADX": {
+   "lat": 39.54944,
+   "lon": 2.39583,
+   "type": "NAVAID",
+   "name": "ANDRAITX"
+  },
+  "POPUL": {
+   "lat": 43.94861,
+   "lon": -2.84028,
+   "type": "RNAV",
+   "name": "POPUL"
+  },
+  "BLV": {
+   "lat": 43.30417,
+   "lon": -2.92528,
+   "type": "NAVAID",
+   "name": "BILBAO"
+  },
+  "AMTOS": {
+   "lat": 43.0,
+   "lon": -3.22111,
+   "type": "RNAV",
+   "name": "AMTOS"
+  },
+  "NEA": {
+   "lat": 42.0275,
+   "lon": -4.10917,
+   "type": "NAVAID",
+   "name": "VOR/DME"
+  },
+  "ZANKO": {
+   "lat": 41.28806,
+   "lon": -4.96472,
+   "type": "RNAV",
+   "name": "ZANKO"
+  },
+  "RIDAV": {
+   "lat": 40.53528,
+   "lon": -5.80833,
+   "type": "RNAV",
+   "name": "RIDAV"
+  },
+  "ADINO": {
+   "lat": 40.01778,
+   "lon": -6.37361,
+   "type": "RNAV",
+   "name": "ADINO"
+  },
+  "RAKOD": {
+   "lat": 39.78083,
+   "lon": -6.62861,
+   "type": "RNAV",
+   "name": "RAKOD"
+  },
+  "ELVAR": {
+   "lat": 39.21944,
+   "lon": -7.22333,
+   "type": "RNAV",
+   "name": "ELVAR"
+  },
+  "SARGO": {
+   "lat": 40.5,
+   "lon": 3.99194,
+   "type": "RNAV",
+   "name": "SARGO"
+  },
+  "TOSNU": {
+   "lat": 41.01528,
+   "lon": 3.80694,
+   "type": "RNAV",
+   "name": "TOSNU"
+  },
+  "VERSO": {
+   "lat": 41.15306,
+   "lon": 3.75694,
+   "type": "RNAV",
+   "name": "VERSO"
+  },
+  "AGENA": {
+   "lat": 41.54472,
+   "lon": 3.48861,
+   "type": "RNAV",
+   "name": "AGENA"
+  },
+  "DALIN": {
+   "lat": 41.73389,
+   "lon": 3.35778,
+   "type": "RNAV",
+   "name": "DALIN"
+  },
+  "BGR": {
+   "lat": 41.94778,
+   "lon": 3.20889,
+   "type": "NAVAID",
+   "name": "BAGUR"
+  },
+  "KORIS": {
+   "lat": 35.83333,
+   "lon": -6.23917,
+   "type": "RNAV",
+   "name": "KORIS"
+  },
+  "XULIM": {
+   "lat": 35.93361,
+   "lon": -6.17444,
+   "type": "RNAV",
+   "name": "XULIM"
+  },
+  "VJF": {
+   "lat": 36.23944,
+   "lon": -5.97556,
+   "type": "NAVAID",
+   "name": "VEJER DE LA FRONTERA"
+  },
+  "MAR": {
+   "lat": 37.05528,
+   "lon": -4.94,
+   "type": "NAVAID",
+   "name": "MARTÍN"
+  },
+  "BLN": {
+   "lat": 38.1525,
+   "lon": -3.62472,
+   "type": "NAVAID",
+   "name": "BAILÉN"
+  },
+  "ANZAN": {
+   "lat": 39.0,
+   "lon": -3.22139,
+   "type": "RNAV",
+   "name": "ANZAN"
+  },
+  "NASOS": {
+   "lat": 39.39917,
+   "lon": -3.02778,
+   "type": "RNAV",
+   "name": "NASOS"
+  },
+  "INTAX": {
+   "lat": 39.59,
+   "lon": -2.93389,
+   "type": "RNAV",
+   "name": "INTAX"
+  },
+  "CJN": {
+   "lat": 40.37194,
+   "lon": -2.54472,
+   "type": "NAVAID",
+   "name": "CASTEJÓN"
+  },
+  "BRITO": {
+   "lat": 41.07917,
+   "lon": -2.07806,
+   "type": "RNAV",
+   "name": "BRITO"
+  },
+  "YAKXU": {
+   "lat": 42.09861,
+   "lon": -1.21278,
+   "type": "RNAV",
+   "name": "YAKXU"
+  },
+  "ALT": {
+   "lat": 38.26833,
+   "lon": -0.57,
+   "type": "NAVAID",
+   "name": "ALTET"
+  },
+  "VLC": {
+   "lat": 39.48556,
+   "lon": -0.48306,
+   "type": "NAVAID",
+   "name": "VALENCIA"
+  },
+  "CASIM": {
+   "lat": 40.23083,
+   "lon": 0.14306,
+   "type": "RNAV",
+   "name": "CASIM"
+  },
+  "SOSAV": {
+   "lat": 39.27361,
+   "lon": -1.49556,
+   "type": "RNAV",
+   "name": "SOSAV"
+  },
+  "MOPIR": {
+   "lat": 39.4125,
+   "lon": -0.83778,
+   "type": "RNAV",
+   "name": "MOPIR"
+  },
+  "URIPO": {
+   "lat": 38.92417,
+   "lon": 0.48333,
+   "type": "RNAV",
+   "name": "URIPO"
+  },
+  "ELKEM": {
+   "lat": 38.14889,
+   "lon": 1.77139,
+   "type": "RNAV",
+   "name": "ELKEM"
+  },
+  "SADAF": {
+   "lat": 37.80361,
+   "lon": 2.32889,
+   "type": "RNAV",
+   "name": "SADAF"
+  },
+  "VIBAS": {
+   "lat": 37.39222,
+   "lon": -3.63083,
+   "type": "RNAV",
+   "name": "VIBAS"
+  },
+  "PEPAS": {
+   "lat": 37.15972,
+   "lon": -3.57083,
+   "type": "RNAV",
+   "name": "PEPAS"
+  },
+  "OBAKA": {
+   "lat": 36.64083,
+   "lon": -3.43833,
+   "type": "RNAV",
+   "name": "OBAKA"
+  },
+  "LUVIV": {
+   "lat": 36.41389,
+   "lon": -3.38111,
+   "type": "RNAV",
+   "name": "LUVIV"
+  },
+  "BERUM": {
+   "lat": 35.83333,
+   "lon": -3.23583,
+   "type": "RNAV",
+   "name": "BERUM"
+  },
+  "TAVSI": {
+   "lat": 35.92722,
+   "lon": -6.48139,
+   "type": "RNAV",
+   "name": "TAVSI"
+  },
+  "RUNAX": {
+   "lat": 35.83333,
+   "lon": -6.63222,
+   "type": "RNAV",
+   "name": "RUNAX"
+  },
+  "SEROX": {
+   "lat": 41.34667,
+   "lon": 0.21861,
+   "type": "RNAV",
+   "name": "SEROX"
+  },
+  "OSVAK": {
+   "lat": 41.4875,
+   "lon": 0.51111,
+   "type": "RNAV",
+   "name": "OSVAK"
+  },
+  "LRD": {
+   "lat": 41.55306,
+   "lon": 0.64806,
+   "type": "NAVAID",
+   "name": "LÉRIDA"
+  },
+  "REBUL": {
+   "lat": 41.69778,
+   "lon": 1.11361,
+   "type": "RNAV",
+   "name": "REBUL"
+  },
+  "LATRO": {
+   "lat": 41.77167,
+   "lon": 1.61833,
+   "type": "RNAV",
+   "name": "LATRO"
+  },
+  "MAMUK": {
+   "lat": 41.83667,
+   "lon": 2.07222,
+   "type": "RNAV",
+   "name": "MAMUK"
+  },
+  "GIR": {
+   "lat": 41.93111,
+   "lon": 2.77194,
+   "type": "NAVAID",
+   "name": "GERONA"
+  },
+  "DIBER": {
+   "lat": 42.07972,
+   "lon": 4.415,
+   "type": "RNAV",
+   "name": "DIBER"
+  },
+  "MGA": {
+   "lat": 36.81444,
+   "lon": -4.36944,
+   "type": "NAVAID",
+   "name": "MÁLAGA"
+  },
+  "NESDA": {
+   "lat": 36.82139,
+   "lon": -3.74167,
+   "type": "RNAV",
+   "name": "NESDA"
+  },
+  "KUNEN": {
+   "lat": 36.83167,
+   "lon": -2.84083,
+   "type": "RNAV",
+   "name": "KUNEN"
+  },
+  "AMR": {
+   "lat": 36.83306,
+   "lon": -2.25944,
+   "type": "NAVAID",
+   "name": "ALMERÍA"
+  },
+  "POLCI": {
+   "lat": 37.06111,
+   "lon": -1.73944,
+   "type": "RNAV",
+   "name": "POLCI"
+  },
+  "DINCO": {
+   "lat": 37.25639,
+   "lon": -1.28778,
+   "type": "RNAV",
+   "name": "DINCO"
+  },
+  "DIMER": {
+   "lat": 37.30611,
+   "lon": -1.16861,
+   "type": "RNAV",
+   "name": "DIMER"
+  },
+  "PALOS": {
+   "lat": 37.57472,
+   "lon": -0.53667,
+   "type": "RNAV",
+   "name": "PALOS"
+  },
+  "OSVAN": {
+   "lat": 38.11667,
+   "lon": -0.56333,
+   "type": "RNAV",
+   "name": "OSVAN"
+  },
+  "LUNIK": {
+   "lat": 40.43972,
+   "lon": 3.3925,
+   "type": "RNAV",
+   "name": "LUNIK"
+  },
+  "POS": {
+   "lat": 39.9275,
+   "lon": 3.11444,
+   "type": "NAVAID",
+   "name": "POLLENSA"
+  },
+  "LULAK": {
+   "lat": 39.52333,
+   "lon": 2.82167,
+   "type": "RNAV",
+   "name": "LULAK"
+  },
+  "MJV": {
+   "lat": 39.43528,
+   "lon": 2.75833,
+   "type": "NAVAID",
+   "name": "MALLORCA"
+  },
+  "TUKRO": {
+   "lat": 39.24611,
+   "lon": 2.61056,
+   "type": "RNAV",
+   "name": "TUKRO"
+  },
+  "MEBUT": {
+   "lat": 38.75083,
+   "lon": 2.22806,
+   "type": "RNAV",
+   "name": "MEBUT"
+  },
+  "NINES": {
+   "lat": 38.66361,
+   "lon": 2.16139,
+   "type": "RNAV",
+   "name": "NINES"
+  },
+  "SURIB": {
+   "lat": 38.34222,
+   "lon": 1.91694,
+   "type": "RNAV",
+   "name": "SURIB"
+  },
+  "PIDUD": {
+   "lat": 37.75333,
+   "lon": 1.47611,
+   "type": "RNAV",
+   "name": "PIDUD"
+  },
+  "LABRO": {
+   "lat": 37.27472,
+   "lon": 1.12389,
+   "type": "RNAV",
+   "name": "LABRO"
+  },
+  "RBO": {
+   "lat": 40.85389,
+   "lon": -3.24667,
+   "type": "NAVAID",
+   "name": "ROBLEDILLO"
+  },
+  "VILLA": {
+   "lat": 40.23306,
+   "lon": -2.41056,
+   "type": "RNAV",
+   "name": "VILLA"
+  },
+  "NANDO": {
+   "lat": 39.98889,
+   "lon": -2.17444,
+   "type": "RNAV",
+   "name": "NANDO"
+  },
+  "MOTIL": {
+   "lat": 39.53889,
+   "lon": -1.74528,
+   "type": "RNAV",
+   "name": "MOTIL"
+  },
+  "ASTRO": {
+   "lat": 39.02444,
+   "lon": -1.26306,
+   "type": "RNAV",
+   "name": "ASTRO"
+  },
+  "NARGO": {
+   "lat": 38.73833,
+   "lon": -0.99861,
+   "type": "RNAV",
+   "name": "NARGO"
+  },
+  "MAGAL": {
+   "lat": 38.07333,
+   "lon": -0.23083,
+   "type": "RNAV",
+   "name": "MAGAL"
+  },
+  "LUKIL": {
+   "lat": 38.00028,
+   "lon": -0.10444,
+   "type": "RNAV",
+   "name": "LUKIL"
+  },
+  "RAFOL": {
+   "lat": 37.94944,
+   "lon": -0.01694,
+   "type": "RNAV",
+   "name": "RAFOL"
+  },
+  "XENVO": {
+   "lat": 37.47111,
+   "lon": 0.79611,
+   "type": "RNAV",
+   "name": "XENVO"
+  },
+  "ADORO": {
+   "lat": 41.48306,
+   "lon": -6.28,
+   "type": "RNAV",
+   "name": "ADORO"
+  },
+  "ZMR": {
+   "lat": 41.53028,
+   "lon": -5.63972,
+   "type": "NAVAID",
+   "name": "ZAMORA"
+  },
+  "AVILA": {
+   "lat": 40.62472,
+   "lon": -4.55,
+   "type": "RNAV",
+   "name": "AVILA"
+  },
+  "NVS": {
+   "lat": 40.36861,
+   "lon": -4.24944,
+   "type": "NAVAID",
+   "name": "NAVAS DEL REY"
+  },
+  "VTB": {
+   "lat": 39.78083,
+   "lon": -3.46389,
+   "type": "NAVAID",
+   "name": "VILLATOBAS"
+  },
+  "DGO": {
+   "lat": 42.45333,
+   "lon": -2.88083,
+   "type": "NAVAID",
+   "name": "DOMINGO"
+  },
+  "CEGAM": {
+   "lat": 42.98361,
+   "lon": -2.23639,
+   "type": "RNAV",
+   "name": "CEGAM"
+  },
+  "BAGAS": {
+   "lat": 43.09833,
+   "lon": -2.09472,
+   "type": "RNAV",
+   "name": "BAGAS"
+  },
+  "SSN": {
+   "lat": 43.31111,
+   "lon": -1.83028,
+   "type": "NAVAID",
+   "name": "SAN SEBASTIÁN"
+  },
+  "LUSEM": {
+   "lat": 43.37472,
+   "lon": -1.78056,
+   "type": "RNAV",
+   "name": "LUSEM"
+  },
+  "TLD": {
+   "lat": 39.96944,
+   "lon": -4.3375,
+   "type": "NAVAID",
+   "name": "TOLEDO"
+  },
+  "BAN": {
+   "lat": 41.32361,
+   "lon": -2.62972,
+   "type": "NAVAID",
+   "name": "BARAHONA"
+  },
+  "PORTA": {
+   "lat": 39.33,
+   "lon": -7.3025,
+   "type": "RNAV",
+   "name": "PORTA"
+  },
+  "CCS": {
+   "lat": 39.52444,
+   "lon": -6.43472,
+   "type": "NAVAID",
+   "name": "CÁCERES"
+  },
+  "ROLDO": {
+   "lat": 39.87583,
+   "lon": -5.54472,
+   "type": "RNAV",
+   "name": "ROLDO"
+  },
+  "LUPES": {
+   "lat": 40.23333,
+   "lon": -4.61111,
+   "type": "RNAV",
+   "name": "LUPES"
+  },
+  "INKAL": {
+   "lat": 36.61222,
+   "lon": -3.86667,
+   "type": "RNAV",
+   "name": "INKAL"
+  },
+  "GONZA": {
+   "lat": 36.20472,
+   "lon": -2.87694,
+   "type": "RNAV",
+   "name": "GONZA"
+  },
+  "LIGUM": {
+   "lat": 35.83333,
+   "lon": -2.0,
+   "type": "RNAV",
+   "name": "LIGUM"
+  },
+  "SOLNA": {
+   "lat": 27.66667,
+   "lon": -12.59528,
+   "type": "RNAV",
+   "name": "SOLNA"
+  },
+  "LAY": {
+   "lat": 27.14278,
+   "lon": -13.21806,
+   "type": "NAVAID",
+   "name": "LA AYOUNE"
+  },
+  "ARENA": {
+   "lat": 25.72806,
+   "lon": -14.35861,
+   "type": "RNAV",
+   "name": "ARENA"
+  },
+  "CABEL": {
+   "lat": 25.0,
+   "lon": -14.94111,
+   "type": "RNAV",
+   "name": "CABEL"
+  },
+  "DKH": {
+   "lat": 23.74472,
+   "lon": -15.91972,
+   "type": "NAVAID",
+   "name": "DAKHLA"
+  },
+  "LOLOS": {
+   "lat": 21.85,
+   "lon": -16.66667,
+   "type": "RNAV",
+   "name": "LOLOS"
+  },
+  "MAURI": {
+   "lat": 21.33333,
+   "lon": -16.86667,
+   "type": "RNAV",
+   "name": "MAURI"
+  },
+  "LPA": {
+   "lat": 42.46056,
+   "lon": -2.32694,
+   "type": "NAVAID",
+   "name": "LOGROÑO"
+  },
+  "VEGEL": {
+   "lat": 42.59278,
+   "lon": -2.02583,
+   "type": "RNAV",
+   "name": "VEGEL"
+  },
+  "PPN": {
+   "lat": 42.73389,
+   "lon": -1.70194,
+   "type": "NAVAID",
+   "name": "PAMPLONA"
+  },
+  "PIPOR": {
+   "lat": 43.00917,
+   "lon": -1.10806,
+   "type": "RNAV",
+   "name": "PIPOR"
+  },
+  "LAPIT": {
+   "lat": 40.89528,
+   "lon": 4.46139,
+   "type": "RNAV",
+   "name": "LAPIT"
+  },
+  "LOTEE": {
+   "lat": 44.65889,
+   "lon": -5.83667,
+   "type": "RNAV",
+   "name": "LOTEE"
+  },
+  "MAVOS": {
+   "lat": 44.05444,
+   "lon": -5.93472,
+   "type": "RNAV",
+   "name": "MAVOS"
+  },
+  "VES": {
+   "lat": 43.55694,
+   "lon": -6.00722,
+   "type": "NAVAID",
+   "name": "ASTURIAS"
+  },
+  "XONDA": {
+   "lat": 43.06194,
+   "lon": -5.91222,
+   "type": "RNAV",
+   "name": "XONDA"
+  },
+  "GOTOX": {
+   "lat": 42.86306,
+   "lon": -5.87861,
+   "type": "RNAV",
+   "name": "GOTOX"
+  },
+  "ROVAK": {
+   "lat": 42.74194,
+   "lon": -5.85639,
+   "type": "RNAV",
+   "name": "ROVAK"
+  },
+  "OMESI": {
+   "lat": 42.27639,
+   "lon": -5.77222,
+   "type": "RNAV",
+   "name": "OMESI"
+  },
+  "VETAN": {
+   "lat": 41.96194,
+   "lon": -5.71583,
+   "type": "RNAV",
+   "name": "VETAN"
+  },
+  "MELON": {
+   "lat": 39.76667,
+   "lon": -5.31861,
+   "type": "RNAV",
+   "name": "MELON"
+  },
+  "PARKA": {
+   "lat": 39.0,
+   "lon": -5.15,
+   "type": "RNAV",
+   "name": "PARKA"
+  },
+  "HIJ": {
+   "lat": 38.50806,
+   "lon": -5.09972,
+   "type": "NAVAID",
+   "name": "HINOJOSA DEL DUQUE"
+  },
+  "OXACA": {
+   "lat": 37.95,
+   "lon": -6.0,
+   "type": "RNAV",
+   "name": "OXACA"
+  },
+  "PIMUR": {
+   "lat": 37.29139,
+   "lon": -6.51833,
+   "type": "RNAV",
+   "name": "PIMUR"
+  },
+  "COMPI": {
+   "lat": 39.35083,
+   "lon": -0.00778,
+   "type": "RNAV",
+   "name": "COMPI"
+  },
+  "NINOT": {
+   "lat": 39.20889,
+   "lon": 0.48333,
+   "type": "RNAV",
+   "name": "NINOT"
+  },
+  "XOSTA": {
+   "lat": 39.13306,
+   "lon": 0.74167,
+   "type": "RNAV",
+   "name": "XOSTA"
+  },
+  "IZA": {
+   "lat": 38.91556,
+   "lon": 1.47028,
+   "type": "NAVAID",
+   "name": "IBIZA"
+  },
+  "OLMIR": {
+   "lat": 38.53111,
+   "lon": 2.51806,
+   "type": "RNAV",
+   "name": "OLMIR"
+  },
+  "XARON": {
+   "lat": 38.405,
+   "lon": 2.85389,
+   "type": "RNAV",
+   "name": "XARON"
+  },
+  "GENIO": {
+   "lat": 38.29361,
+   "lon": 3.14778,
+   "type": "RNAV",
+   "name": "GENIO"
+  },
+  "LUXUR": {
+   "lat": 38.21333,
+   "lon": 3.42194,
+   "type": "RNAV",
+   "name": "LUXUR"
+  },
+  "ULSES": {
+   "lat": 39.86917,
+   "lon": -2.49556,
+   "type": "RNAV",
+   "name": "ULSES"
+  },
+  "ANANA": {
+   "lat": 39.0,
+   "lon": -2.41278,
+   "type": "RNAV",
+   "name": "ANANA"
+  },
+  "YES": {
+   "lat": 38.36083,
+   "lon": -2.35278,
+   "type": "NAVAID",
+   "name": "YESTE"
+  },
+  "TOSGA": {
+   "lat": 37.62556,
+   "lon": -2.30722,
+   "type": "RNAV",
+   "name": "TOSGA"
+  },
+  "RISPO": {
+   "lat": 37.29972,
+   "lon": -2.29,
+   "type": "RNAV",
+   "name": "RISPO"
+  },
+  "GALTO": {
+   "lat": 35.83333,
+   "lon": -5.14361,
+   "type": "RNAV",
+   "name": "GALTO"
+  },
+  "EXEMU": {
+   "lat": 41.27222,
+   "lon": -1.38361,
+   "type": "RNAV",
+   "name": "EXEMU"
+  },
+  "CMA": {
+   "lat": 40.86722,
+   "lon": -1.29806,
+   "type": "NAVAID",
+   "name": "CALAMOCHA"
+  },
+  "DISVU": {
+   "lat": 40.74028,
+   "lon": -1.26333,
+   "type": "RNAV",
+   "name": "DISVU"
+  },
+  "MANDY": {
+   "lat": 39.91167,
+   "lon": -1.04056,
+   "type": "RNAV",
+   "name": "MANDY"
+  },
+  "CLS": {
+   "lat": 39.70722,
+   "lon": -0.98639,
+   "type": "NAVAID",
+   "name": "CALLES"
+  },
+  "RETBA": {
+   "lat": 39.44361,
+   "lon": -0.90889,
+   "type": "RNAV",
+   "name": "RETBA"
+  },
+  "SERRA": {
+   "lat": 39.26611,
+   "lon": -0.85694,
+   "type": "RNAV",
+   "name": "SERRA"
+  },
+  "UMURE": {
+   "lat": 41.14972,
+   "lon": 1.17111,
+   "type": "RNAV",
+   "name": "UMURE"
+  },
+  "SENIA": {
+   "lat": 40.86889,
+   "lon": 0.73889,
+   "type": "RNAV",
+   "name": "SENIA"
+  },
+  "AMPOL": {
+   "lat": 40.80361,
+   "lon": 0.63917,
+   "type": "RNAV",
+   "name": "AMPOL"
+  },
+  "MATEX": {
+   "lat": 40.55667,
+   "lon": 0.26556,
+   "type": "RNAV",
+   "name": "MATEX"
+  },
+  "SAURA": {
+   "lat": 40.25611,
+   "lon": -0.18333,
+   "type": "RNAV",
+   "name": "SAURA"
+  },
+  "CALCE": {
+   "lat": 43.36278,
+   "lon": -3.31667,
+   "type": "RNAV",
+   "name": "CALCE"
+  },
+  "SNR": {
+   "lat": 43.44972,
+   "lon": -3.9025,
+   "type": "NAVAID",
+   "name": "SANTANDER"
+  },
+  "OBETO": {
+   "lat": 43.47639,
+   "lon": -4.33333,
+   "type": "RNAV",
+   "name": "OBETO"
+  },
+  "RONSI": {
+   "lat": 43.48444,
+   "lon": -4.50361,
+   "type": "RNAV",
+   "name": "RONSI"
+  },
+  "LASKU": {
+   "lat": 43.50417,
+   "lon": -4.87333,
+   "type": "RNAV",
+   "name": "LASKU"
+  },
+  "AMAKA": {
+   "lat": 43.52889,
+   "lon": -5.32083,
+   "type": "RNAV",
+   "name": "AMAKA"
+  },
+  "MASIP": {
+   "lat": 43.39222,
+   "lon": -6.65556,
+   "type": "RNAV",
+   "name": "MASIP"
+  },
+  "ROXER": {
+   "lat": 43.21306,
+   "lon": -7.3575,
+   "type": "RNAV",
+   "name": "ROXER"
+  },
+  "STG": {
+   "lat": 42.92694,
+   "lon": -8.42528,
+   "type": "NAVAID",
+   "name": "SANTIAGO"
+  },
+  "RIVRO": {
+   "lat": 40.62278,
+   "lon": -6.72278,
+   "type": "RNAV",
+   "name": "RIVRO"
+  },
+  "BARDI": {
+   "lat": 40.58361,
+   "lon": -6.3025,
+   "type": "RNAV",
+   "name": "BARDI"
+  },
+  "DIPOL": {
+   "lat": 40.41639,
+   "lon": -4.67639,
+   "type": "RNAV",
+   "name": "DIPOL"
+  },
+  "BAZAS": {
+   "lat": 37.73444,
+   "lon": -3.18528,
+   "type": "RNAV",
+   "name": "BAZAS"
+  },
+  "ARPEX": {
+   "lat": 37.57972,
+   "lon": -3.02417,
+   "type": "RNAV",
+   "name": "ARPEX"
+  },
+  "ROLAS": {
+   "lat": 37.41556,
+   "lon": -2.85444,
+   "type": "RNAV",
+   "name": "ROLAS"
+  },
+  "AGIDO": {
+   "lat": 37.19583,
+   "lon": -2.62694,
+   "type": "RNAV",
+   "name": "AGIDO"
+  },
+  "GATAS": {
+   "lat": 36.69333,
+   "lon": -1.88861,
+   "type": "RNAV",
+   "name": "GATAS"
+  },
+  "TARIK": {
+   "lat": 36.405,
+   "lon": -1.13778,
+   "type": "RNAV",
+   "name": "TARIK"
+  },
+  "BUGIX": {
+   "lat": 42.35806,
+   "lon": -3.63528,
+   "type": "RNAV",
+   "name": "BUGIX"
+  },
+  "AMGAR": {
+   "lat": 42.555,
+   "lon": -3.25333,
+   "type": "RNAV",
+   "name": "AMGAR"
+  },
+  "VRA": {
+   "lat": 42.73194,
+   "lon": -2.86556,
+   "type": "NAVAID",
+   "name": "VITORIA"
+  },
+  "KUDEX": {
+   "lat": 42.73444,
+   "lon": -2.19306,
+   "type": "RNAV",
+   "name": "KUDEX"
+  },
+  "GOMSO": {
+   "lat": 42.995,
+   "lon": -1.5,
+   "type": "RNAV",
+   "name": "GOMSO"
+  },
+  "BEGUY": {
+   "lat": 43.05833,
+   "lon": -1.45083,
+   "type": "RNAV",
+   "name": "BEGUY"
+  },
+  "DONOS": {
+   "lat": 43.28389,
+   "lon": -1.49139,
+   "type": "RNAV",
+   "name": "DONOS"
+  },
+  "ESAMI": {
+   "lat": 35.83333,
+   "lon": -2.68639,
+   "type": "RNAV",
+   "name": "ESAMI"
+  },
+  "PIMOS": {
+   "lat": 36.15028,
+   "lon": -4.89333,
+   "type": "RNAV",
+   "name": "PIMOS"
+  },
+  "RIXUR": {
+   "lat": 37.10889,
+   "lon": -3.63639,
+   "type": "RNAV",
+   "name": "RIXUR"
+  },
+  "KOSEL": {
+   "lat": 37.75472,
+   "lon": -2.79361,
+   "type": "RNAV",
+   "name": "KOSEL"
+  },
+  "BUDIT": {
+   "lat": 37.9725,
+   "lon": -2.50444,
+   "type": "RNAV",
+   "name": "BUDIT"
+  },
+  "ETURA": {
+   "lat": 38.20806,
+   "lon": -2.18861,
+   "type": "RNAV",
+   "name": "ETURA"
+  },
+  "TOSTO": {
+   "lat": 38.36417,
+   "lon": -1.93611,
+   "type": "RNAV",
+   "name": "TOSTO"
+  },
+  "OLPOS": {
+   "lat": 38.72694,
+   "lon": -1.34222,
+   "type": "RNAV",
+   "name": "OLPOS"
+  },
+  "BEGOX": {
+   "lat": 39.06917,
+   "lon": -0.77194,
+   "type": "RNAV",
+   "name": "BEGOX"
+  },
+  "LASPO": {
+   "lat": 39.2825,
+   "lon": -0.54444,
+   "type": "RNAV",
+   "name": "LASPO"
+  },
+  "SOPET": {
+   "lat": 39.83389,
+   "lon": -0.00472,
+   "type": "RNAV",
+   "name": "SOPET"
+  },
+  "ASDIR": {
+   "lat": 40.31528,
+   "lon": 0.35222,
+   "type": "RNAV",
+   "name": "ASDIR"
+  },
+  "MUREN": {
+   "lat": 41.0575,
+   "lon": 4.66667,
+   "type": "RNAV",
+   "name": "MUREN"
+  },
+  "CHELY": {
+   "lat": 41.075,
+   "lon": 4.505,
+   "type": "RNAV",
+   "name": "CHELY"
+  },
+  "SULID": {
+   "lat": 41.18444,
+   "lon": 3.44139,
+   "type": "RNAV",
+   "name": "SULID"
+  },
+  "SADEM": {
+   "lat": 41.21028,
+   "lon": 3.17389,
+   "type": "RNAV",
+   "name": "SADEM"
+  },
+  "BCN": {
+   "lat": 41.30722,
+   "lon": 2.10778,
+   "type": "NAVAID",
+   "name": "BARCELONA"
+  },
+  "CAVES": {
+   "lat": 41.48333,
+   "lon": 1.66361,
+   "type": "RNAV",
+   "name": "CAVES"
+  },
+  "VIBOK": {
+   "lat": 41.54694,
+   "lon": 1.50194,
+   "type": "RNAV",
+   "name": "VIBOK"
+  },
+  "GEMAS": {
+   "lat": 41.845,
+   "lon": 0.73028,
+   "type": "RNAV",
+   "name": "GEMAS"
+  },
+  "ALOSU": {
+   "lat": 41.93306,
+   "lon": 0.49861,
+   "type": "RNAV",
+   "name": "ALOSU"
+  },
+  "GRAUS": {
+   "lat": 41.97917,
+   "lon": 0.37639,
+   "type": "RNAV",
+   "name": "GRAUS"
+  },
+  "POSSY": {
+   "lat": 42.06139,
+   "lon": 0.15722,
+   "type": "RNAV",
+   "name": "POSSY"
+  },
+  "MARIO": {
+   "lat": 42.21028,
+   "lon": -0.24417,
+   "type": "RNAV",
+   "name": "MARIO"
+  },
+  "SURCO": {
+   "lat": 42.32889,
+   "lon": -0.56806,
+   "type": "RNAV",
+   "name": "SURCO"
+  },
+  "RONNY": {
+   "lat": 42.42917,
+   "lon": -0.84472,
+   "type": "RNAV",
+   "name": "RONNY"
+  },
+  "RONKO": {
+   "lat": 42.49583,
+   "lon": -1.03056,
+   "type": "RNAV",
+   "name": "RONKO"
+  },
+  "GOSVI": {
+   "lat": 42.61667,
+   "lon": -1.36944,
+   "type": "RNAV",
+   "name": "GOSVI"
+  },
+  "TURPU": {
+   "lat": 42.67778,
+   "lon": -1.5425,
+   "type": "RNAV",
+   "name": "TURPU"
+  },
+  "MALOB": {
+   "lat": 42.845,
+   "lon": -1.93861,
+   "type": "RNAV",
+   "name": "MALOB"
+  },
+  "MORSS": {
+   "lat": 39.95667,
+   "lon": 4.66667,
+   "type": "RNAV",
+   "name": "MORSS"
+  },
+  "MHN": {
+   "lat": 39.86361,
+   "lon": 4.21639,
+   "type": "NAVAID",
+   "name": "MENORCA"
+  },
+  "CDP": {
+   "lat": 39.69778,
+   "lon": 3.43444,
+   "type": "NAVAID",
+   "name": "CAPDEPERA"
+  },
+  "EDULI": {
+   "lat": 39.40611,
+   "lon": 2.4175,
+   "type": "RNAV",
+   "name": "EDULI"
+  },
+  "OKITI": {
+   "lat": 39.11639,
+   "lon": 1.44417,
+   "type": "RNAV",
+   "name": "OKITI"
+  },
+  "IBEBA": {
+   "lat": 38.96306,
+   "lon": 0.94333,
+   "type": "RNAV",
+   "name": "IBEBA"
+  },
+  "BAVER": {
+   "lat": 38.87972,
+   "lon": 0.675,
+   "type": "RNAV",
+   "name": "BAVER"
+  },
+  "GERVU": {
+   "lat": 38.81972,
+   "lon": 0.48333,
+   "type": "RNAV",
+   "name": "GERVU"
+  },
+  "GDV": {
+   "lat": 28.07722,
+   "lon": -15.42889,
+   "type": "NAVAID",
+   "name": "GRAN CANARIA"
+  },
+  "ROTUM": {
+   "lat": 25.0,
+   "lon": -15.78667,
+   "type": "RNAV",
+   "name": "ROTUM"
+  },
+  "LASIB": {
+   "lat": 38.0375,
+   "lon": -7.22278,
+   "type": "RNAV",
+   "name": "LASIB"
+  },
+  "ROSAL": {
+   "lat": 38.02139,
+   "lon": -7.10139,
+   "type": "RNAV",
+   "name": "ROSAL"
+  },
+  "SANTA": {
+   "lat": 37.66861,
+   "lon": -6.29833,
+   "type": "RNAV",
+   "name": "SANTA"
+  },
+  "SVL": {
+   "lat": 37.4275,
+   "lon": -5.76222,
+   "type": "NAVAID",
+   "name": "SEVILLA"
+  },
+  "UMUKA": {
+   "lat": 36.71083,
+   "lon": -3.80944,
+   "type": "RNAV",
+   "name": "UMUKA"
+  },
+  "GOLFO": {
+   "lat": 36.36778,
+   "lon": -2.05472,
+   "type": "RNAV",
+   "name": "GOLFO"
+  },
+  "CARBO": {
+   "lat": 36.25222,
+   "lon": -1.495,
+   "type": "RNAV",
+   "name": "CARBO"
+  },
+  "PDT": {
+   "lat": 40.25278,
+   "lon": -3.34806,
+   "type": "NAVAID",
+   "name": "PDT"
+  },
+  "AKOKI": {
+   "lat": 40.22444,
+   "lon": -3.21861,
+   "type": "RNAV",
+   "name": "AKOKI"
+  },
+  "MINGU": {
+   "lat": 39.82611,
+   "lon": -1.48083,
+   "type": "RNAV",
+   "name": "MINGU"
+  },
+  "ABOSI": {
+   "lat": 39.77917,
+   "lon": -1.28472,
+   "type": "RNAV",
+   "name": "ABOSI"
+  },
+  "MABUX": {
+   "lat": 39.54917,
+   "lon": -1.14972,
+   "type": "RNAV",
+   "name": "MABUX"
+  },
+  "ORVUS": {
+   "lat": 39.33167,
+   "lon": 0.43139,
+   "type": "RNAV",
+   "name": "ORVUS"
+  },
+  "GODOX": {
+   "lat": 39.3725,
+   "lon": 1.41083,
+   "type": "RNAV",
+   "name": "GODOX"
+  },
+  "PTC": {
+   "lat": 39.42722,
+   "lon": 3.25667,
+   "type": "NAVAID",
+   "name": "PORTO COLOM"
+  },
+  "SOTAX": {
+   "lat": 39.585,
+   "lon": 4.66667,
+   "type": "RNAV",
+   "name": "SOTAX"
+  },
+  "BISBA": {
+   "lat": 42.08639,
+   "lon": 3.62583,
+   "type": "RNAV",
+   "name": "BISBA"
+  },
+  "MAMES": {
+   "lat": 42.20917,
+   "lon": 4.00028,
+   "type": "RNAV",
+   "name": "MAMES"
+  },
+  "BARPA": {
+   "lat": 35.83333,
+   "lon": -5.66667,
+   "type": "RNAV",
+   "name": "BARPA"
+  },
+  "XAVIR": {
+   "lat": 36.00417,
+   "lon": -5.24306,
+   "type": "RNAV",
+   "name": "XAVIR"
+  },
+  "MAMIS": {
+   "lat": 37.95472,
+   "lon": -2.895,
+   "type": "RNAV",
+   "name": "MAMIS"
+  },
+  "XEBAR": {
+   "lat": 38.52111,
+   "lon": -2.09278,
+   "type": "RNAV",
+   "name": "XEBAR"
+  },
+  "POBOS": {
+   "lat": 38.71917,
+   "lon": -1.76889,
+   "type": "RNAV",
+   "name": "POBOS"
+  },
+  "DIKUT": {
+   "lat": 40.00694,
+   "lon": 0.23611,
+   "type": "RNAV",
+   "name": "DIKUT"
+  },
+  "TORDU": {
+   "lat": 40.25806,
+   "lon": 0.58833,
+   "type": "RNAV",
+   "name": "TORDU"
+  },
+  "LOTOS": {
+   "lat": 40.54972,
+   "lon": 1.00306,
+   "type": "RNAV",
+   "name": "LOTOS"
+  },
+  "EBROX": {
+   "lat": 40.70861,
+   "lon": 1.23167,
+   "type": "RNAV",
+   "name": "EBROX"
+  },
+  "PEXOT": {
+   "lat": 40.86083,
+   "lon": 1.45194,
+   "type": "RNAV",
+   "name": "PEXOT"
+  },
+  "RODRA": {
+   "lat": 41.05139,
+   "lon": 1.73028,
+   "type": "RNAV",
+   "name": "RODRA"
+  },
+  "SALON": {
+   "lat": 41.49444,
+   "lon": 3.18722,
+   "type": "RNAV",
+   "name": "SALON"
+  },
+  "BODEQ": {
+   "lat": 41.60556,
+   "lon": 3.86028,
+   "type": "RNAV",
+   "name": "BODEQ"
+  },
+  "LUMAS": {
+   "lat": 41.73333,
+   "lon": 4.66667,
+   "type": "RNAV",
+   "name": "LUMAS"
+  },
+  "PODES": {
+   "lat": 35.83333,
+   "lon": -4.04806,
+   "type": "RNAV",
+   "name": "PODES"
+  },
+  "DITOP": {
+   "lat": 43.01556,
+   "lon": -1.76444,
+   "type": "RNAV",
+   "name": "DITOP"
+  },
+  "NOLSA": {
+   "lat": 42.4275,
+   "lon": -1.9075,
+   "type": "RNAV",
+   "name": "NOLSA"
+  },
+  "ALEPO": {
+   "lat": 42.34361,
+   "lon": -1.96333,
+   "type": "RNAV",
+   "name": "ALEPO"
+  },
+  "VASUM": {
+   "lat": 42.27194,
+   "lon": -2.01111,
+   "type": "RNAV",
+   "name": "VASUM"
+  },
+  "GARVU": {
+   "lat": 42.17111,
+   "lon": -2.07778,
+   "type": "RNAV",
+   "name": "GARVU"
+  },
+  "BANEV": {
+   "lat": 41.5025,
+   "lon": -2.51444,
+   "type": "RNAV",
+   "name": "BANEV"
+  },
+  "PINAR": {
+   "lat": 40.98028,
+   "lon": -2.59917,
+   "type": "RNAV",
+   "name": "PINAR"
+  },
+  "INPAN": {
+   "lat": 39.56611,
+   "lon": -3.74611,
+   "type": "RNAV",
+   "name": "INPAN"
+  },
+  "CRISA": {
+   "lat": 38.93861,
+   "lon": -4.55639,
+   "type": "RNAV",
+   "name": "CRISA"
+  },
+  "LINTO": {
+   "lat": 35.83333,
+   "lon": -5.95444,
+   "type": "RNAV",
+   "name": "LINTO"
+  },
+  "IBRAP": {
+   "lat": 42.36167,
+   "lon": 2.05861,
+   "type": "RNAV",
+   "name": "IBRAP"
+  },
+  "LUKEV": {
+   "lat": 41.76611,
+   "lon": 2.26861,
+   "type": "RNAV",
+   "name": "LUKEV"
+  },
+  "LORES": {
+   "lat": 40.5,
+   "lon": 2.7025,
+   "type": "RNAV",
+   "name": "LORES"
+  },
+  "PUMAL": {
+   "lat": 42.36694,
+   "lon": 2.00833,
+   "type": "RNAV",
+   "name": "PUMAL"
+  },
+  "BERGA": {
+   "lat": 42.17167,
+   "lon": 2.03194,
+   "type": "RNAV",
+   "name": "BERGA"
+  },
+  "SLL": {
+   "lat": 41.51972,
+   "lon": 2.10972,
+   "type": "NAVAID",
+   "name": "SABADELL"
+  },
+  "DOSUL": {
+   "lat": 43.68056,
+   "lon": -3.31667,
+   "type": "RNAV",
+   "name": "DOSUL"
+  },
+  "XORNA": {
+   "lat": 43.8125,
+   "lon": -3.45167,
+   "type": "RNAV",
+   "name": "XORNA"
+  },
+  "DELOG": {
+   "lat": 44.32889,
+   "lon": -3.9875,
+   "type": "RNAV",
+   "name": "DELOG"
+  },
+  "BALDA": {
+   "lat": 44.60972,
+   "lon": -5.55306,
+   "type": "RNAV",
+   "name": "BALDA"
+  },
+  "KONBA": {
+   "lat": 31.30083,
+   "lon": -15.30167,
+   "type": "RNAV",
+   "name": "KONBA"
+  },
+  "KASAS": {
+   "lat": 29.98639,
+   "lon": -15.76861,
+   "type": "RNAV",
+   "name": "KASAS"
+  },
+  "TFN": {
+   "lat": 28.53694,
+   "lon": -16.26889,
+   "type": "NAVAID",
+   "name": "TENERIFE NORTE"
+  },
+  "HAMRA": {
+   "lat": 36.87111,
+   "lon": -0.02361,
+   "type": "RNAV",
+   "name": "HAMRA"
+  },
+  "MITOS": {
+   "lat": 38.44944,
+   "lon": -0.01361,
+   "type": "RNAV",
+   "name": "MITOS"
+  },
+  "DORMI": {
+   "lat": 40.87111,
+   "lon": 0.385,
+   "type": "RNAV",
+   "name": "DORMI"
+  },
+  "PELAT": {
+   "lat": 41.02167,
+   "lon": 0.4425,
+   "type": "RNAV",
+   "name": "PELAT"
+  },
+  "SALAS": {
+   "lat": 41.10972,
+   "lon": 0.47639,
+   "type": "RNAV",
+   "name": "SALAS"
+  },
+  "VILAR": {
+   "lat": 41.34167,
+   "lon": 0.56583,
+   "type": "RNAV",
+   "name": "VILAR"
+  },
+  "MECKI": {
+   "lat": 41.66194,
+   "lon": 0.67861,
+   "type": "RNAV",
+   "name": "MECKI"
+  },
+  "BARBO": {
+   "lat": 42.44889,
+   "lon": 0.90278,
+   "type": "RNAV",
+   "name": "BARBO"
+  },
+  "GIROM": {
+   "lat": 42.775,
+   "lon": 0.99722,
+   "type": "RNAV",
+   "name": "GIROM"
+  },
+  "LOMDA": {
+   "lat": 42.85278,
+   "lon": -7.29611,
+   "type": "RNAV",
+   "name": "LOMDA"
+  },
+  "BISMU": {
+   "lat": 42.79667,
+   "lon": -6.53861,
+   "type": "RNAV",
+   "name": "BISMU"
+  },
+  "LARVO": {
+   "lat": 42.76722,
+   "lon": -6.16444,
+   "type": "RNAV",
+   "name": "LARVO"
+  },
+  "SUSOS": {
+   "lat": 42.70639,
+   "lon": -5.44278,
+   "type": "RNAV",
+   "name": "SUSOS"
+  },
+  "NUBLO": {
+   "lat": 42.66611,
+   "lon": -4.98889,
+   "type": "RNAV",
+   "name": "NUBLO"
+  },
+  "NEDUS": {
+   "lat": 42.65333,
+   "lon": -4.84972,
+   "type": "RNAV",
+   "name": "NEDUS"
+  },
+  "RATAS": {
+   "lat": 42.57444,
+   "lon": -4.03083,
+   "type": "RNAV",
+   "name": "RATAS"
+  },
+  "KOHDE": {
+   "lat": 42.4925,
+   "lon": -3.23972,
+   "type": "RNAV",
+   "name": "KOHDE"
+  },
+  "ELSAP": {
+   "lat": 42.01722,
+   "lon": -0.84722,
+   "type": "RNAV",
+   "name": "ELSAP"
+  },
+  "VAKIN": {
+   "lat": 41.90472,
+   "lon": -0.35333,
+   "type": "RNAV",
+   "name": "VAKIN"
+  },
+  "DIRMU": {
+   "lat": 41.78556,
+   "lon": 0.15944,
+   "type": "RNAV",
+   "name": "DIRMU"
+  },
+  "LOBAR": {
+   "lat": 41.74806,
+   "lon": 0.31833,
+   "type": "RNAV",
+   "name": "LOBAR"
+  },
+  "ARBEK": {
+   "lat": 41.54389,
+   "lon": 1.12972,
+   "type": "RNAV",
+   "name": "ARBEK"
+  },
+  "SADUR": {
+   "lat": 41.41722,
+   "lon": 1.67389,
+   "type": "RNAV",
+   "name": "SADUR"
+  },
+  "DIPES": {
+   "lat": 41.06306,
+   "lon": 3.54,
+   "type": "RNAV",
+   "name": "DIPES"
+  },
+  "OSPOK": {
+   "lat": 40.85694,
+   "lon": 4.66667,
+   "type": "RNAV",
+   "name": "OSPOK"
+  },
+  "NARBO": {
+   "lat": 42.13972,
+   "lon": -8.22833,
+   "type": "RNAV",
+   "name": "NARBO"
+  },
+  "ORTOP": {
+   "lat": 36.02667,
+   "lon": -7.38333,
+   "type": "RNAV",
+   "name": "ORTOP"
+  },
+  "BAMBA": {
+   "lat": 35.83333,
+   "lon": -6.45083,
+   "type": "RNAV",
+   "name": "BAMBA"
+  },
+  "GEANT": {
+   "lat": 42.43333,
+   "lon": 2.21639,
+   "type": "RNAV",
+   "name": "GEANT"
+  },
+  "KORUL": {
+   "lat": 44.83528,
+   "lon": -6.91972,
+   "type": "RNAV",
+   "name": "KORUL"
+  },
+  "KORAV": {
+   "lat": 43.65306,
+   "lon": -7.86556,
+   "type": "RNAV",
+   "name": "KORAV"
+  },
+  "DEMOS": {
+   "lat": 41.92583,
+   "lon": -9.36194,
+   "type": "RNAV",
+   "name": "DEMOS"
+  },
+  "ORTIS": {
+   "lat": 31.40694,
+   "lon": -16.55694,
+   "type": "RNAV",
+   "name": "ORTIS"
+  },
+  "PITAB": {
+   "lat": 30.35278,
+   "lon": -16.44917,
+   "type": "RNAV",
+   "name": "PITAB"
+  },
+  "BRICK": {
+   "lat": 29.59139,
+   "lon": -16.37278,
+   "type": "RNAV",
+   "name": "BRICK"
+  },
+  "LOMAS": {
+   "lat": 27.72056,
+   "lon": -15.69111,
+   "type": "RNAV",
+   "name": "LOMAS"
+  },
+  "REMGI": {
+   "lat": 27.09028,
+   "lon": -15.26972,
+   "type": "RNAV",
+   "name": "REMGI"
+  },
+  "CABOJ": {
+   "lat": 26.13889,
+   "lon": -14.64389,
+   "type": "RNAV",
+   "name": "CABOJ"
+  },
+  "KEMUL": {
+   "lat": 25.025,
+   "lon": -13.87583,
+   "type": "RNAV",
+   "name": "KEMUL"
+  },
+  "MIYEC": {
+   "lat": 23.7,
+   "lon": -12.98333,
+   "type": "RNAV",
+   "name": "MIYEC"
+  },
+  "BIMBO": {
+   "lat": 31.42139,
+   "lon": -16.03278,
+   "type": "RNAV",
+   "name": "BIMBO"
+  },
+  "GURKA": {
+   "lat": 30.43389,
+   "lon": -15.85028,
+   "type": "RNAV",
+   "name": "GURKA"
+  },
+  "DEREV": {
+   "lat": 26.72306,
+   "lon": -15.21111,
+   "type": "RNAV",
+   "name": "DEREV"
+  },
+  "ELTEP": {
+   "lat": 42.61639,
+   "lon": -7.78361,
+   "type": "RNAV",
+   "name": "ELTEP"
+  },
+  "FORNO": {
+   "lat": 42.46806,
+   "lon": -7.48139,
+   "type": "RNAV",
+   "name": "FORNO"
+  },
+  "FINAM": {
+   "lat": 42.42222,
+   "lon": -7.38861,
+   "type": "RNAV",
+   "name": "FINAM"
+  },
+  "INSID": {
+   "lat": 42.27556,
+   "lon": -7.09417,
+   "type": "RNAV",
+   "name": "INSID"
+  },
+  "BARKO": {
+   "lat": 42.20056,
+   "lon": -6.94472,
+   "type": "RNAV",
+   "name": "BARKO"
+  },
+  "DESAT": {
+   "lat": 41.83028,
+   "lon": -6.21667,
+   "type": "RNAV",
+   "name": "DESAT"
+  },
+  "UNSOL": {
+   "lat": 41.15889,
+   "lon": -4.61111,
+   "type": "RNAV",
+   "name": "UNSOL"
+  },
+  "DISKO": {
+   "lat": 41.01528,
+   "lon": -4.22333,
+   "type": "RNAV",
+   "name": "DISKO"
+  },
+  "BENED": {
+   "lat": 40.21056,
+   "lon": -2.15833,
+   "type": "RNAV",
+   "name": "BENED"
+  },
+  "PRADO": {
+   "lat": 40.1475,
+   "lon": -2.01028,
+   "type": "RNAV",
+   "name": "PRADO"
+  },
+  "CENTA": {
+   "lat": 39.90056,
+   "lon": -1.43194,
+   "type": "RNAV",
+   "name": "CENTA"
+  },
+  "CATON": {
+   "lat": 39.80528,
+   "lon": -1.21167,
+   "type": "RNAV",
+   "name": "CATON"
+  },
+  "WALLY": {
+   "lat": 39.75417,
+   "lon": -1.09444,
+   "type": "RNAV",
+   "name": "WALLY"
+  },
+  "ARGOR": {
+   "lat": 39.53861,
+   "lon": 0.29861,
+   "type": "RNAV",
+   "name": "ARGOR"
+  },
+  "IXUPA": {
+   "lat": 39.55889,
+   "lon": 0.62083,
+   "type": "RNAV",
+   "name": "IXUPA"
+  },
+  "EPAMA": {
+   "lat": 39.60306,
+   "lon": 1.38028,
+   "type": "RNAV",
+   "name": "EPAMA"
+  },
+  "AKAMU": {
+   "lat": 39.65778,
+   "lon": 2.47139,
+   "type": "RNAV",
+   "name": "AKAMU"
+  },
+  "OLUTO": {
+   "lat": 39.66417,
+   "lon": 2.6125,
+   "type": "RNAV",
+   "name": "OLUTO"
+  },
+  "EDUMO": {
+   "lat": 22.91667,
+   "lon": -23.6,
+   "type": "RNAV",
+   "name": "EDUMO"
+  },
+  "ERONI": {
+   "lat": 24.63833,
+   "lon": -22.48,
+   "type": "RNAV",
+   "name": "ERONI"
+  },
+  "ROSTA": {
+   "lat": 28.25611,
+   "lon": -20.0,
+   "type": "RNAV",
+   "name": "ROSTA"
+  },
+  "NELSO": {
+   "lat": 31.68278,
+   "lon": -17.45694,
+   "type": "RNAV",
+   "name": "NELSO"
+  },
+  "TOSDI": {
+   "lat": 40.99083,
+   "lon": -6.28861,
+   "type": "RNAV",
+   "name": "TOSDI"
+  },
+  "MINTA": {
+   "lat": 37.12889,
+   "lon": -7.38333,
+   "type": "RNAV",
+   "name": "MINTA"
+  },
+  "OSLEP": {
+   "lat": 37.16556,
+   "lon": -7.19194,
+   "type": "RNAV",
+   "name": "OSLEP"
+  },
+  "NAPES": {
+   "lat": 37.19611,
+   "lon": -7.03028,
+   "type": "RNAV",
+   "name": "NAPES"
+  },
+  "ONUBA": {
+   "lat": 37.24667,
+   "lon": -6.76,
+   "type": "RNAV",
+   "name": "ONUBA"
+  },
+  "AMOTA": {
+   "lat": 37.60556,
+   "lon": -5.25167,
+   "type": "RNAV",
+   "name": "AMOTA"
+  },
+  "VULPE": {
+   "lat": 37.76111,
+   "lon": -4.79833,
+   "type": "RNAV",
+   "name": "VULPE"
+  },
+  "ALCOL": {
+   "lat": 37.85583,
+   "lon": -4.51889,
+   "type": "RNAV",
+   "name": "ALCOL"
+  },
+  "KUKAL": {
+   "lat": 37.86861,
+   "lon": -4.48083,
+   "type": "RNAV",
+   "name": "KUKAL"
+  },
+  "SORAS": {
+   "lat": 40.55222,
+   "lon": 4.66667,
+   "type": "RNAV",
+   "name": "SORAS"
+  },
+  "NOMTO": {
+   "lat": 40.17056,
+   "lon": 3.70861,
+   "type": "RNAV",
+   "name": "NOMTO"
+  },
+  "NELAS": {
+   "lat": 40.09417,
+   "lon": 3.52083,
+   "type": "RNAV",
+   "name": "NELAS"
+  },
+  "BRIKE": {
+   "lat": 36.50472,
+   "lon": -5.41639,
+   "type": "RNAV",
+   "name": "BRIKE"
+  },
+  "UNTOS": {
+   "lat": 37.25056,
+   "lon": -3.27778,
+   "type": "RNAV",
+   "name": "UNTOS"
+  },
+  "RESTU": {
+   "lat": 37.9075,
+   "lon": -1.5575,
+   "type": "RNAV",
+   "name": "RESTU"
+  },
+  "SUMMO": {
+   "lat": 38.36028,
+   "lon": -0.28167,
+   "type": "RNAV",
+   "name": "SUMMO"
+  },
+  "BRUNO": {
+   "lat": 38.60833,
+   "lon": 0.48333,
+   "type": "RNAV",
+   "name": "BRUNO"
+  },
+  "RUXET": {
+   "lat": 38.66889,
+   "lon": 0.675,
+   "type": "RNAV",
+   "name": "RUXET"
+  },
+  "ASMOT": {
+   "lat": 39.27583,
+   "lon": 2.71556,
+   "type": "RNAV",
+   "name": "ASMOT"
+  },
+  "ISTER": {
+   "lat": 40.06472,
+   "lon": 4.66667,
+   "type": "RNAV",
+   "name": "ISTER"
+  },
+  "VATIR": {
+   "lat": 42.17222,
+   "lon": 4.11556,
+   "type": "RNAV",
+   "name": "VATIR"
+  },
+  "PIVUS": {
+   "lat": 41.92389,
+   "lon": 3.93361,
+   "type": "RNAV",
+   "name": "PIVUS"
+  },
+  "RUFRU": {
+   "lat": 39.02528,
+   "lon": 3.29583,
+   "type": "RNAV",
+   "name": "RUFRU"
+  },
+  "MEROS": {
+   "lat": 40.5,
+   "lon": 4.36667,
+   "type": "RNAV",
+   "name": "MEROS"
+  },
+  "ELTAN": {
+   "lat": 39.61611,
+   "lon": 4.16806,
+   "type": "RNAV",
+   "name": "ELTAN"
+  },
+  "MAMOM": {
+   "lat": 39.2175,
+   "lon": 4.09083,
+   "type": "RNAV",
+   "name": "MAMOM"
+  },
+  "PECES": {
+   "lat": 38.48028,
+   "lon": 3.94972,
+   "type": "RNAV",
+   "name": "PECES"
+  },
+  "KANIG": {
+   "lat": 42.48028,
+   "lon": 2.98306,
+   "type": "RNAV",
+   "name": "KANIG"
+  },
+  "FEVIK": {
+   "lat": 41.67972,
+   "lon": 3.19611,
+   "type": "RNAV",
+   "name": "FEVIK"
+  },
+  "DUNES": {
+   "lat": 40.86389,
+   "lon": 3.1575,
+   "type": "RNAV",
+   "name": "DUNES"
+  },
+  "SISMO": {
+   "lat": 40.60917,
+   "lon": 3.14583,
+   "type": "RNAV",
+   "name": "SISMO"
+  },
+  "KENAS": {
+   "lat": 40.5,
+   "lon": 3.14083,
+   "type": "RNAV",
+   "name": "KENAS"
+  },
+  "TALEN": {
+   "lat": 39.11778,
+   "lon": 3.13111,
+   "type": "RNAV",
+   "name": "TALEN"
+  },
+  "WITAZ": {
+   "lat": 38.98444,
+   "lon": 3.13389,
+   "type": "RNAV",
+   "name": "WITAZ"
+  },
+  "XESPA": {
+   "lat": 38.59694,
+   "lon": 3.14167,
+   "type": "RNAV",
+   "name": "XESPA"
+  },
+  "BUYAH": {
+   "lat": 38.11306,
+   "lon": 3.15139,
+   "type": "RNAV",
+   "name": "BUYAH"
+  },
+  "INSUB": {
+   "lat": 38.55361,
+   "lon": 1.75306,
+   "type": "RNAV",
+   "name": "INSUB"
+  },
+  "RONDU": {
+   "lat": 38.82333,
+   "lon": 1.54278,
+   "type": "RNAV",
+   "name": "RONDU"
+  },
+  "MARTA": {
+   "lat": 40.35472,
+   "lon": 1.28,
+   "type": "RNAV",
+   "name": "MARTA"
+  },
+  "NETUK": {
+   "lat": 43.25833,
+   "lon": -1.61556,
+   "type": "RNAV",
+   "name": "NETUK"
+  },
+  "GOTOR": {
+   "lat": 40.11083,
+   "lon": -3.72444,
+   "type": "RNAV",
+   "name": "GOTOR"
+  },
+  "KAMPO": {
+   "lat": 39.73333,
+   "lon": -4.05528,
+   "type": "RNAV",
+   "name": "KAMPO"
+  },
+  "MONTO": {
+   "lat": 39.22167,
+   "lon": -4.49694,
+   "type": "RNAV",
+   "name": "MONTO"
+  },
+  "MOLIN": {
+   "lat": 39.0,
+   "lon": -4.68583,
+   "type": "RNAV",
+   "name": "MOLIN"
+  },
+  "CLANA": {
+   "lat": 36.50889,
+   "lon": -6.72694,
+   "type": "RNAV",
+   "name": "CLANA"
+  },
+  "KORNO": {
+   "lat": 35.83333,
+   "lon": -7.41667,
+   "type": "RNAV",
+   "name": "KORNO"
+  },
+  "TERTO": {
+   "lat": 30.10417,
+   "lon": -12.71722,
+   "type": "RNAV",
+   "name": "TERTO"
+  },
+  "LZR": {
+   "lat": 29.16611,
+   "lon": -13.51083,
+   "type": "NAVAID",
+   "name": "LANZAROTE"
+  },
+  "BIPET": {
+   "lat": 25.0,
+   "lon": -16.35889,
+   "type": "RNAV",
+   "name": "BIPET"
+  },
+  "ETIBA": {
+   "lat": 21.33833,
+   "lon": -18.67889,
+   "type": "RNAV",
+   "name": "ETIBA"
+  },
+  "GUNET": {
+   "lat": 19.595,
+   "lon": -19.735,
+   "type": "RNAV",
+   "name": "GUNET"
+  },
+  "VASTO": {
+   "lat": 30.50944,
+   "lon": -13.57278,
+   "type": "RNAV",
+   "name": "VASTO"
+  },
+  "PESAS": {
+   "lat": 37.03667,
+   "lon": -7.38333,
+   "type": "RNAV",
+   "name": "PESAS"
+  },
+  "DIONY": {
+   "lat": 38.59722,
+   "lon": -5.47694,
+   "type": "RNAV",
+   "name": "DIONY"
+  },
+  "SIE": {
+   "lat": 41.15167,
+   "lon": -3.60472,
+   "type": "NAVAID",
+   "name": "SOMOSIERRA"
+  },
+  "EDIGO": {
+   "lat": 41.50444,
+   "lon": -3.41167,
+   "type": "RNAV",
+   "name": "EDIGO"
+  },
+  "ABRIX": {
+   "lat": 43.64639,
+   "lon": -1.9625,
+   "type": "RNAV",
+   "name": "ABRIX"
+  },
+  "XEPLA": {
+   "lat": 41.68722,
+   "lon": 2.0725,
+   "type": "RNAV",
+   "name": "XEPLA"
+  },
+  "GARBI": {
+   "lat": 40.80306,
+   "lon": 2.28667,
+   "type": "RNAV",
+   "name": "GARBI"
+  },
+  "LARPA": {
+   "lat": 40.62667,
+   "lon": 2.34861,
+   "type": "RNAV",
+   "name": "LARPA"
+  },
+  "TOLSO": {
+   "lat": 40.5,
+   "lon": 2.39278,
+   "type": "RNAV",
+   "name": "TOLSO"
+  },
+  "LISAS": {
+   "lat": 40.20222,
+   "lon": 2.49639,
+   "type": "RNAV",
+   "name": "LISAS"
+  },
+  "OSGAL": {
+   "lat": 39.02472,
+   "lon": 2.89972,
+   "type": "RNAV",
+   "name": "OSGAL"
+  },
+  "XILPA": {
+   "lat": 38.93306,
+   "lon": 2.93139,
+   "type": "RNAV",
+   "name": "XILPA"
+  },
+  "MOGIL": {
+   "lat": 38.13194,
+   "lon": 3.20194,
+   "type": "RNAV",
+   "name": "MOGIL"
+  },
+  "ANETO": {
+   "lat": 42.69306,
+   "lon": 0.55833,
+   "type": "RNAV",
+   "name": "ANETO"
+  },
+  "TURUV": {
+   "lat": 42.3675,
+   "lon": 0.475,
+   "type": "RNAV",
+   "name": "TURUV"
+  },
+  "CASPE": {
+   "lat": 41.26833,
+   "lon": 0.19944,
+   "type": "RNAV",
+   "name": "CASPE"
+  },
+  "MLA": {
+   "lat": 41.12972,
+   "lon": 0.16528,
+   "type": "NAVAID",
+   "name": "MAELLA"
+  },
+  "CRETA": {
+   "lat": 40.87222,
+   "lon": 0.06167,
+   "type": "RNAV",
+   "name": "CRETA"
+  },
+  "RIMES": {
+   "lat": 40.55806,
+   "lon": -0.06389,
+   "type": "RNAV",
+   "name": "RIMES"
+  },
+  "TATOS": {
+   "lat": 40.0,
+   "lon": -0.28361,
+   "type": "RNAV",
+   "name": "TATOS"
+  },
+  "PLANA": {
+   "lat": 39.89056,
+   "lon": -0.32639,
+   "type": "RNAV",
+   "name": "PLANA"
+  },
+  "DOSEK": {
+   "lat": 37.24528,
+   "lon": -1.985,
+   "type": "RNAV",
+   "name": "DOSEK"
+  },
+  "VADAT": {
+   "lat": 36.46944,
+   "lon": -2.62361,
+   "type": "RNAV",
+   "name": "VADAT"
+  },
+  "GALAT": {
+   "lat": 40.15444,
+   "lon": 1.94083,
+   "type": "RNAV",
+   "name": "GALAT"
+  },
+  "ANTON": {
+   "lat": 41.25972,
+   "lon": 1.69833,
+   "type": "RNAV",
+   "name": "ANTON"
+  },
+  "BISES": {
+   "lat": 41.31861,
+   "lon": 1.68917,
+   "type": "RNAV",
+   "name": "BISES"
+  },
+  "OLOXO": {
+   "lat": 42.43528,
+   "lon": 1.51278,
+   "type": "RNAV",
+   "name": "OLOXO"
+  },
+  "PERDU": {
+   "lat": 42.73194,
+   "lon": 0.15111,
+   "type": "RNAV",
+   "name": "PERDU"
+  },
+  "MOPAS": {
+   "lat": 42.43528,
+   "lon": 1.03444,
+   "type": "RNAV",
+   "name": "MOPAS"
+  },
+  "USKAR": {
+   "lat": 42.14361,
+   "lon": 1.06583,
+   "type": "RNAV",
+   "name": "USKAR"
+  },
+  "KARES": {
+   "lat": 41.33111,
+   "lon": 1.15222,
+   "type": "RNAV",
+   "name": "KARES"
+  },
+  "XIKEN": {
+   "lat": 41.19611,
+   "lon": 1.16639,
+   "type": "RNAV",
+   "name": "XIKEN"
+  },
+  "PAPOS": {
+   "lat": 40.62111,
+   "lon": 1.44917,
+   "type": "RNAV",
+   "name": "PAPOS"
+  },
+  "DRAGO": {
+   "lat": 40.00778,
+   "lon": 1.76556,
+   "type": "RNAV",
+   "name": "DRAGO"
+  },
+  "VADOX": {
+   "lat": 43.76667,
+   "lon": -3.93278,
+   "type": "RNAV",
+   "name": "VADOX"
+  },
+  "TITAN": {
+   "lat": 42.95778,
+   "lon": -3.975,
+   "type": "RNAV",
+   "name": "TITAN"
+  },
+  "NONTU": {
+   "lat": 41.50028,
+   "lon": -4.16889,
+   "type": "RNAV",
+   "name": "NONTU"
+  },
+  "ORBIS": {
+   "lat": 41.26583,
+   "lon": -4.19528,
+   "type": "RNAV",
+   "name": "ORBIS"
+  },
+  "DOPEN": {
+   "lat": 39.75528,
+   "lon": -4.38361,
+   "type": "RNAV",
+   "name": "DOPEN"
+  },
+  "MOCEQ": {
+   "lat": 38.30944,
+   "lon": -4.68667,
+   "type": "RNAV",
+   "name": "MOCEQ"
+  },
+  "OGROH": {
+   "lat": 36.48333,
+   "lon": -4.91056,
+   "type": "RNAV",
+   "name": "OGROH"
+  },
+  "ESILA": {
+   "lat": 37.05139,
+   "lon": -2.77417,
+   "type": "RNAV",
+   "name": "ESILA"
+  },
+  "TINEK": {
+   "lat": 37.65194,
+   "lon": -3.62889,
+   "type": "RNAV",
+   "name": "TINEK"
+  },
+  "MORAL": {
+   "lat": 39.0,
+   "lon": -3.54222,
+   "type": "RNAV",
+   "name": "MORAL"
+  },
+  "BEXID": {
+   "lat": 39.57444,
+   "lon": -3.48472,
+   "type": "RNAV",
+   "name": "BEXID"
+  },
+  "XERMA": {
+   "lat": 41.50361,
+   "lon": -3.61361,
+   "type": "RNAV",
+   "name": "XERMA"
+  },
+  "ARLUN": {
+   "lat": 42.02167,
+   "lon": -3.61361,
+   "type": "RNAV",
+   "name": "ARLUN"
+  },
+  "UNGAS": {
+   "lat": 42.68222,
+   "lon": -3.69972,
+   "type": "RNAV",
+   "name": "UNGAS"
+  },
+  "GOMER": {
+   "lat": 28.0,
+   "lon": -17.33333,
+   "type": "RNAV",
+   "name": "GOMER"
+  },
+  "ORVEK": {
+   "lat": 25.975,
+   "lon": -18.81389,
+   "type": "RNAV",
+   "name": "ORVEK"
+  },
+  "APASO": {
+   "lat": 25.0,
+   "lon": -19.50472,
+   "type": "RNAV",
+   "name": "APASO"
+  },
+  "YORGI": {
+   "lat": 23.06667,
+   "lon": -20.83639,
+   "type": "RNAV",
+   "name": "YORGI"
+  },
+  "TENPA": {
+   "lat": 21.36167,
+   "lon": -21.97333,
+   "type": "RNAV",
+   "name": "TENPA"
+  },
+  "NENEM": {
+   "lat": 44.05139,
+   "lon": -3.15028,
+   "type": "RNAV",
+   "name": "NENEM"
+  },
+  "MAPAX": {
+   "lat": 43.68389,
+   "lon": -3.04417,
+   "type": "RNAV",
+   "name": "MAPAX"
+  },
+  "GASMO": {
+   "lat": 41.72944,
+   "lon": -3.04889,
+   "type": "RNAV",
+   "name": "GASMO"
+  },
+  "OSTIX": {
+   "lat": 41.50444,
+   "lon": -3.1,
+   "type": "RNAV",
+   "name": "OSTIX"
+  },
+  "WUSHI": {
+   "lat": 41.05111,
+   "lon": -3.2025,
+   "type": "RNAV",
+   "name": "WUSHI"
+  },
+  "IDEVU": {
+   "lat": 39.57694,
+   "lon": -3.40028,
+   "type": "RNAV",
+   "name": "IDEVU"
+  },
+  "TIVLI": {
+   "lat": 42.805,
+   "lon": -0.43667,
+   "type": "RNAV",
+   "name": "TIVLI"
+  },
+  "ZAR": {
+   "lat": 41.65778,
+   "lon": -1.03083,
+   "type": "NAVAID",
+   "name": "ZARAGOZA"
+  },
+  "PISUS": {
+   "lat": 41.19361,
+   "lon": -1.455,
+   "type": "RNAV",
+   "name": "PISUS"
+  },
+  "EDIMU": {
+   "lat": 40.77833,
+   "lon": -1.82833,
+   "type": "RNAV",
+   "name": "EDIMU"
+  },
+  "ADUXO": {
+   "lat": 40.51222,
+   "lon": -2.06417,
+   "type": "RNAV",
+   "name": "ADUXO"
+  },
+  "NUSGO": {
+   "lat": 40.40556,
+   "lon": -2.15833,
+   "type": "RNAV",
+   "name": "NUSGO"
+  },
+  "OBIBO": {
+   "lat": 39.67139,
+   "lon": -2.79556,
+   "type": "RNAV",
+   "name": "OBIBO"
+  },
+  "TOFEF": {
+   "lat": 39.52889,
+   "lon": -7.36639,
+   "type": "RNAV",
+   "name": "TOFEF"
+  },
+  "RODAP": {
+   "lat": 39.6325,
+   "lon": -7.06528,
+   "type": "RNAV",
+   "name": "RODAP"
+  },
+  "UREDI": {
+   "lat": 39.85972,
+   "lon": -6.39333,
+   "type": "RNAV",
+   "name": "UREDI"
+  },
+  "SEGRE": {
+   "lat": 41.02278,
+   "lon": -2.37639,
+   "type": "RNAV",
+   "name": "SEGRE"
+  },
+  "PONEN": {
+   "lat": 41.35389,
+   "lon": -0.5475,
+   "type": "RNAV",
+   "name": "PONEN"
+  },
+  "PUCLO": {
+   "lat": 25.71056,
+   "lon": -18.59611,
+   "type": "RNAV",
+   "name": "PUCLO"
+  },
+  "URQUI": {
+   "lat": 26.89472,
+   "lon": -17.04,
+   "type": "RNAV",
+   "name": "URQUI"
+  },
+  "KORAL": {
+   "lat": 29.73139,
+   "lon": -12.57833,
+   "type": "RNAV",
+   "name": "KORAL"
+  },
+  "ADUBI": {
+   "lat": 35.83333,
+   "lon": -6.32389,
+   "type": "RNAV",
+   "name": "ADUBI"
+  },
+  "PIPHU": {
+   "lat": 38.10167,
+   "lon": -4.3875,
+   "type": "RNAV",
+   "name": "PIPHU"
+  },
+  "AMIBU": {
+   "lat": 38.72694,
+   "lon": -4.04917,
+   "type": "RNAV",
+   "name": "AMIBU"
+  },
+  "LOGRO": {
+   "lat": 39.0,
+   "lon": -3.89944,
+   "type": "RNAV",
+   "name": "LOGRO"
+  },
+  "ETANA": {
+   "lat": 39.57139,
+   "lon": -3.58194,
+   "type": "RNAV",
+   "name": "ETANA"
+  },
+  "PALIO": {
+   "lat": 40.26222,
+   "lon": -3.04833,
+   "type": "RNAV",
+   "name": "PALIO"
+  },
+  "TOPTU": {
+   "lat": 42.79667,
+   "lon": -0.19361,
+   "type": "RNAV",
+   "name": "TOPTU"
+  },
+  "RALUS": {
+   "lat": 41.93667,
+   "lon": -7.11639,
+   "type": "RNAV",
+   "name": "RALUS"
+  },
+  "KUVAN": {
+   "lat": 43.11111,
+   "lon": -6.31694,
+   "type": "RNAV",
+   "name": "KUVAN"
+  },
+  "DEVAR": {
+   "lat": 43.94472,
+   "lon": -5.57167,
+   "type": "RNAV",
+   "name": "DEVAR"
+  },
+  "ATLEN": {
+   "lat": 44.50528,
+   "lon": -4.9475,
+   "type": "RNAV",
+   "name": "ATLEN"
+  },
+  "IPERA": {
+   "lat": 20.365,
+   "lon": -20.7,
+   "type": "RNAV",
+   "name": "IPERA"
+  },
+  "ISOKA": {
+   "lat": 22.08139,
+   "lon": -19.59,
+   "type": "RNAV",
+   "name": "ISOKA"
+  },
+  "LIMAL": {
+   "lat": 25.0,
+   "lon": -17.62556,
+   "type": "RNAV",
+   "name": "LIMAL"
+  },
+  "UDATI": {
+   "lat": 26.19778,
+   "lon": -16.78639,
+   "type": "RNAV",
+   "name": "UDATI"
+  },
+  "ODEGI": {
+   "lat": 26.89472,
+   "lon": -16.29,
+   "type": "RNAV",
+   "name": "ODEGI"
+  },
+  "SAMAR": {
+   "lat": 30.89972,
+   "lon": -14.41556,
+   "type": "RNAV",
+   "name": "SAMAR"
+  },
+  "BABOV": {
+   "lat": 39.87639,
+   "lon": -6.87361,
+   "type": "RNAV",
+   "name": "BABOV"
+  },
+  "NILDU": {
+   "lat": 42.26028,
+   "lon": 3.82861,
+   "type": "RNAV",
+   "name": "NILDU"
+  },
+  "NENDA": {
+   "lat": 41.68444,
+   "lon": 2.75139,
+   "type": "RNAV",
+   "name": "NENDA"
+  },
+  "OSLAP": {
+   "lat": 41.13389,
+   "lon": 0.66667,
+   "type": "RNAV",
+   "name": "OSLAP"
+  },
+  "RAMON": {
+   "lat": 41.00917,
+   "lon": -0.28528,
+   "type": "RNAV",
+   "name": "RAMON"
+  },
+  "NEXAS": {
+   "lat": 40.87111,
+   "lon": -0.79278,
+   "type": "RNAV",
+   "name": "NEXAS"
+  },
+  "NATPA": {
+   "lat": 39.91889,
+   "lon": -4.58639,
+   "type": "RNAV",
+   "name": "NATPA"
+  },
+  "NINOS": {
+   "lat": 41.12972,
+   "lon": -6.77694,
+   "type": "RNAV",
+   "name": "NINOS"
+  },
+  "ARDID": {
+   "lat": 41.17333,
+   "lon": -6.28222,
+   "type": "RNAV",
+   "name": "ARDID"
+  },
+  "MIRPO": {
+   "lat": 42.63111,
+   "lon": -2.15528,
+   "type": "RNAV",
+   "name": "MIRPO"
+  },
+  "ERAKI": {
+   "lat": 42.995,
+   "lon": -1.05028,
+   "type": "RNAV",
+   "name": "ERAKI"
+  },
+  "LATEK": {
+   "lat": 42.875,
+   "lon": -0.65694,
+   "type": "RNAV",
+   "name": "LATEK"
+  },
+  "RIPUX": {
+   "lat": 39.24667,
+   "lon": -0.43972,
+   "type": "RNAV",
+   "name": "RIPUX"
+  },
+  "LIMTU": {
+   "lat": 37.9875,
+   "lon": -0.21583,
+   "type": "RNAV",
+   "name": "LIMTU"
+  },
+  "RINDI": {
+   "lat": 37.10556,
+   "lon": -0.06361,
+   "type": "RNAV",
+   "name": "RINDI"
+  },
+  "OMILU": {
+   "lat": 42.73722,
+   "lon": -3.78056,
+   "type": "RNAV",
+   "name": "OMILU"
+  },
+  "ALBER": {
+   "lat": 42.45139,
+   "lon": 2.83222,
+   "type": "RNAV",
+   "name": "ALBER"
+  },
+  "KUREG": {
+   "lat": 40.89917,
+   "lon": 2.71889,
+   "type": "RNAV",
+   "name": "KUREG"
+  },
+  "BISKA": {
+   "lat": 43.68333,
+   "lon": -2.81389,
+   "type": "RNAV",
+   "name": "BISKA"
+  },
+  "BADRU": {
+   "lat": 43.73639,
+   "lon": -2.79667,
+   "type": "RNAV",
+   "name": "BADRU"
+  },
+  "BELEN": {
+   "lat": 43.91417,
+   "lon": -2.73861,
+   "type": "RNAV",
+   "name": "BELEN"
+  },
+  "HUE": {
+   "lat": 42.07333,
+   "lon": -0.31889,
+   "type": "NAVAID",
+   "name": "HUESCA"
+  },
+  "VETAR": {
+   "lat": 42.17806,
+   "lon": -0.49333,
+   "type": "RNAV",
+   "name": "VETAR"
+  },
+  "PODUX": {
+   "lat": 42.90111,
+   "lon": -1.88139,
+   "type": "RNAV",
+   "name": "PODUX"
+  },
+  "BAPOR": {
+   "lat": 43.67167,
+   "lon": -2.72444,
+   "type": "RNAV",
+   "name": "BAPOR"
+  },
+  "URUNA": {
+   "lat": 43.355,
+   "lon": -1.74028,
+   "type": "RNAV",
+   "name": "URUNA"
+  },
+  "MEGAT": {
+   "lat": 43.49889,
+   "lon": -7.59639,
+   "type": "RNAV",
+   "name": "MEGAT"
+  },
+  "ASDEB": {
+   "lat": 42.51583,
+   "lon": -8.49194,
+   "type": "RNAV",
+   "name": "ASDEB"
+  },
+  "TURON": {
+   "lat": 42.06806,
+   "lon": -8.56333,
+   "type": "RNAV",
+   "name": "TURON"
+  },
+  "ROLES": {
+   "lat": 43.09917,
+   "lon": -3.39111,
+   "type": "RNAV",
+   "name": "ROLES"
+  },
+  "JOCRE": {
+   "lat": 43.53389,
+   "lon": -4.33333,
+   "type": "RNAV",
+   "name": "JOCRE"
+  },
+  "LEVNO": {
+   "lat": 43.72611,
+   "lon": -5.35917,
+   "type": "RNAV",
+   "name": "LEVNO"
+  },
+  "OSTUR": {
+   "lat": 40.78083,
+   "lon": 2.89389,
+   "type": "RNAV",
+   "name": "OSTUR"
+  },
+  "COSTI": {
+   "lat": 27.36,
+   "lon": -13.70222,
+   "type": "RNAV",
+   "name": "COSTI"
+  },
+  "BEDAL": {
+   "lat": 42.10472,
+   "lon": -7.75389,
+   "type": "RNAV",
+   "name": "BEDAL"
+  },
+  "ASPOR": {
+   "lat": 41.815,
+   "lon": -8.08111,
+   "type": "RNAV",
+   "name": "ASPOR"
+  },
+  "MALIS": {
+   "lat": 41.85556,
+   "lon": -7.60472,
+   "type": "RNAV",
+   "name": "MALIS"
+  },
+  "TUTIS": {
+   "lat": 35.92222,
+   "lon": -6.69972,
+   "type": "RNAV",
+   "name": "TUTIS"
+  },
+  "AMPIR": {
+   "lat": 35.9375,
+   "lon": -5.95639,
+   "type": "RNAV",
+   "name": "AMPIR"
+  },
+  "SOVIS": {
+   "lat": 35.96,
+   "lon": -5.77722,
+   "type": "RNAV",
+   "name": "SOVIS"
+  },
+  "GOSOS": {
+   "lat": 36.08694,
+   "lon": -4.72556,
+   "type": "RNAV",
+   "name": "GOSOS"
+  },
+  "MIMDI": {
+   "lat": 36.6,
+   "lon": -1.21667,
+   "type": "RNAV",
+   "name": "MIMDI"
+  },
+  "PIMAD": {
+   "lat": 38.16667,
+   "lon": 2.5,
+   "type": "RNAV",
+   "name": "PIMAD"
+  },
+  "RUTIP": {
+   "lat": 42.4775,
+   "lon": 1.43722,
+   "type": "RNAV",
+   "name": "RUTIP"
+  },
+  "SINDO": {
+   "lat": 42.13611,
+   "lon": 1.32361,
+   "type": "RNAV",
+   "name": "SINDO"
+  },
+  "RIXOT": {
+   "lat": 40.39111,
+   "lon": 4.66667,
+   "type": "RNAV",
+   "name": "RIXOT"
+  },
+  "FENXE": {
+   "lat": 39.72222,
+   "lon": -1.54889,
+   "type": "RNAV",
+   "name": "FENXE"
+  },
+  "NAVAR": {
+   "lat": 40.37667,
+   "lon": 0.52167,
+   "type": "RNAV",
+   "name": "NAVAR"
+  },
+  "ARVID": {
+   "lat": 43.07611,
+   "lon": -1.46472,
+   "type": "RNAV",
+   "name": "ARVID"
+  },
+  "BASIM": {
+   "lat": 41.50444,
+   "lon": -3.26667,
+   "type": "RNAV",
+   "name": "BASIM"
+  },
+  "VABAR": {
+   "lat": 42.17111,
+   "lon": -2.61528,
+   "type": "RNAV",
+   "name": "VABAR"
+  },
+  "RUBEO": {
+   "lat": 40.95417,
+   "lon": -0.68639,
+   "type": "RNAV",
+   "name": "RUBEO"
+  },
+  "TFS": {
+   "lat": 28.0025,
+   "lon": -16.68806,
+   "type": "NAVAID",
+   "name": "TENERIFE SUR"
+  },
+  "CARIM": {
+   "lat": 26.0,
+   "lon": -11.195,
+   "type": "RNAV",
+   "name": "CARIM"
+  },
+  "MERAN": {
+   "lat": 27.85639,
+   "lon": -16.18556,
+   "type": "RNAV",
+   "name": "MERAN"
+  },
+  "TUPIX": {
+   "lat": 37.07611,
+   "lon": -7.38333,
+   "type": "RNAV",
+   "name": "TUPIX"
+  },
+  "NIRAK": {
+   "lat": 37.24583,
+   "lon": -7.42861,
+   "type": "RNAV",
+   "name": "NIRAK"
+  },
+  "HIE": {
+   "lat": 21.33333,
+   "lon": -15.0,
+   "type": "RNAV",
+   "name": "HIE"
+  },
+  "EMANU": {
+   "lat": 42.95778,
+   "lon": -3.78083,
+   "type": "RNAV",
+   "name": "EMANU"
+  },
+  "VSJ": {
+   "lat": 37.77972,
+   "lon": -0.81278,
+   "type": "NAVAID",
+   "name": "SAN JAVIER VORTAC"
+  },
+  "BANSO": {
+   "lat": 37.23417,
+   "lon": -1.65472,
+   "type": "RNAV",
+   "name": "BANSO"
+  },
+  "ALZUP": {
+   "lat": 37.15639,
+   "lon": -1.77306,
+   "type": "RNAV",
+   "name": "ALZUP"
+  },
+  "ADKIM": {
+   "lat": 35.83333,
+   "lon": -6.02833,
+   "type": "RNAV",
+   "name": "ADKIM"
+  },
+  "SOTUK": {
+   "lat": 39.19361,
+   "lon": -4.74639,
+   "type": "RNAV",
+   "name": "SOTUK"
+  },
+  "CORDA": {
+   "lat": 40.41556,
+   "lon": 2.25583,
+   "type": "RNAV",
+   "name": "CORDA"
+  },
+  "USIBA": {
+   "lat": 39.0,
+   "lon": -5.61056,
+   "type": "RNAV",
+   "name": "USIBA"
+  },
+  "ODSEN": {
+   "lat": 39.06417,
+   "lon": 0.48333,
+   "type": "RNAV",
+   "name": "ODSEN"
+  },
+  "VARUT": {
+   "lat": 39.02222,
+   "lon": 0.675,
+   "type": "RNAV",
+   "name": "VARUT"
+  },
+  "IBA": {
+   "lat": 38.86833,
+   "lon": 1.36583,
+   "type": "NAVAID",
+   "name": "IBIZA"
+  },
+  "RUSEM": {
+   "lat": 39.0,
+   "lon": -4.84694,
+   "type": "RNAV",
+   "name": "RUSEM"
+  },
+  "USOKO": {
+   "lat": 39.79361,
+   "lon": -4.43111,
+   "type": "RNAV",
+   "name": "USOKO"
+  },
+  "KONKE": {
+   "lat": 41.03333,
+   "lon": -1.77694,
+   "type": "RNAV",
+   "name": "KONKE"
+  },
+  "TERSA": {
+   "lat": 40.725,
+   "lon": -2.13778,
+   "type": "RNAV",
+   "name": "TERSA"
+  },
+  "MOSEN": {
+   "lat": 41.78667,
+   "lon": -6.56083,
+   "type": "RNAV",
+   "name": "MOSEN"
+  },
+  "GODIV": {
+   "lat": 41.72139,
+   "lon": -6.32361,
+   "type": "RNAV",
+   "name": "GODIV"
+  },
+  "OGERO": {
+   "lat": 39.80167,
+   "lon": -6.40056,
+   "type": "RNAV",
+   "name": "OGERO"
+  },
+  "RUKER": {
+   "lat": 39.94944,
+   "lon": -4.61111,
+   "type": "RNAV",
+   "name": "RUKER"
+  },
+  "EPATA": {
+   "lat": 36.28694,
+   "lon": -3.86667,
+   "type": "RNAV",
+   "name": "EPATA"
+  },
+  "PEKOP": {
+   "lat": 35.83333,
+   "lon": -3.44083,
+   "type": "RNAV",
+   "name": "PEKOP"
+  }
+ },
+ "airways": [
+  {
+   "name": "L2",
+   "category": "lower",
+   "waypoints": [
+    "VNV",
+    "NEPAL",
+    "ESPOR",
+    "ADX"
+   ],
+   "lowerFL": 95,
+   "upperFL": 305
+  },
+  {
+   "name": "L14",
+   "category": "lower",
+   "waypoints": [
+    "POPUL",
+    "BLV",
+    "AMTOS",
+    "NEA",
+    "ZANKO",
+    "RIDAV",
+    "ADINO",
+    "RAKOD",
+    "ELVAR"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "L16",
+   "category": "lower",
+   "waypoints": [
+    "SARGO",
+    "TOSNU",
+    "VERSO",
+    "AGENA",
+    "DALIN",
+    "BGR"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "L27",
+   "category": "lower",
+   "waypoints": [
+    "KORIS",
+    "XULIM",
+    "VJF",
+    "MAR",
+    "BLN",
+    "ANZAN",
+    "NASOS",
+    "INTAX",
+    "CJN",
+    "BRITO",
+    "YAKXU"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "L34",
+   "category": "lower",
+   "waypoints": [
+    "ALT",
+    "VLC",
+    "CASIM"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "L45",
+   "category": "lower",
+   "waypoints": [
+    "SOSAV",
+    "MOPIR",
+    "VLC",
+    "URIPO",
+    "ELKEM",
+    "SADAF"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "L58",
+   "category": "lower",
+   "waypoints": [
+    "VIBAS",
+    "PEPAS",
+    "OBAKA",
+    "LUVIV",
+    "BERUM"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "L82",
+   "category": "upper",
+   "waypoints": [
+    "VJF",
+    "TAVSI",
+    "RUNAX"
+   ],
+   "lowerFL": 195,
+   "upperFL": 660
+  },
+  {
+   "name": "L110",
+   "category": "lower",
+   "waypoints": [
+    "SEROX",
+    "OSVAK",
+    "LRD",
+    "REBUL",
+    "LATRO",
+    "MAMUK",
+    "GIR",
+    "BGR",
+    "DIBER"
+   ],
+   "lowerFL": 75,
+   "upperFL": 660
+  },
+  {
+   "name": "L112",
+   "category": "lower",
+   "waypoints": [
+    "MGA",
+    "NESDA",
+    "KUNEN",
+    "AMR",
+    "POLCI",
+    "DINCO",
+    "DIMER",
+    "PALOS",
+    "OSVAN",
+    "ALT"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "L129",
+   "category": "lower",
+   "waypoints": [
+    "VERSO",
+    "LUNIK",
+    "POS",
+    "LULAK",
+    "MJV",
+    "TUKRO",
+    "MEBUT",
+    "NINES",
+    "SURIB",
+    "ELKEM",
+    "PIDUD",
+    "LABRO"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "L150",
+   "category": "lower",
+   "waypoints": [
+    "RBO",
+    "CJN",
+    "VILLA",
+    "NANDO",
+    "MOTIL",
+    "SOSAV",
+    "ASTRO",
+    "NARGO",
+    "ALT",
+    "MAGAL",
+    "LUKIL",
+    "RAFOL",
+    "XENVO",
+    "LABRO"
+   ],
+   "lowerFL": 75,
+   "upperFL": 660
+  },
+  {
+   "name": "L155",
+   "category": "lower",
+   "waypoints": [
+    "ADORO",
+    "ZMR",
+    "AVILA",
+    "NVS",
+    "VTB"
+   ],
+   "lowerFL": 105,
+   "upperFL": 660
+  },
+  {
+   "name": "L176",
+   "category": "lower",
+   "waypoints": [
+    "DGO",
+    "CEGAM",
+    "BAGAS",
+    "SSN",
+    "LUSEM"
+   ],
+   "lowerFL": 65,
+   "upperFL": 660
+  },
+  {
+   "name": "L184",
+   "category": "lower",
+   "waypoints": [
+    "TLD",
+    "RBO",
+    "BAN"
+   ],
+   "lowerFL": 145,
+   "upperFL": 660
+  },
+  {
+   "name": "L185",
+   "category": "lower",
+   "waypoints": [
+    "PORTA",
+    "CCS",
+    "ROLDO",
+    "LUPES",
+    "NVS"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "L195",
+   "category": "lower",
+   "waypoints": [
+    "MGA",
+    "INKAL",
+    "LUVIV",
+    "GONZA",
+    "LIGUM",
+    "SOLNA",
+    "LAY",
+    "ARENA",
+    "CABEL",
+    "DKH",
+    "LOLOS",
+    "MAURI"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "L866",
+   "category": "lower",
+   "waypoints": [
+    "DGO",
+    "LPA",
+    "VEGEL",
+    "PPN",
+    "PIPOR",
+    "VERSO",
+    "LAPIT"
+   ],
+   "lowerFL": 65,
+   "upperFL": 660
+  },
+  {
+   "name": "M30",
+   "category": "lower",
+   "waypoints": [
+    "LOTEE",
+    "MAVOS",
+    "VES",
+    "XONDA",
+    "GOTOX",
+    "ROVAK",
+    "OMESI",
+    "VETAN",
+    "ZMR",
+    "MELON",
+    "PARKA",
+    "HIJ",
+    "OXACA",
+    "PIMUR"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "M134",
+   "category": "lower",
+   "waypoints": [
+    "VLC",
+    "COMPI",
+    "NINOT",
+    "XOSTA",
+    "IZA",
+    "NINES",
+    "OLMIR",
+    "XARON",
+    "GENIO",
+    "LUXUR"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "M143",
+   "category": "lower",
+   "waypoints": [
+    "CJN",
+    "ULSES",
+    "ANANA",
+    "YES",
+    "TOSGA",
+    "RISPO",
+    "AMR",
+    "GALTO"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "M176",
+   "category": "lower",
+   "waypoints": [
+    "PPN",
+    "EXEMU",
+    "CMA",
+    "DISVU",
+    "MANDY",
+    "CLS",
+    "RETBA",
+    "SERRA",
+    "ALT"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "M182",
+   "category": "lower",
+   "waypoints": [
+    "UMURE",
+    "SENIA",
+    "AMPOL",
+    "MATEX",
+    "SAURA"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "M190",
+   "category": "lower",
+   "waypoints": [
+    "SSN",
+    "BLV",
+    "CALCE",
+    "SNR",
+    "OBETO",
+    "RONSI",
+    "LASKU",
+    "AMAKA",
+    "VES",
+    "MASIP",
+    "ROXER",
+    "STG"
+   ],
+   "lowerFL": 75,
+   "upperFL": 660
+  },
+  {
+   "name": "M191",
+   "category": "lower",
+   "waypoints": [
+    "RIVRO",
+    "BARDI",
+    "RIDAV",
+    "DIPOL"
+   ],
+   "lowerFL": 115,
+   "upperFL": 660
+  },
+  {
+   "name": "M192",
+   "category": "lower",
+   "waypoints": [
+    "BLN",
+    "BAZAS",
+    "ARPEX",
+    "ROLAS",
+    "AGIDO",
+    "AMR",
+    "GATAS",
+    "TARIK"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "M299",
+   "category": "lower",
+   "waypoints": [
+    "NEA",
+    "BUGIX",
+    "AMGAR",
+    "VRA",
+    "KUDEX",
+    "PPN",
+    "GOMSO",
+    "BEGUY",
+    "DONOS"
+   ],
+   "lowerFL": 65,
+   "upperFL": 245
+  },
+  {
+   "name": "M372",
+   "category": "lower",
+   "waypoints": [
+    "AMR",
+    "ESAMI"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "M445",
+   "category": "lower",
+   "waypoints": [
+    "PIMOS",
+    "RIXUR",
+    "PEPAS",
+    "ARPEX",
+    "KOSEL",
+    "BUDIT",
+    "ETURA",
+    "TOSTO",
+    "OLPOS",
+    "BEGOX",
+    "LASPO",
+    "SOPET",
+    "ASDIR"
+   ],
+   "lowerFL": 145,
+   "upperFL": 660
+  },
+  {
+   "name": "M601",
+   "category": "lower",
+   "waypoints": [
+    "MUREN",
+    "CHELY",
+    "VERSO",
+    "SULID",
+    "SADEM",
+    "BCN",
+    "CAVES",
+    "VIBOK",
+    "REBUL",
+    "GEMAS",
+    "ALOSU",
+    "GRAUS",
+    "POSSY",
+    "MARIO",
+    "SURCO",
+    "RONNY",
+    "RONKO",
+    "GOSVI",
+    "TURPU",
+    "PPN",
+    "MALOB",
+    "CEGAM",
+    "BLV"
+   ],
+   "lowerFL": 65,
+   "upperFL": 660
+  },
+  {
+   "name": "M603",
+   "category": "lower",
+   "waypoints": [
+    "MORSS",
+    "MHN",
+    "CDP",
+    "LULAK",
+    "EDULI",
+    "OKITI",
+    "IBEBA",
+    "BAVER",
+    "GERVU",
+    "ALT",
+    "GDV",
+    "ROTUM",
+    "DKH"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "M744",
+   "category": "lower",
+   "waypoints": [
+    "LASIB",
+    "ROSAL",
+    "SANTA",
+    "SVL",
+    "MAR",
+    "MGA",
+    "UMUKA",
+    "OBAKA",
+    "GOLFO",
+    "CARBO"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "M871",
+   "category": "lower",
+   "waypoints": [
+    "DIPOL",
+    "NVS",
+    "PDT",
+    "AKOKI",
+    "NANDO",
+    "MINGU",
+    "ABOSI",
+    "MABUX",
+    "RETBA",
+    "MOPIR",
+    "LASPO",
+    "ORVUS",
+    "GODOX",
+    "EDULI",
+    "PTC",
+    "SOTAX"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "M984",
+   "category": "lower",
+   "waypoints": [
+    "BGR",
+    "BISBA",
+    "MAMES"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "M985",
+   "category": "lower",
+   "waypoints": [
+    "BARPA",
+    "XAVIR",
+    "PIMOS",
+    "MGA",
+    "VIBAS",
+    "BAZAS",
+    "MAMIS",
+    "YES",
+    "XEBAR",
+    "POBOS",
+    "ASTRO",
+    "SERRA",
+    "VLC",
+    "SOPET",
+    "DIKUT",
+    "TORDU",
+    "LOTOS",
+    "EBROX",
+    "PEXOT",
+    "RODRA",
+    "BCN",
+    "SALON",
+    "AGENA",
+    "BODEQ",
+    "LUMAS"
+   ],
+   "lowerFL": 85,
+   "upperFL": 660
+  },
+  {
+   "name": "M999",
+   "category": "lower",
+   "waypoints": [
+    "MGA",
+    "PODES"
+   ],
+   "lowerFL": 155,
+   "upperFL": 660
+  },
+  {
+   "name": "N10",
+   "category": "lower",
+   "waypoints": [
+    "SSN",
+    "DITOP",
+    "PPN",
+    "NOLSA",
+    "ALEPO",
+    "VASUM",
+    "GARVU",
+    "BANEV",
+    "BAN",
+    "PINAR",
+    "CJN",
+    "VTB",
+    "INPAN",
+    "CRISA",
+    "HIJ",
+    "SVL",
+    "VJF",
+    "LINTO"
+   ],
+   "lowerFL": 65,
+   "upperFL": 660
+  },
+  {
+   "name": "N13",
+   "category": "upper",
+   "waypoints": [
+    "IBRAP",
+    "LUKEV",
+    "LORES"
+   ],
+   "lowerFL": 195,
+   "upperFL": 660
+  },
+  {
+   "name": "N31",
+   "category": "lower",
+   "waypoints": [
+    "PUMAL",
+    "BERGA",
+    "MAMUK",
+    "SLL",
+    "BCN"
+   ],
+   "lowerFL": 95,
+   "upperFL": 245
+  },
+  {
+   "name": "N75",
+   "category": "lower",
+   "waypoints": [
+    "BLV",
+    "DOSUL",
+    "XORNA",
+    "DELOG"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N480",
+   "category": "lower",
+   "waypoints": [
+    "BALDA",
+    "MAVOS"
+   ],
+   "lowerFL": 145,
+   "upperFL": 245
+  },
+  {
+   "name": "N493",
+   "category": "lower",
+   "waypoints": [
+    "MGA",
+    "BERUM"
+   ],
+   "lowerFL": 155,
+   "upperFL": 660
+  },
+  {
+   "name": "N602",
+   "category": "lower",
+   "waypoints": [
+    "KONBA",
+    "KASAS",
+    "TFN"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N608",
+   "category": "lower",
+   "waypoints": [
+    "HAMRA",
+    "RAFOL",
+    "MITOS",
+    "COMPI",
+    "SOPET",
+    "CASIM",
+    "MATEX",
+    "DORMI",
+    "PELAT",
+    "SALAS",
+    "VILAR",
+    "LRD",
+    "MECKI",
+    "GEMAS",
+    "BARBO",
+    "GIROM"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N725",
+   "category": "lower",
+   "waypoints": [
+    "STG",
+    "LOMDA",
+    "BISMU",
+    "LARVO",
+    "ROVAK",
+    "SUSOS",
+    "NUBLO",
+    "NEDUS",
+    "RATAS",
+    "KOHDE",
+    "DGO",
+    "VASUM",
+    "YAKXU",
+    "ELSAP",
+    "VAKIN",
+    "DIRMU",
+    "LOBAR",
+    "MECKI",
+    "ARBEK",
+    "SADUR",
+    "BCN",
+    "DIPES",
+    "TOSNU",
+    "LAPIT",
+    "OSPOK"
+   ],
+   "lowerFL": 115,
+   "upperFL": 660
+  },
+  {
+   "name": "N726",
+   "category": "lower",
+   "waypoints": [
+    "STG",
+    "NARBO",
+    "ORTOP",
+    "BAMBA"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N727",
+   "category": "lower",
+   "waypoints": [
+    "GEANT",
+    "GIR",
+    "SALON",
+    "SULID",
+    "DIPES",
+    "SARGO"
+   ],
+   "lowerFL": 145,
+   "upperFL": 660
+  },
+  {
+   "name": "N728",
+   "category": "lower",
+   "waypoints": [
+    "KORUL",
+    "KORAV",
+    "STG",
+    "DEMOS",
+    "ORTIS",
+    "PITAB",
+    "BRICK",
+    "TFN",
+    "LOMAS",
+    "REMGI",
+    "CABOJ",
+    "ARENA",
+    "KEMUL",
+    "MIYEC"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N729",
+   "category": "lower",
+   "waypoints": [
+    "BIMBO",
+    "GURKA",
+    "KASAS",
+    "GDV",
+    "REMGI",
+    "DEREV",
+    "CABEL"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N733",
+   "category": "lower",
+   "waypoints": [
+    "STG",
+    "ELTEP",
+    "FORNO",
+    "FINAM",
+    "INSID",
+    "BARKO",
+    "DESAT",
+    "ZMR",
+    "ZANKO",
+    "UNSOL",
+    "DISKO",
+    "CJN",
+    "BENED",
+    "PRADO",
+    "CENTA",
+    "CATON",
+    "WALLY",
+    "CLS",
+    "VLC",
+    "ARGOR",
+    "IXUPA",
+    "EPAMA",
+    "AKAMU",
+    "OLUTO",
+    "CDP",
+    "SOTAX"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N741",
+   "category": "unknown",
+   "waypoints": [
+    "EDUMO",
+    "ERONI",
+    "ROSTA",
+    "NELSO"
+   ],
+   "lowerFL": null,
+   "upperFL": null
+  },
+  {
+   "name": "N745",
+   "category": "lower",
+   "waypoints": [
+    "RIVRO",
+    "TOSDI",
+    "ZMR"
+   ],
+   "lowerFL": 105,
+   "upperFL": 660
+  },
+  {
+   "name": "N747",
+   "category": "lower",
+   "waypoints": [
+    "MINTA",
+    "OSLEP",
+    "NAPES",
+    "ONUBA",
+    "PIMUR",
+    "SVL",
+    "AMOTA",
+    "VULPE",
+    "ALCOL",
+    "KUKAL",
+    "BLN",
+    "YES",
+    "TOSTO"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N850",
+   "category": "upper",
+   "waypoints": [
+    "SORAS",
+    "NOMTO",
+    "NELAS",
+    "POS",
+    "OLUTO",
+    "ADX"
+   ],
+   "lowerFL": 245,
+   "upperFL": 660
+  },
+  {
+   "name": "N851",
+   "category": "lower",
+   "waypoints": [
+    "VJF",
+    "BRIKE",
+    "MGA",
+    "RIXUR",
+    "UNTOS",
+    "ROLAS",
+    "TOSGA",
+    "RESTU",
+    "ALT",
+    "SUMMO",
+    "MITOS",
+    "BRUNO",
+    "RUXET",
+    "IZA",
+    "TUKRO",
+    "ASMOT",
+    "PTC",
+    "MHN",
+    "ISTER"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N852",
+   "category": "lower",
+   "waypoints": [
+    "VATIR",
+    "PIVUS",
+    "BODEQ",
+    "VERSO",
+    "NELAS",
+    "CDP",
+    "RUFRU",
+    "GENIO"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N853",
+   "category": "lower",
+   "waypoints": [
+    "LUMAS",
+    "CHELY",
+    "LAPIT",
+    "MEROS",
+    "MHN",
+    "ELTAN",
+    "MAMOM",
+    "PECES"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N855",
+   "category": "lower",
+   "waypoints": [
+    "KANIG",
+    "BGR",
+    "FEVIK",
+    "SALON",
+    "SADEM",
+    "DUNES",
+    "SISMO",
+    "KENAS",
+    "POS",
+    "TALEN",
+    "WITAZ",
+    "XESPA",
+    "GENIO",
+    "BUYAH"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N856",
+   "category": "lower",
+   "waypoints": [
+    "SADAF",
+    "SURIB",
+    "INSUB",
+    "RONDU",
+    "IZA",
+    "OKITI",
+    "GODOX",
+    "EPAMA",
+    "MARTA",
+    "EBROX",
+    "UMURE"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N857",
+   "category": "lower",
+   "waypoints": [
+    "NETUK",
+    "PPN",
+    "NOLSA",
+    "ALEPO",
+    "VASUM",
+    "GARVU",
+    "BANEV",
+    "BAN",
+    "GOTOR",
+    "KAMPO",
+    "MONTO",
+    "MOLIN",
+    "HIJ",
+    "SVL",
+    "CLANA",
+    "KORNO",
+    "TERTO",
+    "LZR",
+    "DEREV",
+    "BIPET",
+    "ETIBA",
+    "GUNET"
+   ],
+   "lowerFL": 65,
+   "upperFL": 660
+  },
+  {
+   "name": "N858",
+   "category": "lower",
+   "waypoints": [
+    "GDV",
+    "VASTO",
+    "PESAS",
+    "OSLEP",
+    "OXACA",
+    "DIONY",
+    "PARKA",
+    "TLD",
+    "SIE",
+    "EDIGO",
+    "DGO",
+    "ABRIX"
+   ],
+   "lowerFL": 105,
+   "upperFL": 660
+  },
+  {
+   "name": "N859",
+   "category": "lower",
+   "waypoints": [
+    "PUMAL",
+    "XEPLA",
+    "BCN",
+    "GARBI",
+    "LARPA",
+    "TOLSO",
+    "LISAS",
+    "MJV",
+    "OSGAL",
+    "XILPA",
+    "GENIO",
+    "MOGIL"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N860",
+   "category": "lower",
+   "waypoints": [
+    "ANETO",
+    "TURUV",
+    "GRAUS",
+    "LOBAR",
+    "SEROX",
+    "CASPE",
+    "MLA",
+    "CRETA",
+    "RIMES",
+    "SAURA",
+    "TATOS",
+    "PLANA",
+    "VLC",
+    "BEGOX",
+    "NARGO",
+    "RESTU",
+    "DOSEK",
+    "AMR",
+    "VADAT",
+    "GONZA",
+    "BERUM"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N861",
+   "category": "lower",
+   "waypoints": [
+    "SADAF",
+    "OLMIR",
+    "ASMOT",
+    "MJV",
+    "ADX",
+    "GALAT",
+    "RODRA",
+    "VNV",
+    "ANTON",
+    "BISES",
+    "SADUR",
+    "CAVES",
+    "LATRO",
+    "OLOXO",
+    "PERDU",
+    "POSSY",
+    "DIRMU",
+    "MLA",
+    "MOPAS",
+    "USKAR",
+    "REBUL",
+    "KARES",
+    "XIKEN",
+    "UMURE",
+    "PAPOS",
+    "DRAGO",
+    "ADX"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N864",
+   "category": "lower",
+   "waypoints": [
+    "DELOG",
+    "VADOX",
+    "SNR",
+    "TITAN",
+    "RATAS",
+    "NEA",
+    "NONTU",
+    "ORBIS",
+    "DISKO",
+    "TLD",
+    "DOPEN",
+    "MONTO",
+    "CRISA",
+    "MOCEQ",
+    "VULPE",
+    "MAR",
+    "OGROH",
+    "PIMOS"
+   ],
+   "lowerFL": 75,
+   "upperFL": 660
+  },
+  {
+   "name": "N865",
+   "category": "lower",
+   "waypoints": [
+    "AMR",
+    "ESILA",
+    "UNTOS",
+    "VIBAS",
+    "TINEK",
+    "BLN",
+    "MORAL",
+    "BEXID",
+    "VTB",
+    "SIE",
+    "XERMA",
+    "ARLUN",
+    "BUGIX",
+    "UNGAS",
+    "DELOG"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N866",
+   "category": "upper",
+   "waypoints": [
+    "KONBA",
+    "GURKA",
+    "BRICK",
+    "GOMER",
+    "ORVEK",
+    "APASO",
+    "YORGI",
+    "TENPA"
+   ],
+   "lowerFL": 195,
+   "upperFL": 660
+  },
+  {
+   "name": "N867",
+   "category": "lower",
+   "waypoints": [
+    "NENEM",
+    "MAPAX",
+    "BLV",
+    "DGO",
+    "GASMO",
+    "OSTIX",
+    "WUSHI",
+    "RBO",
+    "VTB",
+    "IDEVU",
+    "ANZAN"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N869",
+   "category": "lower",
+   "waypoints": [
+    "TIVLI",
+    "ELSAP",
+    "ZAR",
+    "EXEMU",
+    "PISUS",
+    "EDIMU",
+    "ADUXO",
+    "NUSGO",
+    "OBIBO",
+    "NASOS",
+    "ANZAN",
+    "BLN",
+    "MGA",
+    "PIMOS",
+    "GALTO"
+   ],
+   "lowerFL": 85,
+   "upperFL": 660
+  },
+  {
+   "name": "N870",
+   "category": "lower",
+   "waypoints": [
+    "TOFEF",
+    "RODAP",
+    "RAKOD",
+    "UREDI",
+    "DIPOL",
+    "RBO",
+    "PINAR",
+    "SEGRE",
+    "BRITO",
+    "PISUS",
+    "PONEN",
+    "SEROX",
+    "VILAR",
+    "KARES",
+    "BISES",
+    "BCN",
+    "FEVIK",
+    "DALIN",
+    "PIVUS",
+    "DIBER"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N871",
+   "category": "lower",
+   "waypoints": [
+    "APASO",
+    "PUCLO",
+    "URQUI",
+    "GDV",
+    "LZR",
+    "KORAL",
+    "ADUBI",
+    "VJF",
+    "MAR",
+    "ALCOL",
+    "PIPHU",
+    "AMIBU",
+    "LOGRO",
+    "ETANA",
+    "VTB",
+    "PALIO",
+    "SEGRE",
+    "YAKXU",
+    "RONNY",
+    "TOPTU"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N872",
+   "category": "lower",
+   "waypoints": [
+    "RALUS",
+    "BARKO",
+    "BISMU",
+    "KUVAN",
+    "VES",
+    "DEVAR",
+    "ATLEN"
+   ],
+   "lowerFL": 105,
+   "upperFL": 245
+  },
+  {
+   "name": "N873",
+   "category": "lower",
+   "waypoints": [
+    "IPERA",
+    "ISOKA",
+    "LIMAL",
+    "UDATI",
+    "ODEGI",
+    "LOMAS",
+    "GDV",
+    "SAMAR",
+    "PORTA",
+    "RODAP",
+    "BABOV",
+    "BARDI",
+    "ZMR",
+    "NUBLO",
+    "RONSI",
+    "DELOG"
+   ],
+   "lowerFL": 105,
+   "upperFL": 660
+  },
+  {
+   "name": "N975",
+   "category": "lower",
+   "waypoints": [
+    "NILDU",
+    "BISBA",
+    "BGR",
+    "NENDA",
+    "BCN",
+    "ANTON",
+    "XIKEN",
+    "OSLAP",
+    "SALAS",
+    "RAMON",
+    "NEXAS",
+    "DISVU",
+    "ADUXO",
+    "CJN",
+    "PALIO",
+    "AKOKI",
+    "GOTOR",
+    "TLD",
+    "NATPA",
+    "MELON",
+    "CCS",
+    "ELVAR"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "N976",
+   "category": "lower",
+   "waypoints": [
+    "NINOS",
+    "ARDID",
+    "ZMR",
+    "NEA",
+    "DGO",
+    "MIRPO",
+    "PPN",
+    "ERAKI",
+    "BIMBO",
+    "PITAB",
+    "GOMER",
+    "PPN",
+    "LATEK",
+    "VLC",
+    "RIPUX",
+    "SUMMO",
+    "MAGAL",
+    "LIMTU",
+    "RINDI",
+    "HAMRA",
+    "NENEM",
+    "OMILU",
+    "NEA",
+    "ALBER",
+    "GIR",
+    "NENDA",
+    "KUREG",
+    "LORES",
+    "BLV",
+    "BISKA",
+    "BADRU",
+    "BELEN",
+    "POSSY",
+    "HUE",
+    "VETAR",
+    "RONKO",
+    "GOSVI",
+    "TURPU",
+    "PPN",
+    "PODUX",
+    "BAGAS",
+    "BAPOR",
+    "BADRU",
+    "NENEM",
+    "URUNA",
+    "SSN",
+    "VRA",
+    "NEA",
+    "LOTEE",
+    "MEGAT",
+    "STG",
+    "ASDEB",
+    "TURON"
+   ],
+   "lowerFL": 65,
+   "upperFL": 660
+  },
+  {
+   "name": "Q42",
+   "category": "lower",
+   "waypoints": [
+    "NENEM",
+    "XORNA",
+    "SNR"
+   ],
+   "lowerFL": 95,
+   "upperFL": 195
+  },
+  {
+   "name": "Q210",
+   "category": "lower",
+   "waypoints": [
+    "GARVU",
+    "LPA",
+    "VRA",
+    "ROLES",
+    "SNR",
+    "JOCRE",
+    "LEVNO"
+   ],
+   "lowerFL": 75,
+   "upperFL": 245
+  },
+  {
+   "name": "Q255",
+   "category": "lower",
+   "waypoints": [
+    "LUNIK",
+    "SISMO",
+    "OSTUR"
+   ],
+   "lowerFL": 95,
+   "upperFL": 195
+  },
+  {
+   "name": "Q279",
+   "category": "lower",
+   "waypoints": [
+    "GDV",
+    "COSTI",
+    "LAY"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "Q700",
+   "category": "lower",
+   "waypoints": [
+    "BCN",
+    "DUNES",
+    "SARGO"
+   ],
+   "lowerFL": 95,
+   "upperFL": 195
+  },
+  {
+   "name": "T3",
+   "category": "lower",
+   "waypoints": [
+    "FINAM",
+    "BEDAL",
+    "ASPOR"
+   ],
+   "lowerFL": 105,
+   "upperFL": 245
+  },
+  {
+   "name": "T5",
+   "category": "lower",
+   "waypoints": [
+    "MALIS",
+    "BARKO"
+   ],
+   "lowerFL": 105,
+   "upperFL": 245
+  },
+  {
+   "name": "T100",
+   "category": "lower",
+   "waypoints": [
+    "ORTOP",
+    "TUTIS",
+    "TAVSI",
+    "XULIM",
+    "AMPIR",
+    "SOVIS",
+    "GOSOS",
+    "GONZA",
+    "GOLFO",
+    "MIMDI",
+    "RINDI",
+    "XENVO",
+    "PIDUD",
+    "PIMAD",
+    "XARON",
+    "XESPA",
+    "MAMOM",
+    "SOTAX"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "T113",
+   "category": "lower",
+   "waypoints": [
+    "RUTIP",
+    "SINDO",
+    "ARBEK"
+   ],
+   "lowerFL": 155,
+   "upperFL": 660
+  },
+  {
+   "name": "T245",
+   "category": "lower",
+   "waypoints": [
+    "KUKAL",
+    "MAMIS",
+    "BUDIT"
+   ],
+   "lowerFL": 145,
+   "upperFL": 660
+  },
+  {
+   "name": "T249",
+   "category": "lower",
+   "waypoints": [
+    "VIBAS",
+    "ARPEX"
+   ],
+   "lowerFL": 145,
+   "upperFL": 660
+  },
+  {
+   "name": "T250",
+   "category": "lower",
+   "waypoints": [
+    "RIXOT",
+    "CDP",
+    "MJV"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "T252",
+   "category": "lower",
+   "waypoints": [
+    "ETURA",
+    "XEBAR"
+   ],
+   "lowerFL": 145,
+   "upperFL": 660
+  },
+  {
+   "name": "T257",
+   "category": "lower",
+   "waypoints": [
+    "NANDO",
+    "FENXE",
+    "MABUX",
+    "RETBA",
+    "MOPIR",
+    "LASPO",
+    "RIPUX",
+    "URIPO"
+   ],
+   "lowerFL": 145,
+   "upperFL": 660
+  },
+  {
+   "name": "T274",
+   "category": "lower",
+   "waypoints": [
+    "GDV",
+    "TFN",
+    "KOSEL",
+    "BAZAS",
+    "AMOTA"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "T326",
+   "category": "lower",
+   "waypoints": [
+    "INSID",
+    "ASPOR"
+   ],
+   "lowerFL": 95,
+   "upperFL": 245
+  },
+  {
+   "name": "T328",
+   "category": "lower",
+   "waypoints": [
+    "ELTEP",
+    "ASPOR"
+   ],
+   "lowerFL": 95,
+   "upperFL": 245
+  },
+  {
+   "name": "T410",
+   "category": "lower",
+   "waypoints": [
+    "ARBEK",
+    "VIBOK",
+    "SLL",
+    "BGR"
+   ],
+   "lowerFL": 145,
+   "upperFL": 660
+  },
+  {
+   "name": "T412",
+   "category": "lower",
+   "waypoints": [
+    "LOTOS",
+    "NAVAR",
+    "ASDIR"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "T424",
+   "category": "upper",
+   "waypoints": [
+    "ARVID",
+    "PPN"
+   ],
+   "lowerFL": 195,
+   "upperFL": 660
+  },
+  {
+   "name": "T429",
+   "category": "lower",
+   "waypoints": [
+    "BLV",
+    "VRA",
+    "DGO",
+    "LPA",
+    "GOSVI",
+    "TOPTU"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "T430",
+   "category": "lower",
+   "waypoints": [
+    "SIE",
+    "BASIM",
+    "GASMO",
+    "VABAR",
+    "LPA",
+    "MIRPO",
+    "MALOB",
+    "PODUX",
+    "DITOP"
+   ],
+   "lowerFL": 85,
+   "upperFL": 660
+  },
+  {
+   "name": "T520",
+   "category": "lower",
+   "waypoints": [
+    "RAMON",
+    "RUBEO",
+    "CMA"
+   ],
+   "lowerFL": 145,
+   "upperFL": 660
+  },
+  {
+   "name": "T600",
+   "category": "lower",
+   "waypoints": [
+    "PONEN",
+    "CASPE",
+    "UMURE"
+   ],
+   "lowerFL": 145,
+   "upperFL": 660
+  },
+  {
+   "name": "T770",
+   "category": "lower",
+   "waypoints": [
+    "TFS",
+    "URQUI",
+    "LIMAL",
+    "APASO",
+    "CARIM"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "Y27",
+   "category": "lower",
+   "waypoints": [
+    "KUVAN",
+    "LARVO",
+    "ZMR"
+   ],
+   "lowerFL": 105,
+   "upperFL": 245
+  },
+  {
+   "name": "Y39",
+   "category": "lower",
+   "waypoints": [
+    "MERAN",
+    "LOMAS"
+   ],
+   "lowerFL": 145,
+   "upperFL": 660
+  },
+  {
+   "name": "Y80",
+   "category": "lower",
+   "waypoints": [
+    "PAPOS",
+    "EBROX",
+    "PELAT",
+    "MLA"
+   ],
+   "lowerFL": 95,
+   "upperFL": 305
+  },
+  {
+   "name": "Y90",
+   "category": "lower",
+   "waypoints": [
+    "COMPI",
+    "DIKUT",
+    "ASDIR",
+    "OSLAP",
+    "USKAR",
+    "COMPI",
+    "DITOP"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "Y135",
+   "category": "lower",
+   "waypoints": [
+    "NAPES",
+    "TUPIX"
+   ],
+   "lowerFL": 95,
+   "upperFL": 195
+  },
+  {
+   "name": "Y136",
+   "category": "lower",
+   "waypoints": [
+    "NAPES",
+    "NIRAK"
+   ],
+   "lowerFL": 95,
+   "upperFL": 195
+  },
+  {
+   "name": "Y422",
+   "category": "lower",
+   "waypoints": [
+    "GOMER",
+    "URQUI",
+    "UDATI",
+    "BIPET",
+    "HIE",
+    "KEMUL",
+    "LAY",
+    "ROSTA",
+    "HIE",
+    "URQUI",
+    "CABOJ"
+   ],
+   "lowerFL": 145,
+   "upperFL": 660
+  },
+  {
+   "name": "Y753",
+   "category": "lower",
+   "waypoints": [
+    "UNGAS",
+    "EMANU",
+    "SNR"
+   ],
+   "lowerFL": 75,
+   "upperFL": 245
+  },
+  {
+   "name": "Y810",
+   "category": "lower",
+   "waypoints": [
+    "ALT",
+    "VSJ",
+    "BANSO",
+    "ALZUP",
+    "AMR"
+   ],
+   "lowerFL": 95,
+   "upperFL": 285
+  },
+  {
+   "name": "Z19",
+   "category": "lower",
+   "waypoints": [
+    "VJF",
+    "SOVIS"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "Z26",
+   "category": "upper",
+   "waypoints": [
+    "EBROX",
+    "LATRO",
+    "ODEGI",
+    "BIPET"
+   ],
+   "lowerFL": 195,
+   "upperFL": 660
+  },
+  {
+   "name": "Z53",
+   "category": "lower",
+   "waypoints": [
+    "ADKIM",
+    "VJF"
+   ],
+   "lowerFL": 75,
+   "upperFL": 195
+  },
+  {
+   "name": "Z82",
+   "category": "lower",
+   "waypoints": [
+    "MEROS",
+    "VERSO"
+   ],
+   "lowerFL": 145,
+   "upperFL": 245
+  },
+  {
+   "name": "Z165",
+   "category": "lower",
+   "waypoints": [
+    "PARKA",
+    "SOTUK"
+   ],
+   "lowerFL": 145,
+   "upperFL": 660
+  },
+  {
+   "name": "Z167",
+   "category": "upper",
+   "waypoints": [
+    "BCN",
+    "LORES"
+   ],
+   "lowerFL": 195,
+   "upperFL": 660
+  },
+  {
+   "name": "Z174",
+   "category": "upper",
+   "waypoints": [
+    "BCN",
+    "CORDA"
+   ],
+   "lowerFL": 195,
+   "upperFL": 660
+  },
+  {
+   "name": "Z180",
+   "category": "lower",
+   "waypoints": [
+    "SVL",
+    "OXACA",
+    "USIBA",
+    "MELON"
+   ],
+   "lowerFL": 145,
+   "upperFL": 660
+  },
+  {
+   "name": "Z224",
+   "category": "lower",
+   "waypoints": [
+    "ASTRO",
+    "LASPO",
+    "ODSEN",
+    "VARUT",
+    "IBEBA",
+    "IBA",
+    "RONDU",
+    "NINES",
+    "HIJ",
+    "RUSEM",
+    "SOTUK",
+    "USOKO",
+    "TLD",
+    "NVS"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "Z237",
+   "category": "upper",
+   "waypoints": [
+    "PIVUS",
+    "SULID",
+    "SISMO",
+    "AKAMU",
+    "ADX",
+    "OKITI"
+   ],
+   "lowerFL": 245,
+   "upperFL": 660
+  },
+  {
+   "name": "Z238",
+   "category": "upper",
+   "waypoints": [
+    "PTC",
+    "CDP",
+    "CHELY"
+   ],
+   "lowerFL": 245,
+   "upperFL": 660
+  },
+  {
+   "name": "Z245",
+   "category": "lower",
+   "waypoints": [
+    "ZAR",
+    "KONKE",
+    "TERSA",
+    "CJN"
+   ],
+   "lowerFL": 145,
+   "upperFL": 660
+  },
+  {
+   "name": "Z308",
+   "category": "lower",
+   "waypoints": [
+    "GIR",
+    "SLL",
+    "ROTUM",
+    "ODEGI"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "Z405",
+   "category": "lower",
+   "waypoints": [
+    "BARDI",
+    "TLD",
+    "VTB"
+   ],
+   "lowerFL": 145,
+   "upperFL": 660
+  },
+  {
+   "name": "Z406",
+   "category": "lower",
+   "waypoints": [
+    "BEDAL",
+    "RALUS",
+    "MOSEN",
+    "GODIV",
+    "ZMR"
+   ],
+   "lowerFL": 105,
+   "upperFL": 660
+  },
+  {
+   "name": "Z409",
+   "category": "lower",
+   "waypoints": [
+    "RAKOD",
+    "OGERO",
+    "ROLDO",
+    "RUKER",
+    "TLD"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "Z436",
+   "category": "lower",
+   "waypoints": [
+    "CCS",
+    "AVILA"
+   ],
+   "lowerFL": 145,
+   "upperFL": 660
+  },
+  {
+   "name": "Z444",
+   "category": "lower",
+   "waypoints": [
+    "EBROX",
+    "VNV"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "Z475",
+   "category": "lower",
+   "waypoints": [
+    "MATEX",
+    "OSLAP",
+    "HIE",
+    "MERAN",
+    "GDV"
+   ],
+   "lowerFL": 145,
+   "upperFL": 660
+  },
+  {
+   "name": "Z596",
+   "category": "lower",
+   "waypoints": [
+    "SENIA",
+    "DORMI",
+    "CRETA",
+    "NEXAS",
+    "CMA",
+    "EDIMU",
+    "TERSA"
+   ],
+   "lowerFL": 95,
+   "upperFL": 660
+  },
+  {
+   "name": "Z901",
+   "category": "lower",
+   "waypoints": [
+    "MGA",
+    "EPATA",
+    "PEKOP"
+   ],
+   "lowerFL": 95,
+   "upperFL": 145
+  }
+ ]
+}

@@ -1,0 +1,4 @@
+# Los PDFs originales son grandes (38 MB) y descargables del AIP en cualquier momento.
+# El texto extraido es derivado y se regenera con pdftotext.
+*.pdf
+*.txt

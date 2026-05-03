@@ -94,8 +94,12 @@ window.TSAgestor.mapView = (function () {
     const overlays = {};
     const aw = window.TSAgestor.airways;
     if (aw) {
-      overlays['Aerovías alta cota (demo)'] = buildAirwaysLayer(aw.upper, 'upper');
-      overlays['Aerovías baja cota (demo)'] = buildAirwaysLayer(aw.lower, 'lower');
+      // Filtramos las pseudo-aerovias "DCT" (conexiones virtuales aeropuerto-fix
+      // que solo existen para alimentar Dijkstra; no son aerovias reales).
+      const upperReal = (aw.upper || []).filter(a => a.name !== 'DCT');
+      const lowerReal = (aw.lower || []).filter(a => a.name !== 'DCT');
+      overlays['Aerovías alta cota (AIP)'] = buildAirwaysLayer(upperReal, 'upper');
+      overlays['Aerovías baja cota (AIP)'] = buildAirwaysLayer(lowerReal, 'lower');
     }
     const sp = window.TSAgestor.airspace;
     if (sp) {
@@ -113,8 +117,8 @@ window.TSAgestor.mapView = (function () {
     }
     // Guardamos referencias a las capas vectoriales para poder actualizar
     // sus estilos cuando cambien las opacidades en Ajustes.
-    _vectorLayerGroups.airwaysUpper = overlays['Aerovías alta cota (demo)'] || null;
-    _vectorLayerGroups.airwaysLower = overlays['Aerovías baja cota (demo)'] || null;
+    _vectorLayerGroups.airwaysUpper = overlays['Aerovías alta cota (AIP)'] || null;
+    _vectorLayerGroups.airwaysLower = overlays['Aerovías baja cota (AIP)'] || null;
     _vectorLayerGroups.tmas         = overlays['TMAs (demo)'] || null;
     _vectorLayerGroups.ctrs         = overlays['CTRs (demo)'] || null;
     if (Object.keys(overlays).length === 0) return;

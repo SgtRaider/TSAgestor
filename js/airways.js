@@ -1,17 +1,25 @@
-// Aerovías sobre Iberia — DEMO ILUSTRATIVA, NO OPERATIVA.
+// Aerovias de Espana, dataset real extraido del AIP ENR 3.2 + ENR 4.1.
 //
-// No existe un dataset abierto y libre de aerovías españolas con la
-// geometría oficial. Lo que aquí se traza son segmentos rectos entre
-// VORs/aeropuertos conocidos. Sustituir por un GeoJSON oficial cuando
-// se disponga de él.
+// Fuente: parser TSAgestor (data-sources/aip-enr/parse_aip.py + embed_aip.py)
+// sobre los PDFs oficiales de AENA / ENAIRE. Carga aipData (window.TSAgestor.aipData)
+// y la fusiona con la tabla local de aeropuertos para construir el grafo
+// que consume flightPlan.js.
+//
+// El espacio aereo superior espanol opera como Free Route (HISPAFRA, ENR 2.2)
+// desde 2022, por eso el AIP solo publica aerovias inferiores y tramos
+// mixtos low/high. Las clasicas UN/UM/UR/UL (legacy) ya no existen.
+//
+// Para que las rutas tipo "LEMD a LEBL via aerovias" funcionen, los
+// aeropuertos se conectan virtualmente con sus N waypoints/navaids reales
+// mas cercanos mediante segmentos DCT, asi Dijkstra puede entrar en la red.
 
 window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.airways = (function () {
   'use strict';
 
-  // Waypoints aproximados (VORs / aeropuertos). Coordenadas confiables.
-  const WP = {
-    // Península Ibérica — España (principales)
+  // --- Aeropuertos (AIP no los considera waypoints de aerovia) ------------
+  const AIRPORTS = {
+    // Espana - principales
     LEMD: [40.49,  -3.57], LEBL: [41.30,   2.08], LEZL: [37.42,  -5.90],
     LEMG: [36.67,  -4.50], LEVC: [39.49,  -0.48], LEBB: [43.30,  -2.91],
     LEPA: [39.55,   2.74], LEST: [42.90,  -8.41], LEIB: [38.87,   1.37],
@@ -24,105 +32,48 @@ window.TSAgestor.airways = (function () {
     LEJR: [36.74,  -6.06], LEGR: [37.19,  -3.78], LECH: [40.22,   0.07],
     LERI: [37.78,  -1.23], LEMO: [37.18,  -5.61], LERT: [36.45,  -5.86],
     LEMI: [37.80,  -0.81], LECU: [40.37,  -3.79], LEAO: [43.55,  -6.04],
-
-    // España — secundarios y militares de uso mixto
+    // Espana - secundarios y militares de uso mixto
     LEBZ: [38.89,  -6.82], LEBA: [37.84,  -4.85], LESO: [43.36,  -1.79],
     LELL: [41.52,   2.11], LETO: [40.50,  -3.45], LEGT: [40.29,  -3.72],
     LEHU: [42.08,  -0.32], LEDA: [41.73,   0.54], LETL: [40.40,  -1.22],
     LEMR: [38.83,  -0.78], LERJ: [42.46,  -2.32], LEPM: [37.78,  -3.77],
     LECC: [42.46,  -3.71],
-
     // Canarias
     GCLP: [27.93, -15.39], GCTS: [28.04, -16.57], GCXO: [28.48, -16.34],
     GCLA: [28.63, -17.76], GCFV: [28.45, -13.86], GCRR: [28.95, -13.60],
     GCGM: [28.03, -17.21], GCHI: [27.81, -17.89],
-
     // Portugal
     LPPT: [38.77,  -9.13], LPPR: [41.24,  -8.68], LPFR: [37.01,  -7.97],
     LPCS: [38.72,  -9.36], LPMA: [32.69, -16.78], LPPS: [37.74, -25.70],
-
     // Francia
     LFBO: [43.63,   1.37], LFML: [43.44,   5.21], LFBZ: [43.47,  -1.53],
     LFBD: [44.83,  -0.71], LFLL: [45.73,   5.08],
-
     // Marruecos
     GMMN: [33.37,  -7.59], GMME: [33.99,  -6.75], GMTT: [35.73,  -5.92],
-
-    // Otros
+    // Otros referenciados en planes
     EGLL: [51.47,  -0.46],
     LIRF: [41.80,  12.25], LIME: [45.66,   9.70],
   };
 
-  const upper = [
-    { name: 'UN10',   points: [WP.LEBB, WP.LEBL, WP.LEPA, WP.LEIB, WP.LEMG] },
-    { name: 'UN725',  points: [WP.LFBO, WP.LEBL, WP.LEVC, WP.LEMG] },
-    { name: 'UN731',  points: [WP.LEBB, WP.LEZG, WP.LEBL] },
-    { name: 'UN733',  points: [WP.LEMD, WP.LEZL, WP.GCLP] },
-    { name: 'UN734',  points: [WP.LEBB, WP.LEMD, WP.LEMG, WP.GMMN] },
-    { name: 'UN741',  points: [WP.LEAS, WP.LELN, WP.LEMD, WP.LEAB, WP.LEAL] },
-    { name: 'UN857',  points: [WP.LEBB, WP.LEMD, WP.LEMG, WP.GMME] },
-    { name: 'UN858',  points: [WP.LEMD, WP.LPPT] },
-    { name: 'UN863',  points: [WP.LEBL, WP.LFML, WP.LIME] },
-    { name: 'UN866',  points: [WP.LEMD, WP.LEAB, WP.LEVC] },
-    { name: 'UN871',  points: [WP.LEBL, WP.LFML] },
-    { name: 'UN873',  points: [WP.LEMD, WP.LEZG, WP.LEBL] },
-    { name: 'UN976',  points: [WP.LEAS, WP.LELN, WP.LEMD, WP.LEZL] },
-    { name: 'UA34',   points: [WP.LEBL, WP.LEPA, WP.LEIB, WP.LEMG] },
-    { name: 'UB28',   points: [WP.LEMD, WP.LPPT] },
-    { name: 'UB31',   points: [WP.LEBL, WP.LEVC, WP.LEAL, WP.LEAM] },
-    { name: 'UL153',  points: [WP.EGLL, WP.LFBD, WP.LEMD, WP.GCLP] },
-    { name: 'UL607',  points: [WP.LEBL, WP.LEMD, WP.LEZL, WP.GMMN] },
-    { name: 'UL620',  points: [WP.LFML, WP.LEPA, WP.LEAM, WP.GMTT] },
-    { name: 'UM601',  points: [WP.LEMG, WP.LEAM, WP.LERI, WP.LEPA] },
-    { name: 'UM610',  points: [WP.LEPA, WP.LEMH, WP.LIRF] },
-    { name: 'UM984',  points: [WP.LEMD, WP.LEHC, WP.LPPT] },
-    { name: 'UM985',  points: [WP.LEMD, WP.LEZL, WP.GMMN] },
-    { name: 'UR10',   points: [WP.LEST, WP.LEMD, WP.LEVC, WP.LEPA] },
-  ];
-
-  const lower = [
-    { name: 'A34',    points: [WP.LEMD, WP.LEBL] },
-    { name: 'A22',    points: [WP.LEZL, WP.LPPT] },
-    { name: 'A1',     points: [WP.GCLP, WP.GCTS] },
-    { name: 'A8',     points: [WP.LEMD, WP.LEMG] },
-    { name: 'B26',    points: [WP.LEMD, WP.LEZG, WP.LEBL] },
-    { name: 'B28',    points: [WP.LEMD, WP.LEHC, WP.LEZL] },
-    { name: 'B31',    points: [WP.LEBL, WP.LERS, WP.LEVC] },
-    { name: 'G7',     points: [WP.LEST, WP.LECO, WP.LELN, WP.LEBB] },
-    { name: 'G20',    points: [WP.LEMD, WP.LEAB, WP.LEVC] },
-    { name: 'G23',    points: [WP.LEBB, WP.LEPP, WP.LEZG] },
-    { name: 'G34',    points: [WP.LEAL, WP.LERI, WP.LEMG] },
-    { name: 'R10',    points: [WP.LEMD, WP.LESA, WP.LPPT] },
-    { name: 'R32',    points: [WP.LEMD, WP.LEAB, WP.LEAM] },
-    { name: 'R40',    points: [WP.LEZG, WP.LELO, WP.LEVT] },
-    { name: 'R74',    points: [WP.LEMD, WP.LEVD, WP.LELN] },
-    { name: 'V25',    points: [WP.LEMD, WP.LEBG, WP.LEBB] },
-    { name: 'V34',    points: [WP.LEZL, WP.LEMG] },
-    { name: 'W6',     points: [WP.LEBL, WP.LEVC, WP.LEAL, WP.LEMG] },
-    { name: 'N623',   points: [WP.LEMD, WP.LECU, WP.LEAB] },
-    { name: 'N869',   points: [WP.LEZL, WP.LEHC, WP.LEMG] },
-  ];
-
-  // Nombres para mostrar en menús y formularios (no usados por el grafo).
-  const WP_NAMES = {
+  const AIRPORT_NAMES = {
     LEMD: 'Madrid-Barajas', LEBL: 'Barcelona-El Prat', LEZL: 'Sevilla',
-    LEMG: 'Málaga-Costa del Sol', LEVC: 'Valencia', LEBB: 'Bilbao',
+    LEMG: 'Malaga-Costa del Sol', LEVC: 'Valencia', LEBB: 'Bilbao',
     LEPA: 'Palma de Mallorca', LEST: 'Santiago de Compostela',
-    LEIB: 'Ibiza', LEAL: 'Alicante-Elche', LEAM: 'Almería',
+    LEIB: 'Ibiza', LEAL: 'Alicante-Elche', LEAM: 'Almeria',
     LEZG: 'Zaragoza', LEXJ: 'Santander', LEAS: 'Asturias',
     LEAB: 'Albacete', LERS: 'Reus', LEGE: 'Girona-Costa Brava',
-    LEMH: 'Menorca', LECO: 'A Coruña', LELN: 'León', LEVT: 'Vitoria',
-    LELO: 'Logroño-Agoncillo', LEPP: 'Pamplona', LESA: 'Salamanca',
+    LEMH: 'Menorca', LECO: 'A Coruna', LELN: 'Leon', LEVT: 'Vitoria',
+    LELO: 'Logrono-Agoncillo', LEPP: 'Pamplona', LESA: 'Salamanca',
     LEVD: 'Valladolid', LEBG: 'Burgos', LEHC: 'Huelva (VOR)',
-    LEJR: 'Jerez de la Frontera', LEGR: 'Granada', LECH: 'Castellón',
-    LERI: 'Murcia-San Javier', LEMO: 'Morón (mil.)',
+    LEJR: 'Jerez de la Frontera', LEGR: 'Granada', LECH: 'Castellon',
+    LERI: 'Murcia-San Javier', LEMO: 'Moron (mil.)',
     LERT: 'Rota (mil.)', LEMI: 'Murcia-Corvera', LECU: 'Madrid-Cuatro Vientos',
     LEAO: 'Asturias (alt.)',
-    LEBZ: 'Badajoz', LEBA: 'Córdoba', LESO: 'San Sebastián',
-    LELL: 'Sabadell', LETO: 'Madrid-Torrejón (mil.)',
+    LEBZ: 'Badajoz', LEBA: 'Cordoba', LESO: 'San Sebastian',
+    LELL: 'Sabadell', LETO: 'Madrid-Torrejon (mil.)',
     LEGT: 'Madrid-Getafe (mil.)', LEHU: 'Huesca-Pirineos',
     LEDA: 'Lleida-Alguaire', LETL: 'Teruel', LEMR: 'Madrid-Cuatro Vientos (alt.)',
-    LERJ: 'Logroño (Recajo)', LEPM: 'Jaén', LECC: 'Burgos (alt.)',
+    LERJ: 'Logrono (Recajo)', LEPM: 'Jaen', LECC: 'Burgos (alt.)',
     GCLP: 'Gran Canaria', GCTS: 'Tenerife Sur', GCXO: 'Tenerife Norte',
     GCLA: 'La Palma', GCFV: 'Fuerteventura', GCRR: 'Lanzarote',
     GCGM: 'La Gomera', GCHI: 'El Hierro',
@@ -130,9 +81,97 @@ window.TSAgestor.airways = (function () {
     LPMA: 'Madeira', LPPS: 'Ponta Delgada (Azores)',
     LFBO: 'Toulouse', LFML: 'Marsella', LFBZ: 'Biarritz',
     LFBD: 'Burdeos', LFLL: 'Lyon',
-    GMMN: 'Casablanca', GMME: 'Rabat', GMTT: 'Tánger',
-    EGLL: 'Londres-Heathrow', LIRF: 'Roma-Fiumicino', LIME: 'Bérgamo',
+    GMMN: 'Casablanca', GMME: 'Rabat', GMTT: 'Tanger',
+    EGLL: 'Londres-Heathrow', LIRF: 'Roma-Fiumicino', LIME: 'Bergamo',
   };
 
-  return { upper, lower, waypoints: WP, waypointNames: WP_NAMES };
+  // --- Carga del dataset AIP ----------------------------------------------
+  const aip = window.TSAgestor.aipData || { waypoints: {}, airways: [] };
+
+  // Tabla unificada de waypoints (aeropuertos + AIP).
+  const WP = {};
+  const WP_NAMES = {};
+  const WP_TYPES = {};   // AIRPORT | NAVAID | RNAV
+
+  for (const [k, pt] of Object.entries(AIRPORTS)) {
+    WP[k] = pt;
+    WP_NAMES[k] = AIRPORT_NAMES[k] || k;
+    WP_TYPES[k] = 'AIRPORT';
+  }
+  for (const [k, w] of Object.entries(aip.waypoints || {})) {
+    if (WP[k]) continue;                 // los aeropuertos ganan
+    WP[k] = [w[0], w[1]];                // [lat, lon]
+    WP_NAMES[k] = w[3] || k;
+    WP_TYPES[k] = w[2] || 'RNAV';
+  }
+
+  // --- Construccion de listas upper/lower ---------------------------------
+  function airwayPoints(aw) {
+    const out = [];
+    for (const id of aw.waypoints) {
+      const pt = WP[id];
+      if (pt) out.push(pt);
+    }
+    return out;
+  }
+
+  const upper = [];
+  const lower = [];
+  for (const aw of (aip.airways || [])) {
+    const points = airwayPoints(aw);
+    if (points.length < 2) continue;
+    const item = { name: aw.name, points };
+    if (aw.category === 'upper') upper.push(item);
+    else                          lower.push(item);
+  }
+
+  // --- Conexion airport <-> red de waypoints (DCT virtuales) --------------
+  // Para cada aeropuerto, lo conectamos con los N waypoints AIP mas cercanos
+  // dentro de un radio razonable. Esto permite a Dijkstra entrar en la red
+  // desde un aeropuerto y salir hacia otro a traves de aerovias reales.
+  const NEAR_RADIUS_NM   = 80;
+  const NEAR_LIMIT       = 3;
+  const NM_PER_DEG_LAT   = 60;
+
+  function approxNM(latA, lonA, latB, lonB) {
+    const dLat = (latB - latA) * NM_PER_DEG_LAT;
+    const meanLat = ((latA + latB) / 2) * Math.PI / 180;
+    const dLon = (lonB - lonA) * NM_PER_DEG_LAT * Math.cos(meanLat);
+    return Math.sqrt(dLat * dLat + dLon * dLon);
+  }
+
+  // Aeropuerto -> [{id, lat, lon, distNM}, ...] ordenados.
+  function nearestFixesTo(lat, lon) {
+    const result = [];
+    for (const [id, pt] of Object.entries(WP)) {
+      if (WP_TYPES[id] === 'AIRPORT') continue;
+      const d = approxNM(lat, lon, pt[0], pt[1]);
+      if (d > NEAR_RADIUS_NM) continue;
+      result.push({ id, lat: pt[0], lon: pt[1], distNM: d });
+    }
+    result.sort((a, b) => a.distNM - b.distNM);
+    return result.slice(0, NEAR_LIMIT);
+  }
+
+  // Generamos pseudo-aerovias "DCT" con dos puntos cada una.
+  // Solo para aeropuertos con suficientes fixes cercanos (evita conectar
+  // aeropuertos remotos que arrastran rutas largas inutiles).
+  for (const [apt, pt] of Object.entries(AIRPORTS)) {
+    const fixes = nearestFixesTo(pt[0], pt[1]);
+    for (const f of fixes) {
+      lower.push({
+        name:   'DCT',
+        points: [pt, [f.lat, f.lon]],
+      });
+    }
+  }
+
+  return {
+    upper, lower,
+    waypoints:     WP,
+    waypointNames: WP_NAMES,
+    waypointTypes: WP_TYPES,
+    airac:         aip.airac || null,
+    source:        aip.source || 'unknown',
+  };
 })();
