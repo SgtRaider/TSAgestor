@@ -419,9 +419,6 @@ window.TSAgestor.meteoApi = (function () {
   }
 
   async function fetchGramet(plan, format) {
-    const url = getGrametUrl(plan, format);
-    if (!url) throw new Error('Plan inválido');
-
     // Si el server-side tiene AUTOROUTER_USER/PASS en env vars, llamamos
     // sin Authorization y la Pages Function inyecta el token.
     const serverAuth = await checkServerAuth();
@@ -431,7 +428,22 @@ window.TSAgestor.meteoApi = (function () {
       reqInit.headers = { 'Authorization': 'Bearer ' + token };
     }
 
-    const res = await _arFetch(url, reqInit);
+    // Intento 1: ruta completa con todos los waypoints reconocidos.
+    let url = getGrametUrl(plan, format, false);
+    if (!url) throw new Error('Plan inválido');
+
+    let res = await _arFetch(url, reqInit);
+
+    // Si falla con 4xx/5xx (probable: waypoint AIP no reconocido por
+    // Autorouter o ruta demasiado larga), reintentamos con solo origen+destino.
+    if (!res.ok && res.status !== 401) {
+      const minimalUrl = getGrametUrl(plan, format, true);
+      if (minimalUrl && minimalUrl !== url) {
+        console.warn('[gramet] Reintentando con solo ' + plan.origin + '->' + plan.destination + ' (HTTP ' + res.status + ')');
+        url = minimalUrl;
+        res = await _arFetch(minimalUrl, reqInit);
+      }
+    }
     if (res.status === 401) {
       if (!serverAuth) sessionStorage.removeItem(AR_TOKEN_KEY);
       // Intentamos leer el JSON con el reason que devuelve la Function.
@@ -454,20 +466,34 @@ window.TSAgestor.meteoApi = (function () {
         const data = await res.clone().json();
         detail = data && (data.error || data.detail) ? (' — ' + (data.error || data.detail)) : '';
       } catch (_) {}
+      // Si no era JSON, intentamos texto (p.ej. error en HTML/plain del upstream).
+      if (!detail) {
+        try {
+          const txt = (await res.clone().text()).trim();
+          if (txt) detail = ' — ' + txt.slice(0, 300);
+        } catch (_) {}
+      }
+      // Loguear la URL completa para poder reproducir el problema fuera del navegador.
+      console.error('[gramet] HTTP', res.status, 'URL:', url, 'detail:', detail);
       throw new Error('GRAMET HTTP ' + res.status + detail);
     }
     return await res.blob();
   }
 
-  function getGrametUrl(plan, format) {
+  function getGrametUrl(plan, format, minimal) {
     if (!plan || !plan.coords || plan.coords.length < 2) return null;
     format = format || 'png';
-    // Sólo waypoints con código tipo ICAO/navaid; si no quedan ≥2 caemos a
-    // origen + destino (que ya están validados por el grafo).
-    const valid = plan.coords
-      .map(c => c.name)
-      .filter(n => /^[A-Z][A-Z0-9]{1,4}$/.test(n));
-    const waypoints = valid.length >= 2 ? valid.join(' ') : `${plan.origin} ${plan.destination}`;
+    let waypoints;
+    if (minimal) {
+      waypoints = `${plan.origin} ${plan.destination}`;
+    } else {
+      // Sólo waypoints con código tipo ICAO/navaid; si no quedan ≥2 caemos a
+      // origen + destino (que ya están validados por el grafo).
+      const valid = plan.coords
+        .map(c => c.name)
+        .filter(n => /^[A-Z][A-Z0-9]{1,4}$/.test(n));
+      waypoints = valid.length >= 2 ? valid.join(' ') : `${plan.origin} ${plan.destination}`;
+    }
     const departuretime = Math.floor(plan.departureUTC.getTime() / 1000);
     const totaleet = Math.round((plan.timeMinutes || 0) * 60);
     const altitude = (plan.flightLevel || 350) * 100;
