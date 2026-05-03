@@ -11,7 +11,18 @@ window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.meteoApi = (function () {
   'use strict';
 
-  const AWC_BASE = 'https://aviationweather.gov/api/data';
+  // Detección de entorno: en deploy HTTPS no-local asumimos que tenemos
+  // disponibles las Cloudflare Pages Functions /api/awc/* y
+  // /api/autorouter/* como proxies del MISMO ORIGEN (sin CORS). En local
+  // (file:// o localhost/127.0.0.1) llamamos directo y caemos a un proxy
+  // CORS público si el navegador bloquea.
+  const ON_REMOTE = typeof location !== 'undefined' &&
+    location.protocol === 'https:' &&
+    !/^(localhost|127\.|192\.168\.|10\.)/i.test(location.hostname);
+
+  const AWC_BASE = ON_REMOTE
+    ? '/api/awc'
+    : 'https://aviationweather.gov/api/data';
   const RAINVIEWER_INDEX = 'https://api.rainviewer.com/public/weather-maps.json';
 
   // NASA GIBS — Cloud Top Height (mosaico global, CORS abierto, no requiere
@@ -25,9 +36,11 @@ window.TSAgestor.meteoApi = (function () {
   // Imagen estática con la escala. Si el layer no tuviera leyenda, omite.
   const GIBS_LEGEND = 'https://gibs.earthdata.nasa.gov/legend/MODIS_Aqua_Cloud_Top_Pressure_Day_H.svg';
 
-  // Proxy CORS para APIs que no devuelven Access-Control-Allow-Origin (AWC).
-  // corsproxy.io es gratuito; si va lento o cae cambia a allorigins.
-  const CORS_PROXY = 'https://corsproxy.io/?';
+  // Proxy CORS público, sólo se usa en local cuando el navegador bloquea
+  // (en producción usamos las Cloudflare Pages Functions del mismo origen,
+  // ver AWC_BASE / AR_BASE arriba). corsproxy.io ha empezado a devolver 403
+  // desde dominios *.pages.dev, allorigins.win es alternativa estable.
+  const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
 
   // ── Helpers de fetch ────────────────────────────────────────────────
 
@@ -227,7 +240,10 @@ window.TSAgestor.meteoApi = (function () {
   // REQUIERE OAuth 2.0 client_credentials con email + password de cuenta
   // autorouter.aero (que además debe tener acceso API habilitado por
   // ticket de soporte). Doc: https://www.autorouter.aero/wiki/api/
-  const AR_OAUTH = 'https://api.autorouter.aero/v1.0/oauth2/token';
+  const AR_BASE = ON_REMOTE
+    ? '/api/autorouter'
+    : 'https://api.autorouter.aero/v1.0';
+  const AR_OAUTH = `${AR_BASE}/oauth2/token`;
   const AR_TOKEN_KEY = 'tsagestor_ar_token';
   const AR_CREDS_KEY = 'tsagestor_ar_creds';
 
@@ -329,7 +345,7 @@ window.TSAgestor.meteoApi = (function () {
       altitude: String(altitude),
       format,
     });
-    return 'https://api.autorouter.aero/v1.0/met/gramet?' + params.toString();
+    return `${AR_BASE}/met/gramet?` + params.toString();
   }
 
   return {
