@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  const { parser, filters, mapView, crossSection, pdfExport, scheduleFmt, flightPlan, geom, meteoApi, settings } = window.TSAgestor;
+  const { parser, filters, mapView, crossSection, pdfExport, scheduleFmt, flightPlan, geom, meteoApi, settings, savedPlans } = window.TSAgestor;
 
   // Mapeo entre IDs del formulario Plan y dot-paths de settings.plan.*
   const PLAN_INPUT_TO_SETTING = {
@@ -542,7 +542,119 @@
     }
     // Sobreescribe los defaults del HTML con los valores guardados en Ajustes.
     applySettingsToPlanForm();
+    renderSavedPlansList();
     state.planWPsLoaded = true;
+  }
+
+  // ── Planes guardados ────────────────────────────────────────────────
+
+  function capturePlanFormState() {
+    return {
+      origin:       $('#plan-origin').value.trim(),
+      destination:  $('#plan-dest').value.trim(),
+      flightLevel:  Number($('#plan-fl').value) || 0,
+      speedKt:      Number($('#plan-speed').value) || 0,
+      departureUTC: $('#plan-departure').value,
+      via:          $('#plan-via').value,
+      drawnVia:     state.drawnVia ? state.drawnVia.map(p => ({ name: p.name, lat: p.lat, lon: p.lon })) : null,
+      fuelInitial:  Number($('#plan-fuel-initial').value) || 0,
+      fuelFlow:     Number($('#plan-fuel-flow').value) || 0,
+      fuelUnit:     $('#plan-fuel-unit').value,
+      joker:        Number($('#plan-joker').value) || 0,
+      bingo:        Number($('#plan-bingo').value) || 0,
+    };
+  }
+
+  function applyPlanFormState(p) {
+    if (!p) return;
+    const setVal = (id, v) => { const el = $('#' + id); if (el && v != null && v !== '') el.value = v; };
+    setVal('plan-origin',       p.origin);
+    setVal('plan-dest',         p.destination);
+    setVal('plan-fl',           p.flightLevel);
+    setVal('plan-speed',        p.speedKt);
+    setVal('plan-departure',    p.departureUTC);
+    setVal('plan-via',          p.via);
+    setVal('plan-fuel-initial', p.fuelInitial);
+    setVal('plan-fuel-flow',    p.fuelFlow);
+    setVal('plan-fuel-unit',    p.fuelUnit);
+    setVal('plan-joker',        p.joker);
+    setVal('plan-bingo',        p.bingo);
+    state.drawnVia = (p.drawnVia && p.drawnVia.length) ? p.drawnVia : null;
+  }
+
+  function renderSavedPlansList() {
+    if (!savedPlans) return;
+    const container = $('#saved-plans-list');
+    if (!container) return;
+    const plans = savedPlans.list();
+    if (!plans.length) {
+      container.innerHTML = '<p class="hint" style="margin:0">No hay planes guardados todavía.</p>';
+      return;
+    }
+    container.innerHTML = plans.map(p => {
+      const meta = `${escapeHTML(p.origin || '?')} → ${escapeHTML(p.destination || '?')} · FL${p.flightLevel || '—'} · ${p.speedKt || '—'} kt`;
+      const sub  = `Guardado: ${formatSavedDate(p.saved)}`;
+      return `
+        <div class="saved-plan">
+          <div class="saved-plan-info">
+            <b>${escapeHTML(p.name)}</b>
+            <span class="dim">${meta}</span>
+            <span class="dim">${sub}</span>
+          </div>
+          <div class="saved-plan-actions">
+            <button class="btn btn-ghost" type="button" data-action="load" data-name="${escapeHTML(p.name)}">Cargar</button>
+            <button class="btn btn-ghost" type="button" data-action="del"  data-name="${escapeHTML(p.name)}">Borrar</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function formatSavedDate(iso) {
+    if (!iso) return '—';
+    try {
+      const d = new Date(iso);
+      const p = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    } catch (_) { return iso; }
+  }
+
+  function savePlanByName() {
+    if (!savedPlans) return;
+    const input = $('#saved-plan-name');
+    const name = input.value.trim();
+    if (!name) {
+      alert('Indica un nombre para el plan antes de guardar.');
+      input.focus();
+      return;
+    }
+    if (savedPlans.has(name) && !confirm(`Ya existe un plan llamado "${name}". ¿Sobrescribir?`)) return;
+    savedPlans.save(name, capturePlanFormState());
+    input.value = '';
+    renderSavedPlansList();
+  }
+
+  function loadPlanByName(name) {
+    if (!savedPlans) return;
+    const p = savedPlans.get(name);
+    if (!p) return;
+    applyPlanFormState(p);
+    // Recalcula con los TSAs/meteo actuales para reconstruir resultado.
+    setTimeout(() => calcPlan(), 50);
+  }
+
+  function deletePlanByName(name) {
+    if (!savedPlans) return;
+    if (!confirm(`¿Borrar el plan "${name}"?`)) return;
+    savedPlans.remove(name);
+    renderSavedPlansList();
+  }
+
+  function onSavedPlanListClick(e) {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const name = btn.dataset.name;
+    if (btn.dataset.action === 'load')      loadPlanByName(name);
+    else if (btn.dataset.action === 'del')  deletePlanByName(name);
   }
 
   function calcPlan() {
@@ -1136,6 +1248,11 @@
       hideDrawBanner();
     });
     $('#btn-plan-meteo').addEventListener('click', loadMeteo);
+    $('#btn-save-plan').addEventListener('click', savePlanByName);
+    $('#saved-plan-name').addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); savePlanByName(); }
+    });
+    $('#saved-plans-list').addEventListener('click', onSavedPlanListClick);
     $('#btn-cross-clouds').addEventListener('click', loadCrossClouds);
     $('#btn-cross-clouds-clear').addEventListener('click', clearCrossClouds);
     $('#btn-cross-gramet').addEventListener('click', loadGramet);

@@ -277,6 +277,18 @@
 
     <!-- PLAN DE VUELO -->
     <section id="tab-plan" class="tab-content">
+
+      <div class="saved-plans">
+        <div class="saved-plans-head">
+          <h3>Planes guardados</h3>
+          <div class="save-row">
+            <input type="text" id="saved-plan-name" placeholder="Nombre del plan…" maxlength="40" autocomplete="off">
+            <button id="btn-save-plan" class="btn" type="button">Guardar plan actual</button>
+          </div>
+        </div>
+        <div id="saved-plans-list" class="saved-plans-list"></div>
+      </div>
+
       <div class="plan-form">
         <div class="plan-fields">
           <label>Origen
@@ -531,6 +543,7 @@
 <script src="js/airways.js"></script>
 <script src="js/airspace.js"></script>
 <script src="js/settings.js"></script>
+<script src="js/savedPlans.js"></script>
 <script src="js/meteoApi.js"></script>
 <script src="js/metarDecode.js"></script>
 <script src="js/parser.js"></script>
