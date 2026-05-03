@@ -219,6 +219,52 @@ window.TSAgestor.meteoApi = (function () {
     };
   }
 
+  // Niveles ISA estándar disponibles en Open-Meteo (subset usado).
+  // ft = altitud aproximada en atmósfera estándar.
+  const ISA_LEVELS = [
+    { hPa: 1000, ft:   364 },
+    { hPa:  925, ft:  2553 },
+    { hPa:  850, ft:  4781 },
+    { hPa:  700, ft:  9882 },
+    { hPa:  600, ft: 13801 },
+    { hPa:  500, ft: 18289 },
+    { hPa:  400, ft: 23574 },
+    { hPa:  300, ft: 30065 },
+    { hPa:  250, ft: 33999 },
+    { hPa:  200, ft: 38662 },
+    { hPa:  150, ft: 44647 },
+    { hPa:  100, ft: 53083 },
+  ];
+
+  function closestPressureLevel(fl) {
+    const ft = (fl || 0) * 100;
+    return ISA_LEVELS.reduce((best, l) =>
+      Math.abs(l.ft - ft) < Math.abs(best.ft - ft) ? l : best, ISA_LEVELS[0]);
+  }
+
+  // Vientos en altura para cada punto al nivel ISA más cercano al FL pedido.
+  // Devuelve { level: {hPa, ft}, points: [{windSpeedKt, windDir}, ...] }.
+  async function fetchWindsAloft(points, fl) {
+    if (!points || !points.length) return { level: null, points: [] };
+    const level = closestPressureLevel(fl);
+    const lats = points.map(p => p.lat.toFixed(4)).join(',');
+    const lons = points.map(p => p.lon.toFixed(4)).join(',');
+    const vars = `wind_speed_${level.hPa}hPa,wind_direction_${level.hPa}hPa`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
+                `&current=${vars}&windspeed_unit=kn`;
+    const res = await safeFetch(url, 'Open-Meteo (vientos)');
+    if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
+    const data = await res.json();
+    const arr = Array.isArray(data) ? data : [data];
+    return {
+      level,
+      points: arr.map(d => ({
+        windSpeedKt: d.current && d.current[`wind_speed_${level.hPa}hPa`],
+        windDir:     d.current && d.current[`wind_direction_${level.hPa}hPa`],
+      })),
+    };
+  }
+
   // Open-Meteo (gratuito, CORS abierto, sin key) — devuelve cloud cover
   // por bandas de altitud (low/mid/high) y total para cada punto solicitado.
   // Se acepta un array de {lat, lon}; los devuelve en el mismo orden.
@@ -356,7 +402,7 @@ window.TSAgestor.meteoApi = (function () {
   return {
     fetchMETAR, fetchTAF, fetchWeatherForAirports,
     getRainviewerCloudUrl, getEumetCthWMS,
-    fetchCloudsForPoints, getGrametUrl, fetchGramet,
+    fetchCloudsForPoints, fetchWindsAloft, getGrametUrl, fetchGramet,
     hasArCreds, setStoredArCreds, clearStoredArAuth,
     // alias retro-compatible para código que aún usa el nombre antiguo
     getGibsCloudWMS: getEumetCthWMS,

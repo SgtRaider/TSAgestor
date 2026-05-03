@@ -843,6 +843,9 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   color: var(--danger);
   font-weight: 700;
 }
+#plan-log-table .cell-wind.wind-head { color: var(--ea-rojo); font-weight: 600; }
+#plan-log-table .cell-wind.wind-tail { color: var(--ok); font-weight: 600; }
+#plan-log-table .cell-gs { font-weight: 700; color: var(--ea-azul-cielo); }
 
 /* Meteorología (METAR / TAF en aeropuertos cerca de la ruta) */
 .plan-meteo {

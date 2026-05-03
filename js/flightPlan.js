@@ -495,6 +495,10 @@ window.TSAgestor.flightPlan = (function () {
     const bingo = opts.bingoFuel != null && opts.bingoFuel !== '' ? Number(opts.bingoFuel) : null;
     const unit = opts.unit || '';
     const overrides = Array.isArray(opts.legOverrides) ? opts.legOverrides : [];
+    // Vientos en altura por waypoint (mismo orden que coords). Si null o
+    // longitud distinta, se ignora (GS = TAS).
+    const winds = Array.isArray(opts.winds) && opts.winds.length === coords.length ? opts.winds : null;
+    const windLevel = opts.windLevel || null;
 
     const rows = [];
     let cumTimeMin = 0;
@@ -508,7 +512,27 @@ window.TSAgestor.flightPlan = (function () {
       const segSpeed = Number.isFinite(ov.speedKt) && ov.speedKt > 0 ? ov.speedKt : speedKt;
       const segFlow  = Number.isFinite(ov.fuelFlow) && ov.fuelFlow >= 0 ? ov.fuelFlow : fuelFlow;
       const legNM = i === 0 ? 0 : c.legDistKm / NM_KM;
-      const legHours = i === 0 ? 0 : legNM / segSpeed;
+
+      // Cálculo de viento del tramo (si hay datos): track = bearing
+      // (waypoint anterior → actual), viento promediado vectorialmente.
+      let track = null, windInfo = null, gs = segSpeed;
+      if (i > 0 && winds) {
+        const prev = coords[i - 1];
+        track = geom.bearing([prev.lat, prev.lon], [c.lat, c.lon]);
+        const wA = winds[i - 1];
+        const wB = winds[i];
+        const avgW = avgWindVec(wA, wB);
+        if (avgW && Number.isFinite(avgW.windSpeedKt) && Number.isFinite(avgW.windDir)) {
+          // Headwind component: -ws * cos(wd - track) en grados.
+          // Positivo = viento de cola (suma a GS), negativo = viento en cara.
+          const hw = -avgW.windSpeedKt * Math.cos((avgW.windDir - track) * Math.PI / 180);
+          gs = Math.max(30, segSpeed + hw);     // floor 30 kt para no dividir por cero
+          windInfo = { speedKt: avgW.windSpeedKt, dir: avgW.windDir, headwind: hw, track };
+        }
+      }
+
+      const effectiveSpeed = gs;
+      const legHours = i === 0 ? 0 : legNM / effectiveSpeed;
       const legTimeMin = legHours * 60;
       const legFuel = legHours * segFlow;
       cumTimeMin += legTimeMin;
@@ -530,8 +554,10 @@ window.TSAgestor.flightPlan = (function () {
         airway: c.airway,
         fl: c.fl,
         legDistNM: legNM,
-        legSpeedKt: segSpeed,
+        legSpeedKt: segSpeed,           // TAS (input)
+        legGS: i === 0 ? null : effectiveSpeed,  // ground speed efectivo
         legFuelFlow: segFlow,
+        wind: windInfo,                 // null si no hay datos
         speedOverridden: Number.isFinite(ov.speedKt) && ov.speedKt !== speedKt,
         flowOverridden:  Number.isFinite(ov.fuelFlow) && ov.fuelFlow !== fuelFlow,
         legTimeMin,
@@ -559,7 +585,29 @@ window.TSAgestor.flightPlan = (function () {
       firstJokerIdx,
       firstBingoIdx,
       reachesDestination,
+      hasWinds: !!winds,
+      windLevel,                       // {hPa, ft} si hay vientos
     };
+  }
+
+  // Promedia dos vectores de viento (cada uno {windSpeedKt, windDir}).
+  // Convierte a u,v primero para no fallar al cruzar 360°/0°.
+  function avgWindVec(a, b) {
+    const valid = w => w && Number.isFinite(w.windSpeedKt) && Number.isFinite(w.windDir);
+    if (!valid(a) && !valid(b)) return null;
+    if (!valid(a)) return b;
+    if (!valid(b)) return a;
+    const toRad = d => d * Math.PI / 180;
+    const ua = -a.windSpeedKt * Math.sin(toRad(a.windDir));
+    const va = -a.windSpeedKt * Math.cos(toRad(a.windDir));
+    const ub = -b.windSpeedKt * Math.sin(toRad(b.windDir));
+    const vb = -b.windSpeedKt * Math.cos(toRad(b.windDir));
+    const u = (ua + ub) / 2;
+    const v = (va + vb) / 2;
+    const speed = Math.sqrt(u * u + v * v);
+    let dir = Math.atan2(-u, -v) * 180 / Math.PI;
+    if (dir < 0) dir += 360;
+    return { windSpeedKt: speed, windDir: dir };
   }
 
   return { plan, listWaypoints, buildFuelLog };

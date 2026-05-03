@@ -259,6 +259,9 @@ window.TSAgestor.pdfExport = (function () {
     if (fuel.bingoFuel != null) {
       lines.push(`BINGO: ${fmtNum(fuel.bingoFuel)} ${u}` + (fuel.firstBingoIdx != null ? `  (alcanzado en wpt #${fuel.firstBingoIdx + 1})` : '  (no alcanzado)'));
     }
+    if (fuel.hasWinds && fuel.windLevel) {
+      lines.push(`Vientos en altura: nivel ${fuel.windLevel.hPa} hPa (≈ FL${Math.round(fuel.windLevel.ft / 100)}) — fuente Open-Meteo`);
+    }
     for (const line of lines) {
       y = ensureSpace(doc, y, 5, margin);
       doc.text(line, margin, y);
@@ -277,21 +280,38 @@ window.TSAgestor.pdfExport = (function () {
 
     // Tabla por tramos
     y = ensureSpace(doc, y, 20, margin);
+    const windCol = !!fuel.hasWinds;
+    const head = ['#', 'Waypoint', 'Tramo NM', 'TAS kt'];
+    if (windCol) head.push('Viento', 'GS kt');
+    head.push('T tramo', 'T total', `Cons ${u}/h`, `Comb tramo ${u}`, `Restante ${u}`, 'Estado');
+    const statusColIdx = head.length - 1;
     doc.autoTable({
       startY: y,
-      head: [['#', 'Waypoint', 'Tramo NM', 'Vel kt', 'T tramo', 'T total', `Cons ${u}/h`, `Comb tramo ${u}`, `Restante ${u}`, 'Estado']],
-      body: fuel.rows.map(r => [
-        r.index + 1,
-        r.name,
-        r.index === 0 ? '—' : r.legDistNM.toFixed(1),
-        r.index === 0 ? '—' : Math.round(r.legSpeedKt),
-        r.index === 0 ? '—' : formatDuration(r.legTimeMin),
-        formatDuration(r.cumTimeMin),
-        r.index === 0 ? '—' : Math.round(r.legFuelFlow),
-        r.index === 0 ? '—' : fmtNum(r.legFuel),
-        fmtNum(r.remaining),
-        r.status === 'bingo' ? 'BINGO' : (r.status === 'joker' ? 'JOKER' : '—'),
-      ]),
+      head: [head],
+      body: fuel.rows.map(r => {
+        const row = [
+          r.index + 1,
+          r.name,
+          r.index === 0 ? '—' : r.legDistNM.toFixed(1),
+          r.index === 0 ? '—' : Math.round(r.legSpeedKt),
+        ];
+        if (windCol) {
+          row.push(
+            (r.index === 0 || !r.wind) ? '—'
+              : `${String(Math.round(r.wind.dir)).padStart(3, '0')}/${Math.round(r.wind.speedKt)}`,
+            (r.index === 0 || r.legGS == null) ? '—' : Math.round(r.legGS)
+          );
+        }
+        row.push(
+          r.index === 0 ? '—' : formatDuration(r.legTimeMin),
+          formatDuration(r.cumTimeMin),
+          r.index === 0 ? '—' : Math.round(r.legFuelFlow),
+          r.index === 0 ? '—' : fmtNum(r.legFuel),
+          fmtNum(r.remaining),
+          r.status === 'bingo' ? 'BINGO' : (r.status === 'joker' ? 'JOKER' : '—')
+        );
+        return row;
+      }),
       styles: { fontSize: 8, cellPadding: 1.5 },
       headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [241, 245, 249] },
@@ -301,10 +321,10 @@ window.TSAgestor.pdfExport = (function () {
         if (!r) return;
         if (r.status === 'bingo') {
           data.cell.styles.fillColor = [254, 202, 202];
-          if (data.column.index === 9) data.cell.styles.fontStyle = 'bold';
+          if (data.column.index === statusColIdx) data.cell.styles.fontStyle = 'bold';
         } else if (r.status === 'joker') {
           data.cell.styles.fillColor = [254, 240, 138];
-          if (data.column.index === 9) data.cell.styles.fontStyle = 'bold';
+          if (data.column.index === statusColIdx) data.cell.styles.fontStyle = 'bold';
         }
       },
       margin: { left: margin, right: margin },

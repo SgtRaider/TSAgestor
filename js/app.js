@@ -694,7 +694,8 @@
     $('#plan-error').classList.add('hidden');
 
     // Cada recálculo del plan resetea los overrides por tramo (los waypoints
-    // pueden haber cambiado).
+    // pueden haber cambiado). Los vientos cargados anteriormente también se
+    // descartan (la ruta puede ser distinta y el FL puede haber cambiado).
     result.fuelOpts = {
       initialFuel: $('#plan-fuel-initial').value,
       fuelFlow:    $('#plan-fuel-flow').value,
@@ -703,6 +704,8 @@
       bingoFuel:   $('#plan-bingo').value,
       unit:        $('#plan-fuel-unit').value.trim() || 'kg',
       legOverrides: [],
+      winds:       null,
+      windLevel:   null,
     };
     result.fuel = flightPlan.buildFuelLog(result.coords, result.fuelOpts);
 
@@ -920,11 +923,21 @@
       const flowCell = isFirst
         ? '<td>—</td>'
         : `<td><input type="number" class="leg-input leg-flow" data-leg="${r.index}" data-field="fuelFlow" value="${Math.round(r.legFuelFlow)}" min="0" step="10"></td>`;
+      const windText = isFirst || !r.wind
+        ? '—'
+        : `${String(Math.round(r.wind.dir)).padStart(3, '0')}/${Math.round(r.wind.speedKt)}`;
+      const windCls = r.wind && r.wind.headwind > 5 ? 'wind-tail'
+                    : r.wind && r.wind.headwind < -5 ? 'wind-head' : '';
+      const gsText = isFirst || r.legGS == null
+        ? '—'
+        : Math.round(r.legGS);
       tr.innerHTML = `
         <td>${r.index + 1}</td>
         <td><b>${escapeHTML(r.name)}</b></td>
         <td class="cell-leg-dist">${isFirst ? '—' : r.legDistNM.toFixed(1)}</td>
         ${velCell}
+        <td class="cell-wind ${windCls}">${windText}</td>
+        <td class="cell-gs">${gsText}</td>
         <td class="cell-leg-time">${isFirst ? '—' : formatDuration(r.legTimeMin)}</td>
         <td class="cell-cum-time">${formatDuration(r.cumTimeMin)}</td>
         ${flowCell}
@@ -952,6 +965,7 @@
       <div class="plan-log-stat"><span class="lbl">Total consumido:</span> <b>${fmtFuel(fuel.totalFuelUsed)} ${escapeHTML(u)}</b></div>
       <div class="plan-log-stat"><span class="lbl">Restante en destino:</span> <b class="${finalCls}">${fmtFuel(fuel.finalRemaining)} ${escapeHTML(u)}</b></div>
       <div class="plan-log-stat"><span class="lbl">Tiempo total:</span> <b>${formatDuration(fuel.totalTimeMin)}</b></div>
+      ${fuel.hasWinds && fuel.windLevel ? `<div class="plan-log-stat"><span class="lbl">Vientos:</span> <b>FL${Math.round(fuel.windLevel.ft / 100)}</b> <span class="dim">(${fuel.windLevel.hPa} hPa, Open-Meteo)</span></div>` : ''}
       ${fuel.jokerFuel != null ? `<div class="plan-log-stat"><span class="lbl">JOKER:</span> <b>${fmtFuel(fuel.jokerFuel)} ${escapeHTML(u)}</b>${fuel.firstJokerIdx != null ? ` <span class="dim">(en wpt #${fuel.firstJokerIdx + 1})</span>` : ''}</div>` : ''}
       ${fuel.bingoFuel != null ? `<div class="plan-log-stat"><span class="lbl">BINGO:</span> <b>${fmtFuel(fuel.bingoFuel)} ${escapeHTML(u)}</b>${fuel.firstBingoIdx != null ? ` <span class="dim">(en wpt #${fuel.firstBingoIdx + 1})</span>` : ''}</div>` : ''}
       ${warning}
@@ -1001,11 +1015,21 @@
       const tdLegFuel = tr.querySelector('.cell-leg-fuel');
       const tdRem     = tr.querySelector('.cell-remaining');
       const tdStatus  = tr.querySelector('.cell-status');
+      const tdWind    = tr.querySelector('.cell-wind');
+      const tdGS      = tr.querySelector('.cell-gs');
       if (tdLegTime) tdLegTime.textContent = isFirst ? '—' : formatDuration(r.legTimeMin);
       if (tdCumTime) tdCumTime.textContent = formatDuration(r.cumTimeMin);
       if (tdLegFuel) tdLegFuel.textContent = isFirst ? '—' : fmtFuel(r.legFuel) + ' ' + u;
       if (tdRem)     tdRem.innerHTML = `<b>${fmtFuel(r.remaining)} ${u ? escapeHTML(u) : ''}</b>`;
       if (tdStatus)  tdStatus.textContent = statusLabel(r.status);
+      if (tdWind) {
+        tdWind.textContent = (isFirst || !r.wind) ? '—'
+          : `${String(Math.round(r.wind.dir)).padStart(3, '0')}/${Math.round(r.wind.speedKt)}`;
+        tdWind.className = 'cell-wind ' + (
+          r.wind && r.wind.headwind > 5 ? 'wind-tail'
+          : r.wind && r.wind.headwind < -5 ? 'wind-head' : '');
+      }
+      if (tdGS) tdGS.textContent = (isFirst || r.legGS == null) ? '—' : Math.round(r.legGS);
     });
   }
 
@@ -1111,6 +1135,47 @@
     }
     html += '</div>';
     content.innerHTML = html;
+  }
+
+  // ── Vientos en altura (Open-Meteo) ──────────────────────────────────
+
+  async function loadWinds() {
+    if (!meteoApi || !meteoApi.fetchWindsAloft) {
+      alert('Módulo meteo no disponible.');
+      return;
+    }
+    if (!state.lastPlan || !state.lastPlan.coords || state.lastPlan.coords.length < 2) {
+      alert('Necesitas un plan calculado para muestrear vientos en ruta.');
+      return;
+    }
+    const btn = $('#btn-plan-winds');
+    btn.disabled = true;
+    const orig = btn.textContent;
+    btn.textContent = 'Cargando…';
+    try {
+      const pts = state.lastPlan.coords.map(c => ({ lat: c.lat, lon: c.lon }));
+      const fl = state.lastPlan.flightLevel;
+      const result = await meteoApi.fetchWindsAloft(pts, fl);
+      if (!result.points || !result.points.length) {
+        alert('Open-Meteo no devolvió datos de viento.');
+        return;
+      }
+      // Guardamos en fuelOpts y recomputamos el log con GS.
+      state.lastPlan.fuelOpts.winds = result.points;
+      state.lastPlan.fuelOpts.windLevel = result.level;
+      state.lastPlan.fuel = flightPlan.buildFuelLog(state.lastPlan.coords, state.lastPlan.fuelOpts);
+      renderFuelLog(state.lastPlan.fuel);
+      const fl_ft = result.level ? result.level.ft : '?';
+      const fl_label = result.level ? `FL${Math.round(result.level.ft / 100)}` : '?';
+      const hpa = result.level ? result.level.hPa : '?';
+      console.log(`[meteo] Vientos cargados al nivel ${hpa} hPa (≈ ${fl_label}, ${fl_ft} ft)`);
+    } catch (err) {
+      console.error('[winds]', err);
+      alert('No se pudieron cargar los vientos: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = orig;
+    }
   }
 
   function copyNarrative() {
@@ -1248,6 +1313,7 @@
       hideDrawBanner();
     });
     $('#btn-plan-meteo').addEventListener('click', loadMeteo);
+    $('#btn-plan-winds').addEventListener('click', loadWinds);
     $('#btn-save-plan').addEventListener('click', savePlanByName);
     $('#saved-plan-name').addEventListener('keydown', e => {
       if (e.key === 'Enter') { e.preventDefault(); savePlanByName(); }

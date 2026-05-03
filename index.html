@@ -368,6 +368,7 @@
                 <input type="number" id="plan-meteo-radius" value="50" min="10" max="300" step="10"> NM
               </label>
               <button id="btn-plan-meteo" class="btn" type="button">Cargar METAR / TAF</button>
+              <button id="btn-plan-winds" class="btn" type="button" title="Vientos en altura al FL del plan (Open-Meteo)">Cargar vientos en altura</button>
             </div>
           </div>
           <div id="plan-meteo-content" class="plan-meteo-content"></div>
@@ -405,7 +406,9 @@
                   <th>#</th>
                   <th>Waypoint</th>
                   <th>Tramo (NM)</th>
-                  <th title="Velocidad en este tramo">Vel (kt)</th>
+                  <th title="True Airspeed (entrada del piloto)">TAS (kt)</th>
+                  <th title="Viento del tramo: dirección/velocidad">Viento</th>
+                  <th title="Ground Speed: TAS corregida con componente de viento">GS (kt)</th>
                   <th>Tiempo tramo</th>
                   <th>Tiempo total</th>
                   <th title="Consumo por hora en este tramo">Consumo (/h)</th>
