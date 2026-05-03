@@ -428,22 +428,30 @@ window.TSAgestor.meteoApi = (function () {
       reqInit.headers = { 'Authorization': 'Bearer ' + token };
     }
 
-    // Intento 1: ruta completa con todos los waypoints reconocidos.
-    let url = getGrametUrl(plan, format, false);
-    if (!url) throw new Error('Plan inválido');
-
-    let res = await _arFetch(url, reqInit);
-
-    // Si falla con 4xx/5xx (probable: waypoint AIP no reconocido por
-    // Autorouter o ruta demasiado larga), reintentamos con solo origen+destino.
-    if (!res.ok && res.status !== 401) {
-      const minimalUrl = getGrametUrl(plan, format, true);
-      if (minimalUrl && minimalUrl !== url) {
-        console.warn('[gramet] Reintentando con solo ' + plan.origin + '->' + plan.destination + ' (HTTP ' + res.status + ')');
-        url = minimalUrl;
-        res = await _arFetch(minimalUrl, reqInit);
+    // Escalado en 3 estrategias hasta obtener algo:
+    //   1) full   - ruta tal cual (puede fallar si Autorouter no conoce
+    //               algun fix RNAV nuevo del AIP).
+    //   2) nearby - sustituye fixes no reconocidos por aeropuerto/navaid
+    //               mas cercano (radio 80 NM) -> meteo aproximada en cada
+    //               punto de la ruta original.
+    //   3) minimal - origen + destino, gran circulo (ultimo recurso).
+    const strategies = ['full', 'nearby', 'minimal'];
+    let url = null, res = null;
+    for (let i = 0; i < strategies.length; i++) {
+      const strat = strategies[i];
+      const tryUrl = getGrametUrl(plan, format, strat);
+      if (!tryUrl) continue;
+      // No repetir si la URL es identica a la anterior (ej. plan tan corto
+      // que full y nearby producen lo mismo).
+      if (url && tryUrl === url) continue;
+      url = tryUrl;
+      res = await _arFetch(url, reqInit);
+      if (res.ok || res.status === 401) break;
+      if (i + 1 < strategies.length) {
+        console.warn('[gramet] Estrategia "' + strat + '" fallo (HTTP ' + res.status + '). Reintentando con "' + strategies[i + 1] + '"...');
       }
     }
+    if (!url || !res) throw new Error('Plan inválido');
     if (res.status === 401) {
       if (!serverAuth) sessionStorage.removeItem(AR_TOKEN_KEY);
       // Intentamos leer el JSON con el reason que devuelve la Function.
@@ -480,20 +488,18 @@ window.TSAgestor.meteoApi = (function () {
     return await res.blob();
   }
 
-  function getGrametUrl(plan, format, minimal) {
+  // Estrategias de construccion de la cadena de waypoints para GRAMET:
+  //   'full'    -> ruta completa filtrando solo nombres tipo ICAO/navaid.
+  //   'nearby'  -> sustituye cada fix RNAV no reconocido por el aeropuerto
+  //                o navaid mas cercano (radio 80 NM) para que Autorouter
+  //                pueda muestrear meteo cerca de la linea real.
+  //   'minimal' -> solo origen + destino (gran circulo).
+  function getGrametUrl(plan, format, strategy) {
     if (!plan || !plan.coords || plan.coords.length < 2) return null;
     format = format || 'png';
-    let waypoints;
-    if (minimal) {
-      waypoints = `${plan.origin} ${plan.destination}`;
-    } else {
-      // Sólo waypoints con código tipo ICAO/navaid; si no quedan ≥2 caemos a
-      // origen + destino (que ya están validados por el grafo).
-      const valid = plan.coords
-        .map(c => c.name)
-        .filter(n => /^[A-Z][A-Z0-9]{1,4}$/.test(n));
-      waypoints = valid.length >= 2 ? valid.join(' ') : `${plan.origin} ${plan.destination}`;
-    }
+    strategy = strategy || 'full';
+    const waypoints = buildWaypointsString(plan, strategy);
+    if (!waypoints) return null;
     const departuretime = Math.floor(plan.departureUTC.getTime() / 1000);
     const totaleet = Math.round((plan.timeMinutes || 0) * 60);
     const altitude = (plan.flightLevel || 350) * 100;
@@ -505,6 +511,79 @@ window.TSAgestor.meteoApi = (function () {
       format,
     });
     return `${AR_BASE}/met/gramet?` + params.toString();
+  }
+
+  function buildWaypointsString(plan, strategy) {
+    if (strategy === 'minimal') {
+      return `${plan.origin} ${plan.destination}`;
+    }
+    if (strategy === 'nearby') {
+      return buildNearbyWaypoints(plan);
+    }
+    // 'full': mantener nombres del plan filtrados a patron tipo ICAO.
+    const valid = plan.coords
+      .map(c => c.name)
+      .filter(n => /^[A-Z][A-Z0-9]{1,4}$/.test(n));
+    return valid.length >= 2 ? valid.join(' ') : `${plan.origin} ${plan.destination}`;
+  }
+
+  // Construye la ruta sustituyendo cada waypoint no reconocido (RNAV de
+  // 5 letras del AIP nuevo, coords arbitrarias) por el aeropuerto o navaid
+  // mas cercano del catalogo local. Asi Autorouter recibe nombres que su
+  // base Eurocontrol EAD sí reconoce, pero la geometria de la ruta sigue
+  // siendo aproximadamente la planificada.
+  function buildNearbyWaypoints(plan) {
+    const aw = window.TSAgestor && window.TSAgestor.airways;
+    if (!aw || !aw.waypoints || !aw.waypointTypes) return `${plan.origin} ${plan.destination}`;
+
+    // Catalogo de puntos "fiables" para Autorouter: aeropuertos OACI 4-letras
+    // y NAVAIDs 3-letras (estos figuran en EAD desde hace decadas).
+    const known = [];
+    for (const [id, pt] of Object.entries(aw.waypoints)) {
+      const type = aw.waypointTypes[id];
+      if (type === 'AIRPORT' || type === 'NAVAID') {
+        known.push({ id, lat: pt[0], lon: pt[1] });
+      }
+    }
+    if (!known.length) return `${plan.origin} ${plan.destination}`;
+
+    function approxNM(la, lo, lb, bo) {
+      const dla = (lb - la) * 60;
+      const ml = ((la + lb) / 2) * Math.PI / 180;
+      const dlo = (bo - lo) * 60 * Math.cos(ml);
+      return Math.sqrt(dla * dla + dlo * dlo);
+    }
+    function nearestKnown(lat, lon, maxNM) {
+      let best = null, bestD = Infinity;
+      for (const k of known) {
+        const d = approxNM(lat, lon, k.lat, k.lon);
+        if (d < bestD && d <= maxNM) { bestD = d; best = k; }
+      }
+      return best;
+    }
+    function isReliableName(n) {
+      // 4-letras OACI (aeropuerto) o 3-letras (navaid clasico).
+      return /^[A-Z]{4}$/.test(n) || /^[A-Z]{3}$/.test(n);
+    }
+
+    const out = [];
+    for (const c of plan.coords) {
+      let candidate;
+      if (c.name && isReliableName(c.name)) {
+        candidate = c.name;
+      } else {
+        const near = nearestKnown(c.lat, c.lon, 80);
+        candidate = near ? near.id : null;
+      }
+      if (!candidate) continue;
+      // Quitar duplicados consecutivos.
+      if (out.length && out[out.length - 1] === candidate) continue;
+      out.push(candidate);
+    }
+    // Garantizar origen y destino al principio/final.
+    if (!out.length || out[0] !== plan.origin) out.unshift(plan.origin);
+    if (out[out.length - 1] !== plan.destination) out.push(plan.destination);
+    return out.length >= 2 ? out.join(' ') : `${plan.origin} ${plan.destination}`;
   }
 
   return {
