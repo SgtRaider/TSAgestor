@@ -23,7 +23,8 @@
       </div>
     </div>
     <nav class="tabs">
-      <button class="tab-btn active" data-tab="upload">Cargar</button>
+      <button class="tab-btn active" data-tab="home">Inicio</button>
+      <button class="tab-btn" data-tab="upload">Cargar</button>
       <button class="tab-btn" data-tab="map">Mapa</button>
       <button class="tab-btn" data-tab="cross">Corte transversal</button>
       <button class="tab-btn" data-tab="plan">Plan de vuelo</button>
@@ -55,8 +56,120 @@
 
   <main>
 
+    <!-- INICIO -->
+    <section id="tab-home" class="tab-content active">
+      <div class="home-hero">
+        <h2>Visor de TSAs y planificador de vuelos</h2>
+        <p class="home-lead">
+          Aplicación web para la consulta de <b>Temporary Segregated Areas (TSA)</b>
+          publicadas en NOTAMs ICARO XXI, planificación de rutas, log de combustible y
+          consulta meteorológica integrada.
+        </p>
+      </div>
+
+      <div class="home-disclaimer disclaimer-warn">
+        <div class="disc-head">
+          <span class="disc-icon" aria-hidden="true">⚠</span>
+          <span class="disc-title">AVISO DE SEGURIDAD — INFORMACIÓN NO CLASIFICADA</span>
+        </div>
+        <p>
+          Esta aplicación <b>no está autorizada</b> para el tratamiento de información
+          clasificada. Bajo ningún concepto se introducirán datos catalogados como
+          <b>DIFUSIÓN LIMITADA, CONFIDENCIAL, RESERVADO</b> o categorías superiores en
+          ninguno de los campos de entrada (planes de vuelo, rutas, NOTAMs propios,
+          credenciales operativas, identificadores de aeronave, etc.).
+        </p>
+        <p>
+          Toda la información tratada debe corresponder a documentación de carácter
+          <b>público</b> (publicaciones AIP/NOTAM oficiales, datos meteorológicos
+          abiertos) o a ejercicios de instrucción sin valor operativo real.
+          La responsabilidad del cumplimiento de esta norma recae en el usuario.
+        </p>
+      </div>
+
+      <div class="home-disclaimer disclaimer-info">
+        <div class="disc-head">
+          <span class="disc-icon" aria-hidden="true">🔐</span>
+          <span class="disc-title">ACCESO A LAS HERRAMIENTAS METEOROLÓGICAS</span>
+        </div>
+        <p>
+          Para que las APIs externas integradas (METAR/TAF de AWC, capa de nubosidad
+          RainViewer, Cloud Top Height de EUMETView, GRAMET de Autorouter y datos
+          de Open-Meteo) funcionen correctamente, deberás haber <b>iniciado sesión
+          previamente con tu cuenta corporativa de acceso a Internet</b> del Ejército
+          del Aire y del Espacio.
+        </p>
+        <p>
+          De no estar autenticado en la red, las capas seguirán mostrándose pero las
+          consultas a servicios externos fallarán y verás avisos de error en cada
+          panel correspondiente. Las funciones puramente locales (cargar NOTAM,
+          mapa offline, corte transversal de TSAs, exportación PDF) <b>seguirán
+          funcionando sin acceso</b> a Internet.
+        </p>
+      </div>
+
+      <div class="home-features">
+        <h3>Funcionalidades</h3>
+        <div class="feature-grid">
+          <div class="feature">
+            <div class="feature-title">Carga de NOTAM</div>
+            <div class="feature-desc">Lectura de PDF/TXT del boletín ICARO XXI con
+              extracción automática de TSAs (vértices, cota vertical, ventanas
+              horarias agrupadas).</div>
+          </div>
+          <div class="feature">
+            <div class="feature-title">Mapa offline</div>
+            <div class="feature-desc">Cartografía Natural Earth integrada con
+              relieve detallado de Iberia, Baleares y Canarias. Capas activables
+              de aerovías, TMAs, CTRs y meteorología.</div>
+          </div>
+          <div class="feature">
+            <div class="feature-title">Plan de vuelo</div>
+            <div class="feature-desc">Cálculo de ruta por aerovías o trazado
+              manual punto a punto sobre el mapa. Detección de conflictos con
+              TSAs activas y ajuste automático de FL al cruzar.</div>
+          </div>
+          <div class="feature">
+            <div class="feature-title">Log de combustible</div>
+            <div class="feature-desc">Tabla por tramos con velocidad y consumo
+              editables. Marca los waypoints donde se cruza el JOKER y BINGO,
+              avisa de combustible insuficiente.</div>
+          </div>
+          <div class="feature">
+            <div class="feature-title">Corte transversal</div>
+            <div class="feature-desc">Sección vertical de la ruta con TSAs
+              cruzadas en su posición exacta, perfil del FL por waypoint y
+              cobertura nubosa por capas (Open-Meteo).</div>
+          </div>
+          <div class="feature">
+            <div class="feature-title">Meteorología</div>
+            <div class="feature-desc">METAR/TAF decodificados al español, capa
+              de Cloud Top Height MSG 0° (EUMETSAT) con leyenda en FL, y GRAMET
+              integrado vía Autorouter.</div>
+          </div>
+          <div class="feature">
+            <div class="feature-title">Informe PDF</div>
+            <div class="feature-desc">Exportación con cabecera institucional EA,
+              plan de vuelo completo, log de combustible, METAR/TAF y corte
+              transversal en un único documento.</div>
+          </div>
+          <div class="feature">
+            <div class="feature-title">Identidad EA</div>
+            <div class="feature-desc">Adaptado al manual de identidad corporativa
+              del Ejército del Aire y del Espacio (paleta institucional, Rokiski
+              y tipografía Archivo).</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="home-cta">
+        <p class="hint">Empieza por la pestaña <b>Cargar</b> para subir un NOTAM,
+          o salta directamente a <b>Plan de vuelo</b> o <b>Mapa</b>.</p>
+      </div>
+    </section>
+
     <!-- CARGAR -->
-    <section id="tab-upload" class="tab-content active">
+    <section id="tab-upload" class="tab-content">
       <div id="dropzone" class="dropzone">
         <div class="drop-icon">📄</div>
         <p class="drop-primary">Arrastra un PDF o TXT aquí</p>
