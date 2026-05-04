@@ -456,10 +456,23 @@
     }
 
     try {
-      const blob = await meteoApi.fetchGramet(state.lastPlan, 'png');
+      const result = await meteoApi.fetchGramet(state.lastPlan, 'png');
+      const blob = result.blob;
       const url = URL.createObjectURL(blob);
       const wrap = c.querySelector('.gramet-img-wrap');
+      const strategyLabel = {
+        full:    { txt: 'Ruta completa', cls: 'gramet-strat-ok' },
+        nearby:  { txt: 'Ruta aproximada (sustituidos waypoints no reconocidos por aeropuerto/navaid cercano dentro de 80 NM)', cls: 'gramet-strat-warn' },
+        minimal: { txt: 'Solo origen → destino (gran círculo)', cls: 'gramet-strat-warn' },
+      }[result.strategy] || { txt: result.strategy, cls: '' };
+      const wpHtml = result.waypoints && result.waypoints.length
+        ? result.waypoints.map(w => `<span class="gramet-wp">${escapeHTML(w)}</span>`).join(' → ')
+        : '';
       wrap.innerHTML = `
+        <div class="gramet-route ${strategyLabel.cls}">
+          <div class="gramet-route-strategy">${escapeHTML(strategyLabel.txt)}</div>
+          <div class="gramet-route-wps">${wpHtml}</div>
+        </div>
         <img id="gramet-img" alt="GRAMET" src="${url}">
       `;
       // Añadimos enlace de descarga
@@ -468,7 +481,8 @@
       dl.download = `gramet-${state.lastPlan.origin}-${state.lastPlan.destination}.png`;
       dl.className = 'btn btn-ghost';
       dl.textContent = 'Descargar PNG';
-      c.querySelector('.gramet-actions').insertBefore(dl, c.querySelector('#btn-gramet-logout'));
+      const ref = c.querySelector('#btn-gramet-logout') || c.querySelector('#btn-gramet-close');
+      c.querySelector('.gramet-actions').insertBefore(dl, ref);
     } catch (err) {
       console.error('[gramet]', err);
       const wrap = c.querySelector('.gramet-img-wrap');

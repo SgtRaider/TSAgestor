@@ -11,7 +11,7 @@ window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.meteoApi = (function () {
   'use strict';
 
-  const MODULE_BUILD = 'meteoApi v3 (gramet: full → nearby → minimal)';
+  const MODULE_BUILD = 'meteoApi v4 (gramet: full → nearby → minimal, devuelve waypoints)';
   console.info('[TSAgestor]', MODULE_BUILD);
 
   // Detección de entorno: en deploy HTTPS no-local asumimos que tenemos
@@ -439,15 +439,18 @@ window.TSAgestor.meteoApi = (function () {
     //               punto de la ruta original.
     //   3) minimal - origen + destino, gran circulo (ultimo recurso).
     const strategies = ['full', 'nearby', 'minimal'];
-    let url = null, res = null;
+    let url = null, res = null, usedStrategy = null, usedWaypoints = null;
     for (let i = 0; i < strategies.length; i++) {
       const strat = strategies[i];
+      const tryWaypoints = buildWaypointsString(plan, strat);
       const tryUrl = getGrametUrl(plan, format, strat);
       if (!tryUrl) continue;
       // No repetir si la URL es identica a la anterior (ej. plan tan corto
       // que full y nearby producen lo mismo).
       if (url && tryUrl === url) continue;
       url = tryUrl;
+      usedStrategy = strat;
+      usedWaypoints = tryWaypoints;
       res = await _arFetch(url, reqInit);
       if (res.ok || res.status === 401) break;
       if (i + 1 < strategies.length) {
@@ -488,7 +491,12 @@ window.TSAgestor.meteoApi = (function () {
       console.error('[gramet] HTTP', res.status, 'URL:', url, 'detail:', detail);
       throw new Error('GRAMET HTTP ' + res.status + detail);
     }
-    return await res.blob();
+    const blob = await res.blob();
+    return {
+      blob,
+      strategy: usedStrategy,
+      waypoints: usedWaypoints ? usedWaypoints.split(/\s+/) : [],
+    };
   }
 
   // Estrategias de construccion de la cadena de waypoints para GRAMET:
