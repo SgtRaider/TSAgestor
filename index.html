@@ -608,6 +608,16 @@
         console.warn('[PWA] No se pudo registrar el Service Worker:', err);
       });
     });
+    // Cuando el nuevo SW activa (skipWaiting + claim), recargamos la pagina
+    // para que el JS/CSS frescos entren en vigor sin que el usuario tenga
+    // que hacer hard refresh tras cada deploy.
+    let _swRefreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (_swRefreshing) return;
+      _swRefreshing = true;
+      console.info('[PWA] Service Worker actualizado - recargando pagina.');
+      window.location.reload();
+    });
   }
 </script>
 </body>

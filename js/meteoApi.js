@@ -11,6 +11,9 @@ window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.meteoApi = (function () {
   'use strict';
 
+  const MODULE_BUILD = 'meteoApi v3 (gramet: full → nearby → minimal)';
+  console.info('[TSAgestor]', MODULE_BUILD);
+
   // Detección de entorno: en deploy HTTPS no-local asumimos que tenemos
   // disponibles las Cloudflare Pages Functions /api/awc/* y
   // /api/autorouter/* como proxies del MISMO ORIGEN (sin CORS). En local
