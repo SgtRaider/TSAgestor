@@ -278,40 +278,32 @@ window.TSAgestor.pdfExport = (function () {
     }
     y += 2;
 
-    // Tabla por tramos
+    // Tabla por tramos. Mantenemos siempre las columnas Viento y GS para que
+    // el PDF tenga el mismo layout que el log en pantalla; si no se han
+    // cargado vientos, las celdas muestran "—".
     y = ensureSpace(doc, y, 20, margin);
-    const windCol = !!fuel.hasWinds;
-    const head = ['#', 'Waypoint', 'Tramo NM', 'TAS kt'];
-    if (windCol) head.push('Viento', 'GS kt');
-    head.push('T tramo', 'T total', `Cons ${u}/h`, `Comb tramo ${u}`, `Restante ${u}`, 'Estado');
+    const head = ['#', 'Waypoint', 'Tramo NM', 'TAS kt', 'Viento', 'GS kt',
+                  'T tramo', 'T total', `Cons ${u}/h`, `Comb tramo ${u}`,
+                  `Restante ${u}`, 'Estado'];
     const statusColIdx = head.length - 1;
     doc.autoTable({
       startY: y,
       head: [head],
-      body: fuel.rows.map(r => {
-        const row = [
-          r.index + 1,
-          r.name,
-          r.index === 0 ? '—' : r.legDistNM.toFixed(1),
-          r.index === 0 ? '—' : Math.round(r.legSpeedKt),
-        ];
-        if (windCol) {
-          row.push(
-            (r.index === 0 || !r.wind) ? '—'
-              : `${String(Math.round(r.wind.dir)).padStart(3, '0')}/${Math.round(r.wind.speedKt)}`,
-            (r.index === 0 || r.legGS == null) ? '—' : Math.round(r.legGS)
-          );
-        }
-        row.push(
-          r.index === 0 ? '—' : formatDuration(r.legTimeMin),
-          formatDuration(r.cumTimeMin),
-          r.index === 0 ? '—' : Math.round(r.legFuelFlow),
-          r.index === 0 ? '—' : fmtNum(r.legFuel),
-          fmtNum(r.remaining),
-          r.status === 'bingo' ? 'BINGO' : (r.status === 'joker' ? 'JOKER' : '—')
-        );
-        return row;
-      }),
+      body: fuel.rows.map(r => [
+        r.index + 1,
+        r.name,
+        r.index === 0 ? '—' : r.legDistNM.toFixed(1),
+        r.index === 0 ? '—' : Math.round(r.legSpeedKt),
+        (r.index === 0 || !r.wind) ? '—'
+          : `${String(Math.round(r.wind.dir)).padStart(3, '0')}/${Math.round(r.wind.speedKt)}`,
+        (r.index === 0 || r.legGS == null) ? '—' : Math.round(r.legGS),
+        r.index === 0 ? '—' : formatDuration(r.legTimeMin),
+        formatDuration(r.cumTimeMin),
+        r.index === 0 ? '—' : Math.round(r.legFuelFlow),
+        r.index === 0 ? '—' : fmtNum(r.legFuel),
+        fmtNum(r.remaining),
+        r.status === 'bingo' ? 'BINGO' : (r.status === 'joker' ? 'JOKER' : '—'),
+      ]),
       styles: { fontSize: 8, cellPadding: 1.5 },
       headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [241, 245, 249] },
