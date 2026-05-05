@@ -4,6 +4,10 @@ name: AIP auto-update
 # Cada AIRAC son 28 dias; ejecutamos cada jueves para coger el ciclo
 # nuevo el dia que entra en vigor (los AIRAC empiezan los jueves).
 # Tambien se puede disparar manualmente desde la pestana Actions.
+#
+# Si hay cambios reales en el dataset Y los sanity checks pasan, comitea
+# DIRECTAMENTE a la rama default (sin PR intermedio); el bump del SW
+# invalida automaticamente las cachees de PWA en el siguiente despliegue.
 on:
   schedule:
     - cron: '0 6 * * 4'      # cada jueves a las 06:00 UTC
@@ -11,7 +15,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   update:
@@ -39,14 +42,37 @@ jobs:
         run: |
           if git diff --quiet -- data-sources/aip-enr/aip-data.json js/aipData.js; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Sin cambios en el dataset AIP. Saltando PR."
+            echo "Sin cambios en el dataset AIP. Nada que comitear."
           else
             echo "changed=true"  >> "$GITHUB_OUTPUT"
             echo "Cambios detectados:"
             git diff --stat -- data-sources/aip-enr/aip-data.json js/aipData.js
           fi
 
-      - name: Bump Service Worker cache version (solo si AIP cambio)
+      - name: Sanity check del dataset (umbrales minimos)
+        # Si el HTML del eAIP cambia de formato, el scraper podria producir
+        # un JSON casi vacio. Validamos umbrales muy conservadores y AIRAC
+        # antes de comitear; si fallan, el job se cae aqui y NO toca nada.
+        if: steps.aip_diff.outputs.changed == 'true'
+        run: |
+          python - <<'PY'
+          import json, io, sys
+          with io.open('data-sources/aip-enr/aip-data.json', encoding='utf-8') as f:
+              d = json.load(f)
+          aw = len(d.get('airways', []))
+          wp = len(d.get('waypoints', {}))
+          airac = (d.get('airac') or '').strip()
+          print(f'AIRAC={airac!r}  airways={aw}  waypoints={wp}')
+          errs = []
+          if not airac or 'WEF' not in airac:        errs.append(f'AIRAC vacio o invalido: {airac!r}')
+          if aw < 100:                                errs.append(f'aerovias < 100: {aw}')
+          if wp < 500:                                errs.append(f'waypoints < 500: {wp}')
+          if errs:
+              for e in errs: print('SANITY FAIL:', e, file=sys.stderr)
+              sys.exit(1)
+          PY
+
+      - name: Bump Service Worker cache version
         if: steps.aip_diff.outputs.changed == 'true'
         run: |
           python - <<'PY'
@@ -63,28 +89,16 @@ jobs:
           print(f"sw.js: tsagestor-v{m.group(1)} -> tsagestor-v{n}")
           PY
 
-      - name: Detectar cambios y abrir PR
+      - name: Commit + push directo a default
         if: steps.aip_diff.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          branch: chore/aip-update
-          delete-branch: true
-          commit-message: |
-            chore(aip): refresh AIP data from eAIP ENAIRE
-          title: 'chore(aip): refresh AIP data from eAIP ENAIRE'
-          body: |
-            Refresco automatico de aerovias / NAVAIDs / waypoints RNAV
-            desde el eAIP de ENAIRE (`scrape_eaip.py`).
-
-            - `data-sources/aip-enr/aip-data.json` regenerado.
-            - `js/aipData.js` reembedido.
-            - `sw.js` CACHE_VERSION incrementado para invalidar PWA.
-
-            Revisa el AIRAC del JSON y los conteos de aerovias/waypoints
-            antes de mergear: si el HTML del eAIP cambia de formato, el
-            scraper podria producir un dataset vacio o incompleto y este
-            PR lo dejaria visible para que no se mergee.
-          add-paths: |
-            data-sources/aip-enr/aip-data.json
-            js/aipData.js
-            sw.js
+        run: |
+          AIRAC=$(python -c "import json,io; print(json.load(io.open('data-sources/aip-enr/aip-data.json',encoding='utf-8'))['airac'])")
+          AW=$(python -c "import json,io; print(len(json.load(io.open('data-sources/aip-enr/aip-data.json',encoding='utf-8'))['airways']))")
+          WP=$(python -c "import json,io; print(len(json.load(io.open('data-sources/aip-enr/aip-data.json',encoding='utf-8'))['waypoints']))")
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data-sources/aip-enr/aip-data.json js/aipData.js sw.js
+          git commit -m "chore(aip): refresh from eAIP ENAIRE [auto]" \
+                     -m "AIRAC: $AIRAC" \
+                     -m "Airways: $AW · Waypoints: $WP"
+          git push origin HEAD:${GITHUB_REF_NAME}
