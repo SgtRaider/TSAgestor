@@ -26,7 +26,7 @@ window.TSAgestor.mapView = (function () {
   let countryLayer = null;
   // Capas de aerovías y airspace creadas bajo demanda; las guardamos para
   // poder actualizarles la opacidad cuando cambian los ajustes.
-  const _vectorLayerGroups = { airwaysUpper: null, airwaysLower: null, tmas: null, ctrs: null };
+  const _vectorLayerGroups = { airwaysUpper: null, airwaysLower: null, waypoints: null, tmas: null, ctrs: null };
 
   function settingsGet(path, fallback) {
     const s = window.TSAgestor && window.TSAgestor.settings;
@@ -100,6 +100,7 @@ window.TSAgestor.mapView = (function () {
       const lowerReal = (aw.lower || []).filter(a => a.name !== 'DCT');
       overlays['Aerovías alta cota (AIP)'] = buildAirwaysLayer(upperReal, 'upper');
       overlays['Aerovías baja cota (AIP)'] = buildAirwaysLayer(lowerReal, 'lower');
+      overlays['NAVAIDs y waypoints (AIP)'] = buildWaypointsLayer(aw);
     }
     const sp = window.TSAgestor.airspace;
     if (sp) {
@@ -119,6 +120,7 @@ window.TSAgestor.mapView = (function () {
     // sus estilos cuando cambien las opacidades en Ajustes.
     _vectorLayerGroups.airwaysUpper = overlays['Aerovías alta cota (AIP)'] || null;
     _vectorLayerGroups.airwaysLower = overlays['Aerovías baja cota (AIP)'] || null;
+    _vectorLayerGroups.waypoints    = overlays['NAVAIDs y waypoints (AIP)'] || null;
     _vectorLayerGroups.tmas         = overlays['TMAs (demo)'] || null;
     _vectorLayerGroups.ctrs         = overlays['CTRs (demo)'] || null;
     if (Object.keys(overlays).length === 0) return;
@@ -449,6 +451,41 @@ window.TSAgestor.mapView = (function () {
       L.tooltip({
         permanent: true, direction: 'center', className: labelClass, interactive: false,
       }).setLatLng(mid).setContent(aw.name).addTo(group);
+    }
+    return group;
+  }
+
+  // Capa con todos los NAVAIDs y waypoints RNAV del AIP (excluye aeropuertos).
+  // NAVAIDs (VOR/DME/TACAN/NDB) se dibujan grandes y amarillos; waypoints
+  // RNAV pequenos en gris. Etiqueta a la derecha del marcador.
+  function buildWaypointsLayer(aw) {
+    const group = L.layerGroup();
+    if (!aw || !aw.waypoints) return group;
+    const types = aw.waypointTypes || {};
+    const names = aw.waypointNames || {};
+    for (const [id, pt] of Object.entries(aw.waypoints)) {
+      const t = types[id] || 'RNAV';
+      if (t === 'AIRPORT') continue;
+      const isNav = t === 'NAVAID';
+      const marker = L.circleMarker(pt, {
+        radius:       isNav ? 4 : 2.5,
+        color:        isNav ? '#a16207' : '#475569',
+        weight:       isNav ? 1.5 : 1,
+        fillColor:    isNav ? '#facc15' : '#cbd5e1',
+        fillOpacity:  0.95,
+        pane:         'tsaPane',
+      });
+      const fullName = names[id] || id;
+      marker.bindTooltip(
+        `<b>${id}</b> · ${isNav ? 'NAVAID' : 'RNAV'}<br>${escapeHTMLLocal(fullName)}`,
+        { sticky: true }
+      );
+      marker.addTo(group);
+      L.tooltip({
+        permanent: true, direction: 'right', offset: [5, 0],
+        className: 'wp-label ' + (isNav ? 'navaid' : 'rnav'),
+        interactive: false,
+      }).setLatLng(pt).setContent(id).addTo(group);
     }
     return group;
   }

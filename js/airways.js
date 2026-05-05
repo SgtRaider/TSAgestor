@@ -115,26 +115,24 @@ window.TSAgestor.airways = (function () {
     return out;
   }
 
-  // Distribucion por uso real de la aerovia, no por su FL minimo:
-  //   - lower: utilizable por debajo de FL245 (lowerFL < 245)
-  //   - upper: utilizable a FL245 o superior (upperFL >= 245)
-  // La mayoria de aerovias espanolas son mixtas (FL95-FL660): aparecen en
-  // las dos listas, lo que permite a flightPlan/Dijkstra elegir la entrada
-  // correcta segun el FL del plan (penaliza mismatches en su scoring).
-  const FL_DIVIDE = 245;
+  // Cargamos toda la red AIP en ambas capas (alta y baja cota): la mayoria
+  // de aerovias espanolas son mixtas FL95-FL660 y la division por FL solo
+  // ocultaba arbitrariamente segmentos en una capa u otra. El planificador
+  // sigue leyendo lowerFL/upperFL de cada item para penalizar mismatches en
+  // su scoring; lo que cambia aqui es solo la visibilidad en el mapa.
   const upper = [];
   const lower = [];
   for (const aw of (aip.airways || [])) {
     const points = airwayPoints(aw);
     if (points.length < 2) continue;
-    const item = { name: aw.name, points };
-    const lo = aw.lowerFL, hi = aw.upperFL;
-    const usableLow  = (lo == null) || lo <  FL_DIVIDE;
-    const usableHigh = (hi != null) && hi >= FL_DIVIDE;
-    if (usableLow)  lower.push(item);
-    if (usableHigh) upper.push(item);
-    // Si no encaja en ninguno (raro: FL ranges incompletos), va a lower por defecto.
-    if (!usableLow && !usableHigh) lower.push(item);
+    const item = {
+      name:    aw.name,
+      points,
+      lowerFL: (aw.lowerFL != null) ? aw.lowerFL : null,
+      upperFL: (aw.upperFL != null) ? aw.upperFL : null,
+    };
+    upper.push(item);
+    lower.push(item);
   }
 
   // --- Conexion airport <-> red de waypoints (DCT virtuales) --------------
