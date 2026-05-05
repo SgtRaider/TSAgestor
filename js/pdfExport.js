@@ -455,6 +455,45 @@ window.TSAgestor.pdfExport = (function () {
     const pageW = doc.internal.pageSize.getWidth();
     let y = margin;
 
+    // jsPDF Helvetica usa encoding WinAnsi (CP1252) y no soporta caracteres
+    // como → ≈ ≥ ≤ ✓ ✗ ⚠, que se renderizan como bytes UTF-8 sueltos (ej.
+    // "→" sale como "â†'" ~ "!'"). Reemplazamos por ASCII en TODO el output:
+    // monkeypatch de doc.text y doc.autoTable para no tener que recordar
+    // sanear cada string a mano.
+    const SAFE_MAP = [
+      [/→/g, '->'], [/←/g, '<-'], [/↑/g, '^'], [/↓/g, 'v'],
+      [/≈/g, '~'], [/≥/g, '>='], [/≤/g, '<='],
+      [/✓/g, 'OK'], [/✗/g, 'X'], [/⚠/g, '!'],
+    ];
+    function safe(s) {
+      if (s == null || typeof s !== 'string') return s;
+      let out = s;
+      for (const [re, rep] of SAFE_MAP) out = out.replace(re, rep);
+      return out;
+    }
+    function safeRow(row) {
+      return (row || []).map(c => {
+        if (typeof c === 'string') return safe(c);
+        if (c && typeof c === 'object' && typeof c.content === 'string') {
+          return Object.assign({}, c, { content: safe(c.content) });
+        }
+        return c;
+      });
+    }
+    const _origText = doc.text.bind(doc);
+    doc.text = function (str, x, y, opts2) {
+      if (Array.isArray(str)) str = str.map(safe);
+      else                    str = safe(str);
+      return _origText(str, x, y, opts2);
+    };
+    const _origAutoTable = doc.autoTable.bind(doc);
+    doc.autoTable = function (cfg) {
+      cfg = cfg || {};
+      if (Array.isArray(cfg.head)) cfg.head = cfg.head.map(safeRow);
+      if (Array.isArray(cfg.body)) cfg.body = cfg.body.map(safeRow);
+      return _origAutoTable(cfg);
+    };
+
     // Cabecera institucional con logo EA + filete bandera
     const logo = await loadLogoDataURL();
     const logoMaxH = 18;   // mm de alto máximo
