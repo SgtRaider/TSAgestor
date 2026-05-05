@@ -145,10 +145,14 @@ window.TSAgestor.pdfExport = (function () {
       `Nivel base:  FL${plan.flightLevel}        Velocidad base:  ${plan.speedKt} kt`,
       `Salida UTC:  ${formatUTC(plan.departureUTC)}        ETA UTC:  ${formatUTC(plan.eta)}`,
     ];
+    const maxLineW = pageW - margin * 2;
     for (const line of lines) {
-      y = ensureSpace(doc, y, 5, margin);
-      doc.text(line, margin, y);
-      y += 5;
+      const wrapped = doc.splitTextToSize(line, maxLineW);
+      for (const w of wrapped) {
+        y = ensureSpace(doc, y, 5, margin);
+        doc.text(w, margin, y);
+        y += 5;
+      }
     }
     if (plan.route.direct) {
       doc.setTextColor(180, 130, 30);
@@ -262,10 +266,17 @@ window.TSAgestor.pdfExport = (function () {
     if (fuel.hasWinds && fuel.windLevel) {
       lines.push(`Vientos en altura: nivel ${fuel.windLevel.hPa} hPa (≈ FL${Math.round(fuel.windLevel.ft / 100)}) — pronóstico Open-Meteo, look-up por ETA real de cada waypoint`);
     }
+    // Envolvemos cada linea por si excede el ancho util: si no, jsPDF no
+    // hace word-wrap y termina rederizando el texto "letra-a-letra" o salido
+    // del margen. La nota de vientos en altura es la mas susceptible.
+    const maxLineW = pageW - margin * 2;
     for (const line of lines) {
-      y = ensureSpace(doc, y, 5, margin);
-      doc.text(line, margin, y);
-      y += 5;
+      const wrapped = doc.splitTextToSize(line, maxLineW);
+      for (const w of wrapped) {
+        y = ensureSpace(doc, y, 5, margin);
+        doc.text(w, margin, y);
+        y += 5;
+      }
     }
     if (!fuel.reachesDestination) {
       y = ensureSpace(doc, y, 6, margin);
