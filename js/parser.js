@@ -818,15 +818,26 @@ window.TSAgestor.parser = (function () {
       out.push(target);
     }
 
-    // Dedupe + orden de schedules
+    // Dedupe + orden + merge de ventanas solapadas. Una misma TSA puede
+    // aparecer en multiples NOTAMs del boletin con DESDE ligeramente
+    // distintos (p.ej. 07:51 vs 08:38) que generan ventanas redundantes
+    // donde una contiene a la otra. Aqui las fusionamos: si dos ventanas
+    // se solapan o se tocan, las unimos en [min(start), max(end)].
     for (const t of out) {
-      const seen = new Set();
-      t.schedules = t.schedules.filter(s => {
-        const k = s.startUTC.getTime() + '-' + s.endUTC.getTime();
-        if (seen.has(k)) return false;
-        seen.add(k);
-        return true;
-      }).sort((a, b) => a.startUTC - b.startUTC);
+      const sorted = t.schedules.slice().sort((a, b) => a.startUTC - b.startUTC);
+      const merged = [];
+      for (const s of sorted) {
+        const last = merged[merged.length - 1];
+        if (last && s.startUTC.getTime() <= last.endUTC.getTime()) {
+          // Solapan o se tocan: extiende el final si la nueva acaba mas tarde
+          if (s.endUTC.getTime() > last.endUTC.getTime()) {
+            last.endUTC = s.endUTC;
+          }
+        } else {
+          merged.push({ startUTC: s.startUTC, endUTC: s.endUTC, raw: s.raw });
+        }
+      }
+      t.schedules = merged;
     }
     return out;
   }
