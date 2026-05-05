@@ -508,6 +508,40 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
 .leaflet-tooltip.wp-label.rnav   { color: #334155; }
 .leaflet-tooltip.wp-label::before { display: none; }
 
+/* Toast flotante sobre el mapa para confirmar acciones (anyadir waypoint, ...) */
+.map-toast {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translate(-50%, -8px);
+  z-index: 1000;
+  padding: 8px 14px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #fbbf24;
+  font-weight: 700;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+}
+.map-toast.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* Flash breve al recibir un waypoint en el campo Via */
+#plan-via.flash {
+  animation: viaFlash 0.5s ease-out;
+}
+@keyframes viaFlash {
+  0%   { background: rgba(251, 191, 36, 0.0); }
+  30%  { background: rgba(251, 191, 36, 0.35); }
+  100% { background: rgba(251, 191, 36, 0.0); }
+}
+
 /* Control de capas: hacer obvio que las aerovías son demo */
 .leaflet-control-layers-overlays label { font-size: 12px; }
 

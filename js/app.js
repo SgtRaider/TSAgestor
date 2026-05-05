@@ -331,7 +331,46 @@
   function ensureMap() {
     if (state.mapReady) return;
     mapView.init('map');
+    if (mapView.setWaypointClickHandler) {
+      mapView.setWaypointClickHandler(addWaypointToVia);
+    }
     state.mapReady = true;
+  }
+
+  // Anyade un codigo de waypoint al final del campo Via del plan, evitando
+  // duplicar el ultimo token. Lo dispara el click sobre un marcador de
+  // waypoint en cualquiera de las capas zonales del mapa.
+  function addWaypointToVia(code) {
+    if (!code) return;
+    const inp = $('#plan-via');
+    if (!inp) return;
+    const cur = (inp.value || '').trim();
+    const tokens = cur ? cur.split(/[\s,]+/).filter(Boolean) : [];
+    if (tokens[tokens.length - 1] === code) return;
+    tokens.push(code);
+    inp.value = tokens.join(' ');
+    state.drawnVia = null;  // invalida una posible ruta dibujada previa
+    inp.classList.add('flash');
+    setTimeout(() => inp.classList.remove('flash'), 500);
+    showMapToast(`+ ${code} añadido a la Vía`);
+  }
+
+  // Mensaje flotante breve sobre el mapa (autodesaparece). Util para feedback
+  // de acciones rapidas (anyadir waypoint a la Via desde el mapa).
+  let mapToastTimer = null;
+  function showMapToast(msg) {
+    let el = $('#map-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'map-toast';
+      el.className = 'map-toast';
+      const mapEl = document.getElementById('map');
+      if (mapEl) mapEl.appendChild(el);
+    }
+    el.textContent = msg;
+    el.classList.add('visible');
+    if (mapToastTimer) clearTimeout(mapToastTimer);
+    mapToastTimer = setTimeout(() => el.classList.remove('visible'), 1600);
   }
 
   // ── Corte transversal ────────────────────────────────────────────────

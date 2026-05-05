@@ -26,7 +26,16 @@ window.TSAgestor.mapView = (function () {
   let countryLayer = null;
   // Capas de aerovías y airspace creadas bajo demanda; las guardamos para
   // poder actualizarles la opacidad cuando cambian los ajustes.
-  const _vectorLayerGroups = { airwaysUpper: null, airwaysLower: null, waypoints: null, tmas: null, ctrs: null };
+  const _vectorLayerGroups = {
+    // 4 zonas x 2 cotas = 8 grupos. Las claves siguen el patron `${cota}_${zona}`.
+    upper_NE: null, upper_NW: null, upper_SE: null, upper_SW: null,
+    lower_NE: null, lower_NW: null, lower_SE: null, lower_SW: null,
+    tmas: null, ctrs: null,
+  };
+  const ZONES = ['NE', 'NW', 'SE', 'SW'];
+  let waypointClickHandler = null;
+
+  function setWaypointClickHandler(cb) { waypointClickHandler = cb; }
 
   function settingsGet(path, fallback) {
     const s = window.TSAgestor && window.TSAgestor.settings;
@@ -93,14 +102,21 @@ window.TSAgestor.mapView = (function () {
   function addAirwayLayers() {
     const overlays = {};
     const aw = window.TSAgestor.airways;
-    if (aw) {
-      // Filtramos las pseudo-aerovias "DCT" (conexiones virtuales aeropuerto-fix
-      // que solo existen para alimentar Dijkstra; no son aerovias reales).
-      const upperReal = (aw.upper || []).filter(a => a.name !== 'DCT');
-      const lowerReal = (aw.lower || []).filter(a => a.name !== 'DCT');
-      overlays['Aerovías alta cota (AIP)'] = buildAirwaysLayer(upperReal, 'upper');
-      overlays['Aerovías baja cota (AIP)'] = buildAirwaysLayer(lowerReal, 'lower');
-      overlays['NAVAIDs y waypoints (AIP)'] = buildWaypointsLayer(aw);
+    if (aw && aw.airwayZones && aw.waypointZones) {
+      // Una capa por (cota, zona). Cada capa contiene sus aerovias + sus
+      // waypoints. Click en un waypoint anyade su codigo al campo Via del
+      // plan de vuelo (via callback inyectado desde app.js).
+      const cotaLabel = (cota) => (cota === 'upper') ? 'alta' : 'baja';
+      for (const cota of ['upper', 'lower']) {
+        for (const z of ZONES) {
+          const ways = (aw.airwayZones[z] || []).filter(a => a.name !== 'DCT');
+          const wps  = (aw.waypointZones[z] || []);
+          const label = `Aerovías ${cotaLabel(cota)} ${z} (AIP)`;
+          const grp = buildZoneAirwayLayer(ways, wps, cota, z);
+          overlays[label] = grp;
+          _vectorLayerGroups[`${cota}_${z}`] = grp;
+        }
+      }
     }
     const sp = window.TSAgestor.airspace;
     if (sp) {
@@ -116,19 +132,12 @@ window.TSAgestor.mapView = (function () {
       overlays[cthTitle] = buildCthLayer();
       overlays['METAR / TAF'] = buildMetarLayer();
     }
-    // Guardamos referencias a las capas vectoriales para poder actualizar
-    // sus estilos cuando cambien las opacidades en Ajustes.
-    _vectorLayerGroups.airwaysUpper = overlays['Aerovías alta cota (AIP)'] || null;
-    _vectorLayerGroups.airwaysLower = overlays['Aerovías baja cota (AIP)'] || null;
-    _vectorLayerGroups.waypoints    = overlays['NAVAIDs y waypoints (AIP)'] || null;
-    _vectorLayerGroups.tmas         = overlays['TMAs (demo)'] || null;
-    _vectorLayerGroups.ctrs         = overlays['CTRs (demo)'] || null;
+    _vectorLayerGroups.tmas = overlays['TMAs (demo)'] || null;
+    _vectorLayerGroups.ctrs = overlays['CTRs (demo)'] || null;
     if (Object.keys(overlays).length === 0) return;
-    // Activamos por defecto las dos capas de aerovias (alta y baja cota) para
-    // que el planificador encuentre fixes intermedios sin que el usuario tenga
-    // que activar nada manualmente. Las demas overlays quedan apagadas.
-    if (overlays['Aerovías alta cota (AIP)']) overlays['Aerovías alta cota (AIP)'].addTo(map);
-    if (overlays['Aerovías baja cota (AIP)']) overlays['Aerovías baja cota (AIP)'].addTo(map);
+    // Por defecto NO activamos ninguna zona: el mapa queda limpio. El
+    // planificador interpreta "ninguna zona activa" como "usa toda la red"
+    // (ver getAirwayLayerState abajo) para no romper el routing.
     L.control.layers(null, overlays, { position: 'topleft', collapsed: false }).addTo(map);
   }
 
@@ -433,41 +442,31 @@ window.TSAgestor.mapView = (function () {
     return ft + 'FT';
   }
 
-  function buildAirwaysLayer(airways, type) {
+  // Capa zonal: una de las 8 (cota x zona). Combina aerovias y waypoints
+  // de la zona; el click en un waypoint dispara el callback global de plan
+  // (anyade el codigo a #plan-via).
+  function buildZoneAirwayLayer(airways, waypoints, cota, zone) {
     const group = L.layerGroup();
-    if (!airways) return group;
-    const isUpper = type === 'upper';
+    const isUpper = cota === 'upper';
     const color = isUpper ? '#7c3aed' : '#0ea5e9';
     const labelClass = 'airway-label ' + (isUpper ? 'upper' : 'lower');
-    for (const aw of airways) {
+    const cotaTxt = isUpper ? 'alta' : 'baja';
+    for (const aw of (airways || [])) {
       const line = L.polyline(aw.points, {
         color, weight: isUpper ? 2.5 : 2, opacity: 0.85,
         dashArray: isUpper ? '8 4' : null,
         pane: 'tsaPane',
       });
-      line.bindTooltip(aw.name + (isUpper ? ' · alta cota' : ' · baja cota'), { sticky: true });
+      line.bindTooltip(`${aw.name} · ${cotaTxt} · ${zone}`, { sticky: true });
       line.addTo(group);
       const mid = midpointOf(aw.points);
       L.tooltip({
         permanent: true, direction: 'center', className: labelClass, interactive: false,
       }).setLatLng(mid).setContent(aw.name).addTo(group);
     }
-    return group;
-  }
-
-  // Capa con todos los NAVAIDs y waypoints RNAV del AIP (excluye aeropuertos).
-  // NAVAIDs (VOR/DME/TACAN/NDB) se dibujan grandes y amarillos; waypoints
-  // RNAV pequenos en gris. Etiqueta a la derecha del marcador.
-  function buildWaypointsLayer(aw) {
-    const group = L.layerGroup();
-    if (!aw || !aw.waypoints) return group;
-    const types = aw.waypointTypes || {};
-    const names = aw.waypointNames || {};
-    for (const [id, pt] of Object.entries(aw.waypoints)) {
-      const t = types[id] || 'RNAV';
-      if (t === 'AIRPORT') continue;
-      const isNav = t === 'NAVAID';
-      const marker = L.circleMarker(pt, {
+    for (const wp of (waypoints || [])) {
+      const isNav = wp.type === 'NAVAID';
+      const marker = L.circleMarker([wp.lat, wp.lon], {
         radius:       isNav ? 4 : 2.5,
         color:        isNav ? '#a16207' : '#475569',
         weight:       isNav ? 1.5 : 1,
@@ -475,17 +474,21 @@ window.TSAgestor.mapView = (function () {
         fillOpacity:  0.95,
         pane:         'tsaPane',
       });
-      const fullName = names[id] || id;
       marker.bindTooltip(
-        `<b>${id}</b> · ${isNav ? 'NAVAID' : 'RNAV'}<br>${escapeHTMLLocal(fullName)}`,
+        `<b>${wp.id}</b> · ${isNav ? 'NAVAID' : 'RNAV'}<br>${escapeHTMLLocal(wp.name || wp.id)}` +
+        `<br><i>Click para añadir al plan</i>`,
         { sticky: true }
       );
+      marker.on('click', (ev) => {
+        if (ev && ev.originalEvent) L.DomEvent.stopPropagation(ev.originalEvent);
+        if (typeof waypointClickHandler === 'function') waypointClickHandler(wp.id);
+      });
       marker.addTo(group);
       L.tooltip({
         permanent: true, direction: 'right', offset: [5, 0],
         className: 'wp-label ' + (isNav ? 'navaid' : 'rnav'),
         interactive: false,
-      }).setLatLng(pt).setContent(id).addTo(group);
+      }).setLatLng([wp.lat, wp.lon]).setContent(wp.id).addTo(group);
     }
     return group;
   }
@@ -669,10 +672,12 @@ window.TSAgestor.mapView = (function () {
       layerGroup.eachLayer(l => { if (l.setStyle) l.setStyle({ fillOpacity: tsaOp }); });
     }
     const awOp = settingsGet('opacity.airway', 0.85);
-    ['airwaysUpper', 'airwaysLower'].forEach(key => {
-      const grp = _vectorLayerGroups[key];
-      if (grp && grp.eachLayer) grp.eachLayer(l => { if (l.setStyle) l.setStyle({ opacity: awOp }); });
-    });
+    for (const cota of ['upper', 'lower']) {
+      for (const z of ZONES) {
+        const grp = _vectorLayerGroups[`${cota}_${z}`];
+        if (grp && grp.eachLayer) grp.eachLayer(l => { if (l.setStyle) l.setStyle({ opacity: awOp }); });
+      }
+    }
     const tmaOp = settingsGet('opacity.tma', 0.06);
     const ctrOp = settingsGet('opacity.ctr', 0.10);
     if (_vectorLayerGroups.tmas) _vectorLayerGroups.tmas.eachLayer(l => { if (l.setStyle) l.setStyle({ fillOpacity: tmaOp }); });
@@ -943,18 +948,20 @@ window.TSAgestor.mapView = (function () {
     return best && bestD <= maxKm ? best : null;
   }
 
-  // Devuelve si las capas de aerovias alta/baja cota estan ahora mismo
-  // anyadidas al mapa (es decir, ticks marcados en el control de capas).
-  // El planificador lo lee para saber que pool de waypoints usar.
+  // Devuelve si hay alguna capa zonal de alta/baja cota activa en el mapa.
+  // El planificador lo usa para saber que pool (upper/lower) habilitar.
+  // Si NINGUNA esta activa, devolvemos {upper:true, lower:true}: las zonas
+  // son solo un filtro visual y no deberian impedir que el planificador
+  // construya rutas.
   function getAirwayLayerState() {
-    // Si el mapa aun no esta inicializado (el usuario no ha entrado a la
-    // pestana Mapa todavia), asumimos ambas activas como en el estado
-    // por defecto - evita que el primer plan caiga a DCT por sorpresa.
     if (!map) return { upper: true, lower: true };
-    return {
-      upper: !!(_vectorLayerGroups.airwaysUpper && map.hasLayer(_vectorLayerGroups.airwaysUpper)),
-      lower: !!(_vectorLayerGroups.airwaysLower && map.hasLayer(_vectorLayerGroups.airwaysLower)),
-    };
+    const anyOn = (cota) => ZONES.some(z => {
+      const g = _vectorLayerGroups[`${cota}_${z}`];
+      return g && map.hasLayer(g);
+    });
+    const u = anyOn('upper'), l = anyOn('lower');
+    if (!u && !l) return { upper: true, lower: true };
+    return { upper: u, lower: l };
   }
 
   return {
@@ -964,5 +971,6 @@ window.TSAgestor.mapView = (function () {
     setWeatherMarkers, clearWeatherMarkers,
     applyOpacities,
     getAirwayLayerState,
+    setWaypointClickHandler,
   };
 })();

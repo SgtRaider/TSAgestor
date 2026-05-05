@@ -135,6 +135,37 @@ window.TSAgestor.airways = (function () {
     lower.push(item);
   }
 
+  // --- Subdivision por zonas geograficas ----------------------------------
+  // Cuadrantes centrados en Madrid (LEMD: 40.49N, -3.57W). Canarias cae en
+  // SW. La asignacion por aerovia se hace por su centroide (media de los
+  // waypoints), por waypoint por su propia posicion.
+  const ZONE_LAT = 40.49;
+  const ZONE_LON = -3.57;
+  function zoneOf(lat, lon) {
+    const north = lat >= ZONE_LAT;
+    const east  = lon >= ZONE_LON;
+    if (north &&  east) return 'NE';
+    if (north && !east) return 'NW';
+    if (!north && east) return 'SE';
+    return 'SW';
+  }
+
+  const ZONES = ['NE', 'NW', 'SE', 'SW'];
+  const airwayZones   = { NE: [], NW: [], SE: [], SW: [] };
+  const waypointZones = { NE: [], NW: [], SE: [], SW: [] };
+
+  for (const item of upper) {
+    let sumLat = 0, sumLon = 0;
+    for (const p of item.points) { sumLat += p[0]; sumLon += p[1]; }
+    const z = zoneOf(sumLat / item.points.length, sumLon / item.points.length);
+    airwayZones[z].push(item);
+  }
+  for (const [id, pt] of Object.entries(WP)) {
+    if (WP_TYPES[id] === 'AIRPORT') continue;
+    const z = zoneOf(pt[0], pt[1]);
+    waypointZones[z].push({ id, lat: pt[0], lon: pt[1], type: WP_TYPES[id], name: WP_NAMES[id] });
+  }
+
   // --- Conexion airport <-> red de waypoints (DCT virtuales) --------------
   // Para cada aeropuerto, lo conectamos con los N waypoints AIP mas cercanos
   // dentro de un radio razonable. Esto permite a Dijkstra entrar en la red
@@ -178,6 +209,9 @@ window.TSAgestor.airways = (function () {
 
   return {
     upper, lower,
+    airwayZones, waypointZones,
+    zones:         ZONES,
+    zoneCenter:    { lat: ZONE_LAT, lon: ZONE_LON },
     waypoints:     WP,
     waypointNames: WP_NAMES,
     waypointTypes: WP_TYPES,
