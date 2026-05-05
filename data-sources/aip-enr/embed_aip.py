@@ -36,8 +36,8 @@ compact = {
 
 js = (
     "// AUTO-GENERADO desde data-sources/aip-enr/aip-data.json - NO EDITAR A MANO.\n"
-    "// Fuente: AIP Espana ENR 3.2 + ENR 4.1 - " + (raw.get("airac") or "?") + ".\n"
-    "// Regenerar con: py data-sources/aip-enr/parse_aip.py && py data-sources/aip-enr/embed_aip.py\n"
+    "// Fuente: " + (raw.get("source") or "AIP Espana") + " - " + (raw.get("airac") or "?") + ".\n"
+    "// Regenerar con: py data-sources/aip-enr/scrape_eaip.py && py data-sources/aip-enr/embed_aip.py\n"
     "window.TSAgestor = window.TSAgestor || {};\n"
     "window.TSAgestor.aipData = "
     + json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
