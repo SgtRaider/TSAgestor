@@ -1390,12 +1390,22 @@
     btn.disabled = true;
     btn.textContent = 'Generando…';
     try {
-      // Asegura que el SVG del corte esté actualizado aunque la pestaña no se haya visitado.
-      if (visible.length >= 2) crossSection.render(svg, visible);
+      // Asegura que el SVG del corte esté actualizado aunque la pestaña no se
+      // haya visitado. CRÍTICO: pasamos plan + clouds en opts. Sin ello, el
+      // SVG en el DOM se regeneraba SIN el plan tras cada exportación, lo que
+      // luego hacia que el corte en pantalla apareciese sin la ruta hasta
+      // cambiar de pestaña, y el PDF nunca incluia la ruta dibujada.
+      const hasContent = visible.length >= 2 || !!state.lastPlan;
+      if (hasContent) {
+        crossSection.render(svg, visible, {
+          plan:   state.lastPlan || null,
+          clouds: state.crossClouds || null,
+        });
+      }
       const fname = await pdfExport.exportReport({
         tsas: visible,
         filterState: state.filter,
-        svgEl: visible.length >= 2 ? svg : null,
+        svgEl: hasContent ? svg : null,
         plan: state.lastPlan,
       });
       console.log('[TSAgestor] PDF generado:', fname);
