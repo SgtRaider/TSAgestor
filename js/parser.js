@@ -230,7 +230,29 @@ window.TSAgestor.parser = (function () {
       consume(m);
     }
 
-    // 3. Día único: "MMM DD HR HHMM-HHMM" (saltando los ya consumidos).
+    // 3. Mixto separado por espacios: "MMM 07 11-12 HR 1030-1830" o
+    //    "MMM 04-08 11-15 18-22 25-29 HR 0600-1830". Cada token entre el
+    //    mes y "HR" puede ser dia suelto (DD) o rango (DD-DD).
+    const reMixed = /\b([A-Z]{3})\s+((?:\d{1,2}(?:\s*[-–]\s*\d{1,2})?\s+){2,})HR\s+(\d{4})\s*-\s*(\d{4})\b/gi;
+    while ((m = reMixed.exec(text)) !== null) {
+      if (isConsumed(m.index)) continue;
+      const mo = MONTHS[m[1].toUpperCase()];
+      if (mo === undefined) continue;
+      const tokens = m[2].trim().split(/\s+/);
+      const days = [];
+      for (const tok of tokens) {
+        if (/^\d{1,2}$/.test(tok)) { days.push(+tok); continue; }
+        const r = tok.match(/^(\d{1,2})\s*[-–]\s*(\d{1,2})$/);
+        if (r) {
+          const a = +r[1], b = +r[2];
+          for (let d = Math.min(a,b); d <= Math.max(a,b); d++) days.push(d);
+        }
+      }
+      for (const d of days) pushWindow(defaultYear, mo, d, m[3], m[4], m[0]);
+      consume(m);
+    }
+
+    // 4. Día único: "MMM DD HR HHMM-HHMM" (saltando los ya consumidos).
     const reSingle = /\b([A-Z]{3})\s+(\d{1,2})\s+HR\s+(\d{4})\s*-\s*(\d{4})\b/gi;
     while ((m = reSingle.exec(text)) !== null) {
       if (isConsumed(m.index)) continue;
@@ -446,27 +468,72 @@ window.TSAgestor.parser = (function () {
     }
     const isInsideTSA = (pos) => positions.some(t => pos >= t.start && pos < t.end);
 
-    // Índices de DESDE/HASTA, CON PERIODO, LIMITES VERTICALES — sólo a nivel de
-    // sección (no los que están DENTRO de los bloques TSA).
-    const desdeEntries = findDesdeHasta(text).filter(e => !isInsideTSA(e.index));
+    // Índices de TODAS las apariciones de DESDE/HASTA, CON PERIODO,
+    // LIMITES VERTICALES en el texto. Las separamos en dos listas:
+    //   - "section": entradas FUERA de bloques TSA (encabezado de NOTAM)
+    //   - "all":     todas (incluyendo dentro de bloques TSA)
+    // Para cada TSA buscamos primero DENTRO de su bloque (el TSA suele
+    // traer su propio schedule cuando es de la Seccion 5/areas especiales),
+    // y si no hay, caemos al section-level mas cercano anterior.
+    const allDesde = findDesdeHasta(text);
+    // No filtramos por isInsideTSA: entre dos TSAs puede haber un encabezado
+    // de NOTAM diferente que aplica a las TSAs siguientes (caso MERIDA
+    // NORTH HIGH: su DESDE esta entre MILIS E y ella). lastBefore se basa
+    // en proximidad y da la respuesta correcta.
+    const desdeEntries = allDesde;
 
-    const periodEntries = [];
-    const periodRe = /CON\s+PERIODO\s+DE\s+ACTIVIDAD\s*:\s*([^\n]+)/gi;
+    // CON PERIODO puede ocupar varias lineas (la captura se corta por
+    // formateo del PDF dentro de una franja, ej. "1400-\n2300"). Capturamos
+    // hasta una linea en blanco o un header conocido y aplanamos newlines.
+    const allPeriod = [];
+    const periodRe = /CON\s+PERIODO\s+DE\s+ACTIVIDAD\s*:\s*([\s\S]+?)(?=\n\s*(?:L[ÍI]MITES|VERTICAL\s+LIMITS|TSA\b|RMK\b|FECHAS|DATES|AREAS\b|DESDE\b|OBSERV|REMARKS|\n)|$)/gi;
     let pm;
     while ((pm = periodRe.exec(text)) !== null) {
-      if (!isInsideTSA(pm.index)) {
-        periodEntries.push({ index: pm.index, line: pm[1].trim() });
-      }
+      // Salto de linea PDF puede partir un rango horario "1400-\n2300" en
+      // dos. Re-pegamos los hyphen-newline antes de aplanar a una sola linea
+      // para no perder la franja.
+      const line = pm[1]
+        .replace(/(\d)-\s*\n\s*(\d)/g, '$1-$2')
+        .replace(/\s*\n\s*/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      allPeriod.push({ index: pm.index, line });
     }
+    const periodEntries = allPeriod;
 
-    const verticalEntries = [];
+    const allVertical = [];
     const vertRe = /(?:L[ÍI]MITES\s+VERTICALES|VERTICAL\s+LIMITS)\s*:\s*([^\n]+)/gi;
     let vm;
     while ((vm = vertRe.exec(text)) !== null) {
-      if (!isInsideTSA(vm.index)) {
-        const v = parseVerticalBlock(vm[1]);
-        if (v.lowerLabel !== '?') verticalEntries.push({ index: vm.index, vertical: v });
+      const v = parseVerticalBlock(vm[1]);
+      if (v.lowerLabel !== '?') allVertical.push({ index: vm.index, vertical: v });
+    }
+    const verticalEntries = allVertical;
+
+    // Devuelve la PRIMERA entrada de la lista cuyo index este dentro de
+    // [start, end) (la que aparece justo despues del titulo TSA dentro del
+    // bloque). null si no hay.
+    function firstInside(entries, start, end) {
+      for (const e of entries) {
+        if (e.index >= start && e.index < end) return e;
       }
+      return null;
+    }
+
+    // Detecta si un bloque TSA esta en formato "centrado" / Seccion 5: tras
+    // el titulo, la primera linea no vacia es un separador "---". En ese
+    // caso el TSA trae DESDE/CON PERIODO/LIMITES VERTICALES inline. En el
+    // formato AIP normal (LATERAL LIMITS:/RMK:...), el header de seccion
+    // esta FUERA del bloque y un DESDE encontrado dentro del rango es de
+    // un NOTAM vecino (ej. MURCIA entre dos TSAs distintas).
+    function isCenteredBlock(block) {
+      const lines = block.split('\n');
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        return /^-{3,}$/.test(line);
+      }
+      return false;
     }
 
     const tsas = [];
@@ -515,10 +582,16 @@ window.TSAgestor.parser = (function () {
         }
       }
 
-      // Contexto de sección
-      const sectionDesde    = lastBefore(desdeEntries, positions[i].start);
-      const sectionPeriod   = lastBefore(periodEntries, positions[i].start);
-      const sectionVertical = lastBefore(verticalEntries, positions[i].start);
+      // Contexto: solo en formato centrado (Seccion 5) priorizamos lo que
+      // hay DENTRO del bloque (caso UCEDA). En formato AIP normal el
+      // header de seccion esta fuera y un DESDE encontrado dentro del
+      // rango es de un NOTAM vecino que NO pertenece a este TSA.
+      const blockStart = positions[i].start;
+      const blockEnd   = positions[i].end;
+      const useInside = isCenteredBlock(block);
+      const sectionDesde    = (useInside && firstInside(allDesde,    blockStart, blockEnd)) || lastBefore(desdeEntries, blockStart);
+      const sectionPeriod   = (useInside && firstInside(allPeriod,   blockStart, blockEnd)) || lastBefore(periodEntries, blockStart);
+      const sectionVertical = (useInside && firstInside(allVertical, blockStart, blockEnd)) || lastBefore(verticalEntries, blockStart);
 
       let vertical = parseVerticalBlock(verticalRaw);
       let verticalIsFallback = false;
