@@ -495,6 +495,25 @@ window.TSAgestor.parser = (function () {
         const circle = parseCircleDefinition(lateralRaw);
         if (circle) polygon = geom.circleToPolygon(circle.center, circle.radiusKm, 48);
       }
+      // Fallback: algunos boletines (Seccion 5 / "TEMPO SEGREGATED AREA
+      // ACTIVATED WI ...") meten las coordenadas en la descripcion sin una
+      // cabecera "LATERAL LIMITS:" formal. En ese formato el bloque del TSA
+      // queda delimitado por dos lineas de "---". Acotamos el scan entre el
+      // primer y el segundo separador para no invadir secciones vecinas
+      // no-TSA (p.ej. TUDELA NA, TUREGANO) que aparecen tras la TSA y
+      // comparten coordenadas en el mismo formato.
+      if (polygon.length < 3) {
+        const sepRe = /\n\s*---\s*(?=\n)/g;
+        const seps = [];
+        let sm;
+        while ((sm = sepRe.exec(block)) !== null) seps.push(sm.index);
+        const scanText = seps.length >= 2 ? block.slice(seps[0], seps[1]) : block;
+        polygon = parseCoordinates(scanText);
+        if (polygon.length < 3) {
+          const circle = parseCircleDefinition(scanText);
+          if (circle) polygon = geom.circleToPolygon(circle.center, circle.radiusKm, 48);
+        }
+      }
 
       // Contexto de sección
       const sectionDesde    = lastBefore(desdeEntries, positions[i].start);
