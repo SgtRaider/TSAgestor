@@ -293,9 +293,22 @@ window.TSAgestor.pdfExport = (function () {
     // el PDF tenga el mismo layout que el log en pantalla; si no se han
     // cargado vientos, las celdas muestran "—".
     y = ensureSpace(doc, y, 20, margin);
-    const head = ['#', 'Waypoint', 'Tramo NM', 'TAS kt', 'Viento', 'GS kt',
-                  'T tramo', 'T total', `Cons ${u}/h`, `Comb tramo ${u}`,
-                  `Restante ${u}`, 'Estado'];
+    // Cabeceras a dos lineas con unidad entre parentesis para que cada
+    // columna tenga la misma altura y autoTable no parta palabras a media.
+    const head = [
+      '#',
+      'Waypoint',
+      'Tramo\n(NM)',
+      'TAS\n(kt)',
+      'Viento\n(°/kt)',
+      'GS\n(kt)',
+      'T\ntramo',
+      'T\ntotal',
+      `Cons.\n(${u}/h)`,
+      `Comb. tramo\n(${u})`,
+      `Restante\n(${u})`,
+      'Estado',
+    ];
     const statusColIdx = head.length - 1;
     doc.autoTable({
       startY: y,
@@ -316,7 +329,10 @@ window.TSAgestor.pdfExport = (function () {
         r.status === 'bingo' ? 'BINGO' : (r.status === 'joker' ? 'JOKER' : '—'),
       ]),
       styles: { fontSize: 8, cellPadding: 1.5 },
-      headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold' },
+      headStyles: {
+        fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold',
+        halign: 'center', valign: 'middle', fontSize: 8,
+      },
       alternateRowStyles: { fillColor: [241, 245, 249] },
       didParseCell: function (data) {
         if (data.section !== 'body') return;
