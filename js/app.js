@@ -315,7 +315,15 @@
     $('#filter-date-to').value = '';
     $('#filter-time-from').value = '';
     $('#filter-time-to').value = '';
-    applyFilter();
+
+    // Limpiar también descarga el NOTAM: vacía TSAs, oculta la barra de filtro
+    // y la tabla, y limpia el estado y el mapa.
+    state.tsas = [];
+    state.selected = new Set();
+    state.filter = readFilter();
+    $('#filter-bar').classList.add('hidden');
+    setStatus('', 'info');
+    renderAll();
   }
 
   // ── Mapa ─────────────────────────────────────────────────────────────
