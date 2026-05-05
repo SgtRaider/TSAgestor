@@ -31,11 +31,28 @@ jobs:
       - name: Install deps
         run: pip install -r data-sources/aip-enr/requirements.txt
 
-      - name: Scrape eAIP -> aip-data.json
-        run: python data-sources/aip-enr/scrape_eaip.py
+      - name: Scrape eAIP -> /tmp/aip-data-new.json (staged, no toca repo)
+        # El scraper escribe a un fichero temporal: si crashea o ENAIRE
+        # responde mal, el aip-data.json del repo queda intacto y no se
+        # comitea nada en este run.
+        run: |
+          python data-sources/aip-enr/scrape_eaip.py \
+            --out /tmp/aip-data-new.json
 
-      - name: Embed -> js/aipData.js
-        run: python data-sources/aip-enr/embed_aip.py
+      - name: Validar nuevo dataset (schema + integridad + regresion)
+        # Compara contra el aip-data.json en HEAD. Si la validacion falla
+        # -> job rojo, los pasos siguientes no corren -> el repo no cambia.
+        run: |
+          python data-sources/aip-enr/validate_aip.py \
+            /tmp/aip-data-new.json \
+            data-sources/aip-enr/aip-data.json
+
+      - name: Promover dataset validado al repo
+        # Solo llegamos aqui si scrape + validacion pasaron. Movemos el
+        # JSON al sitio real y regeneramos el JS.
+        run: |
+          cp /tmp/aip-data-new.json data-sources/aip-enr/aip-data.json
+          python data-sources/aip-enr/embed_aip.py
 
       - name: Detectar si el dataset AIP cambia
         id: aip_diff
@@ -48,29 +65,6 @@ jobs:
             echo "Cambios detectados:"
             git diff --stat -- data-sources/aip-enr/aip-data.json js/aipData.js
           fi
-
-      - name: Sanity check del dataset (umbrales minimos)
-        # Si el HTML del eAIP cambia de formato, el scraper podria producir
-        # un JSON casi vacio. Validamos umbrales muy conservadores y AIRAC
-        # antes de comitear; si fallan, el job se cae aqui y NO toca nada.
-        if: steps.aip_diff.outputs.changed == 'true'
-        run: |
-          python - <<'PY'
-          import json, io, sys
-          with io.open('data-sources/aip-enr/aip-data.json', encoding='utf-8') as f:
-              d = json.load(f)
-          aw = len(d.get('airways', []))
-          wp = len(d.get('waypoints', {}))
-          airac = (d.get('airac') or '').strip()
-          print(f'AIRAC={airac!r}  airways={aw}  waypoints={wp}')
-          errs = []
-          if not airac or 'WEF' not in airac:        errs.append(f'AIRAC vacio o invalido: {airac!r}')
-          if aw < 100:                                errs.append(f'aerovias < 100: {aw}')
-          if wp < 500:                                errs.append(f'waypoints < 500: {wp}')
-          if errs:
-              for e in errs: print('SANITY FAIL:', e, file=sys.stderr)
-              sys.exit(1)
-          PY
 
       - name: Bump Service Worker cache version
         if: steps.aip_diff.outputs.changed == 'true'

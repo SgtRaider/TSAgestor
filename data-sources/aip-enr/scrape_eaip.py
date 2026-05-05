@@ -284,7 +284,13 @@ def main():
     args = ap.parse_args()
 
     print("[scrape] descargando ENR 3.2 / 4.1 / 4.4 de ENAIRE...", file=sys.stderr)
-    htmls = {k: fetch(u, args.cache_dir) for k, u in URLS.items()}
+    try:
+        htmls = {k: fetch(u, args.cache_dir) for k, u in URLS.items()}
+    except Exception as e:
+        # Errores HTTP / DNS / timeouts: salimos limpiamente con codigo no
+        # cero para que el workflow falle el step y no comitee nada.
+        print(f"[scrape] FALLO descargando eAIP: {e}", file=sys.stderr)
+        sys.exit(1)
     airac = find_airac(htmls["ENR_3_2"]) or find_airac(htmls["ENR_4_1"]) or find_airac(htmls["ENR_4_4"])
     print(f"[scrape] AIRAC: {airac}", file=sys.stderr)
 
