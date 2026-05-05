@@ -304,9 +304,28 @@ window.TSAgestor.pdfExport = (function () {
         fmtNum(r.remaining),
         r.status === 'bingo' ? 'BINGO' : (r.status === 'joker' ? 'JOKER' : '—'),
       ]),
-      styles: { fontSize: 8, cellPadding: 1.5 },
-      headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 7, cellPadding: 1, overflow: 'linebreak' },
+      headStyles: {
+        fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold',
+        fontSize: 7, halign: 'center',
+      },
       alternateRowStyles: { fillColor: [241, 245, 249] },
+      // Anchos explicitos en mm para que las 12 columnas quepan en A4 portrait
+      // (ancho util ~182 mm). Total: 6+28+13+11+14+10+14+14+13+18+16+12 = 169.
+      columnStyles: {
+        0:  { cellWidth:  6, halign: 'center' },                      // #
+        1:  { cellWidth: 28, fontStyle: 'bold' },                     // Waypoint
+        2:  { cellWidth: 13, halign: 'right' },                       // Tramo NM
+        3:  { cellWidth: 11, halign: 'right' },                       // TAS kt
+        4:  { cellWidth: 14, halign: 'center' },                      // Viento
+        5:  { cellWidth: 10, halign: 'right' },                       // GS kt
+        6:  { cellWidth: 14, halign: 'right' },                       // T tramo
+        7:  { cellWidth: 14, halign: 'right' },                       // T total
+        8:  { cellWidth: 13, halign: 'right' },                       // Cons /h
+        9:  { cellWidth: 18, halign: 'right' },                       // Comb tramo
+        10: { cellWidth: 16, halign: 'right' },                       // Restante
+        11: { cellWidth: 12, halign: 'center' },                      // Estado
+      },
       didParseCell: function (data) {
         if (data.section !== 'body') return;
         const r = fuel.rows[data.row.index];
