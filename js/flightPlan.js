@@ -643,17 +643,19 @@ window.TSAgestor.flightPlan = (function () {
     const speedKt = Number(opts.speedKt) || 450;
     const depUTC = opts.departureUTC instanceof Date ? opts.departureUTC : new Date();
 
-    // El filtro de aerovias depende de los ticks "alta cota" / "baja cota"
-    // en el control de capas del mapa. Si ambos estan apagados, no hay
-    // waypoints AIP en el grafo y la ruta cae a DCT directo entre los
-    // puntos del usuario. El llamador puede forzar un filtro especifico
-    // pasando opts.airwayFilter.
+    // El filtro de aerovias depende de las capas zonales activas en el mapa
+    // (4 zonas x 2 cotas). Si NINGUNA esta activa asumimos que el usuario
+    // solo querria un filtro visual y el planificador debe usar la red
+    // completa; asi rutas como LEMD->LEBL siguen funcionando aunque el
+    // mapa este vacio. El llamador puede forzar un filtro pasando
+    // opts.airwayFilter.
     let filter = opts.airwayFilter;
     if (!filter) {
       const mv = window.TSAgestor && window.TSAgestor.mapView;
       filter = (mv && mv.getAirwayLayerState)
         ? mv.getAirwayLayerState()
-        : { upper: true, lower: true };
+        : { upper: false, lower: false };
+      if (!filter.upper && !filter.lower) filter = { upper: true, lower: true };
     }
     const useAirways = !!(filter.upper || filter.lower);
 

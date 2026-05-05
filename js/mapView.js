@@ -948,20 +948,18 @@ window.TSAgestor.mapView = (function () {
     return best && bestD <= maxKm ? best : null;
   }
 
-  // Devuelve si hay alguna capa zonal de alta/baja cota activa en el mapa.
-  // El planificador lo usa para saber que pool (upper/lower) habilitar.
-  // Si NINGUNA esta activa, devolvemos {upper:true, lower:true}: las zonas
-  // son solo un filtro visual y no deberian impedir que el planificador
-  // construya rutas.
+  // Devuelve el estado REAL de las capas zonales: si al menos una de las 4
+  // zonas de cada cota esta activa. El snap del modo dibujo lee esto y solo
+  // se imanta a waypoints si el usuario tiene alguna capa visible. El
+  // planificador aplica su propio fallback (si todo viene a false, asume
+  // toda la red disponible) en flightPlan.js.
   function getAirwayLayerState() {
-    if (!map) return { upper: true, lower: true };
+    if (!map) return { upper: false, lower: false };
     const anyOn = (cota) => ZONES.some(z => {
       const g = _vectorLayerGroups[`${cota}_${z}`];
       return g && map.hasLayer(g);
     });
-    const u = anyOn('upper'), l = anyOn('lower');
-    if (!u && !l) return { upper: true, lower: true };
-    return { upper: u, lower: l };
+    return { upper: anyOn('upper'), lower: anyOn('lower') };
   }
 
   return {
