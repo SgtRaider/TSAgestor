@@ -34,10 +34,20 @@ jobs:
       - name: Embed -> js/aipData.js
         run: python data-sources/aip-enr/embed_aip.py
 
-      - name: Bump Service Worker cache version
-        # Asegura que los clientes PWA reciben el aipData.js nuevo sin
-        # tener que pulsar Ctrl+Shift+R. Encontramos la version actual
-        # tsagestor-vNN y la incrementamos.
+      - name: Detectar si el dataset AIP cambia
+        id: aip_diff
+        run: |
+          if git diff --quiet -- data-sources/aip-enr/aip-data.json js/aipData.js; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Sin cambios en el dataset AIP. Saltando PR."
+          else
+            echo "changed=true"  >> "$GITHUB_OUTPUT"
+            echo "Cambios detectados:"
+            git diff --stat -- data-sources/aip-enr/aip-data.json js/aipData.js
+          fi
+
+      - name: Bump Service Worker cache version (solo si AIP cambio)
+        if: steps.aip_diff.outputs.changed == 'true'
         run: |
           python - <<'PY'
           import re, pathlib
@@ -54,6 +64,7 @@ jobs:
           PY
 
       - name: Detectar cambios y abrir PR
+        if: steps.aip_diff.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
           branch: chore/aip-update
