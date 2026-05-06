@@ -516,7 +516,7 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   border: 1px solid var(--border, #cbd5e1);
   border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  width: 540px;
+  width: 640px;
   max-width: calc(100vw - 60px);
   max-height: calc(100vh - 80px);
   overflow: hidden;
@@ -549,7 +549,7 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   overflow-y: auto;
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   column-gap: 1px;
   background: #e2e8f0;
 }
