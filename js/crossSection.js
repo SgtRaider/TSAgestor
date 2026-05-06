@@ -68,9 +68,41 @@ window.TSAgestor.crossSection = (function () {
     return { A: tsas[best.i], B: tsas[best.j], distance: best.d };
   }
 
-  // Decide qué eje usar: si hay plan, la distancia acumulada de la ruta
-  // (válida para circuitos donde origen = destino); si no, geodésica entre
-  // los dos TSAs más alejados.
+  // Eje Norte-Sur: meridiano que pasa por la longitud media de las TSAs
+  // visibles, entre la latitud minima (km 0, sur) y la maxima (norte).
+  // Devuelve null si las TSAs estan tan agrupadas en latitud que el corte
+  // resulta degenerado (caera en chooseExtremes como fallback).
+  function chooseNorthSouthAxis(tsas) {
+    if (!tsas || !tsas.length) return null;
+    let latMin = Infinity, latMax = -Infinity;
+    let lonSum = 0, lonN = 0;
+    for (const t of tsas) {
+      if (t.centroid && Number.isFinite(t.centroid[1])) {
+        lonSum += t.centroid[1];
+        lonN++;
+      }
+      const poly = t.polygon || [];
+      for (const v of poly) {
+        const lat = v[0];
+        if (!Number.isFinite(lat)) continue;
+        if (lat < latMin) latMin = lat;
+        if (lat > latMax) latMax = lat;
+      }
+    }
+    if (!Number.isFinite(latMin) || !Number.isFinite(latMax)) return null;
+    if ((latMax - latMin) < 0.05) return null; // ~5.5 km — degenerado
+    const lonC = lonN ? lonSum / lonN : 0;
+    const A = { name: `${latMin.toFixed(2)}°N`, centroid: [latMin, lonC] };
+    const B = { name: `${latMax.toFixed(2)}°N`, centroid: [latMax, lonC] };
+    return { A, B, distance: geom.greatCircleDistance(A.centroid, B.centroid) };
+  }
+
+  // Decide qué eje usar:
+  //   - Hay plan: la distancia acumulada de la ruta (vale para circuitos).
+  //   - Sin plan: meridiano N→S que pasa por el centro de las TSAs (km 0
+  //     queda en la latitud mas al sur, donde "toca tierra").
+  //   - Fallback (TSAs casi alineadas en latitud): geodesica entre los dos
+  //     TSAs mas alejados (comportamiento previo).
   function pickAxis(tsas, plan) {
     if (plan && plan.coords && plan.coords.length >= 2) {
       const f = plan.coords[0];
@@ -83,8 +115,11 @@ window.TSAgestor.crossSection = (function () {
         fromPlan: true,
       };
     }
-    if (tsas && tsas.length >= 2) {
-      return Object.assign({ fromPlan: false }, chooseExtremes(tsas));
+    if (!tsas || !tsas.length) return null;
+    const ns = chooseNorthSouthAxis(tsas);
+    if (ns) return Object.assign({ fromPlan: false, axisKind: 'NS' }, ns);
+    if (tsas.length >= 2) {
+      return Object.assign({ fromPlan: false, axisKind: 'extremes' }, chooseExtremes(tsas));
     }
     return null;
   }
@@ -386,8 +421,6 @@ window.TSAgestor.crossSection = (function () {
         stroke: color,
         'stroke-width': isPrimary ? 1.8 : 1,
         'stroke-dasharray': isPrimary ? '' : '4 3',
-        class: 'cs-tsa-rect',
-        'data-tsa-id': r.tsa.id,
       }));
     };
     secondary.forEach(r => drawRect(r, false));
@@ -569,67 +602,15 @@ window.TSAgestor.crossSection = (function () {
     return 10 * pow;
   }
 
-  // ── Filtro por ruta ──────────────────────────────────────────────────
-  // Devuelve el subconjunto de TSAs que algún segmento del plan cruza.
-  // Reutiliza flightPlan.findOverflownTSAs cuando está disponible.
-  function filterByRoute(tsas, plan) {
-    if (!tsas || !tsas.length) return [];
-    if (!plan || !plan.route || !plan.route.segments) return tsas;
-    const fp = window.TSAgestor && window.TSAgestor.flightPlan;
-    if (fp && typeof fp.findOverflownTSAs === 'function') {
-      return fp.findOverflownTSAs(plan.route, tsas);
-    }
-    return tsas;
-  }
-
   // ── Render principal ─────────────────────────────────────────────────
-  // opts = { plan, clouds, routeFilter, overrideHighlightId }
+  // opts = { plan, clouds }
   function render(svgEl, tsas, opts) {
     opts = opts || {};
     const plan = opts.plan || null;
     const clouds = opts.clouds || null;
-    const routeFilter = opts.routeFilter !== false;
-    const overrideId = opts.overrideHighlightId || null;
     tsas = tsas || [];
 
     while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
-
-    // Filtro por ruta: si hay plan y filtro activo, solo TSAs cruzadas.
-    // overrideHighlightId permite forzar la inclusión de una TSA fuera de
-    // la ruta (cuando el usuario la pincha en la lista lateral).
-    let drawnTsas = tsas;
-    if (routeFilter && plan && plan.route) {
-      const inRoute = filterByRoute(tsas, plan);
-      if (overrideId) {
-        const ov = tsas.find(t => t.id === overrideId);
-        if (ov && !inRoute.some(t => t.id === overrideId)) inRoute.push(ov);
-      }
-      drawnTsas = inRoute;
-    }
-
-    // Sin plan y filtro activo: el usuario debe consultar la lista o
-    // desactivar el filtro. Sin TSAs aún tras filtrar: empty state.
-    if (routeFilter && !plan) {
-      svgEl.setAttribute('viewBox', '0 0 600 200');
-      svgEl.setAttribute('width', '600');
-      svgEl.setAttribute('height', '200');
-      svgEl.appendChild(text(300, 100,
-        'Carga un plan de vuelo o desactiva «Solo TSAs en ruta» para ver todas',
-        { 'text-anchor': 'middle', fill: '#64748b', 'font-size': 14 }));
-      return { ok: false };
-    }
-    if (routeFilter && plan && drawnTsas.length === 0) {
-      svgEl.setAttribute('viewBox', '0 0 600 200');
-      svgEl.setAttribute('width', '600');
-      svgEl.setAttribute('height', '200');
-      svgEl.appendChild(text(300, 100,
-        'La ruta no cruza ninguna TSA visible. Consulta la lista lateral.',
-        { 'text-anchor': 'middle', fill: '#64748b', 'font-size': 14 }));
-      return { ok: false };
-    }
-
-    // A partir de aquí, dibujamos con drawnTsas (no con tsas).
-    tsas = drawnTsas;
 
     const axis = pickAxis(tsas, plan);
     if (!axis) {
@@ -642,7 +623,7 @@ window.TSAgestor.crossSection = (function () {
       return { ok: false };
     }
 
-    const { A, B, distance, fromPlan } = axis;
+    const { A, B, distance, fromPlan, axisKind } = axis;
     // Cuando hay plan, las TSAs se proyectan sobre el segmento más cercano de
     // la ruta; sin plan, sobre la geodésica A→B (extremos de TSAs).
     const rects = fromPlan
@@ -694,9 +675,11 @@ window.TSAgestor.crossSection = (function () {
     svgEl.appendChild(el('rect', { x: 0, y: 0, width: WIDTH, height, fill: '#ffffff' }));
 
     // Cabecera
+    const axisLabel = fromPlan
+      ? '  ·  ruta del plan de vuelo'
+      : (axisKind === 'NS' ? '  ·  eje Sur → Norte' : '');
     svgEl.appendChild(text(WIDTH / 2, 26,
-      `Corte transversal: ${A.name}  →  ${B.name}` +
-        (fromPlan ? '  ·  ruta del plan de vuelo' : ''),
+      `Corte transversal: ${A.name}  →  ${B.name}${axisLabel}`,
       { 'text-anchor': 'middle', 'font-size': 16, 'font-weight': 700, fill: '#0f172a' }
     ));
     const subParts = [
@@ -846,23 +829,5 @@ window.TSAgestor.crossSection = (function () {
     });
   }
 
-  // ── Highlight / dim ──────────────────────────────────────────────────
-  // Resalta el rect cuyo data-tsa-id coincide y atenúa el resto. Idempotente.
-  function highlight(svgEl, tsaId) {
-    if (!svgEl) return;
-    const rects = svgEl.querySelectorAll('.cs-tsa-rect');
-    rects.forEach(r => {
-      const isMatch = r.getAttribute('data-tsa-id') === tsaId;
-      r.classList.toggle('is-highlighted', isMatch);
-      r.classList.toggle('is-dimmed', !isMatch);
-    });
-  }
-  function clearHighlight(svgEl) {
-    if (!svgEl) return;
-    svgEl.querySelectorAll('.cs-tsa-rect').forEach(r => {
-      r.classList.remove('is-highlighted', 'is-dimmed');
-    });
-  }
-
-  return { render, toPNGDataURL, filterByRoute, highlight, clearHighlight };
+  return { render, toPNGDataURL };
 })();
