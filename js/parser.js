@@ -60,7 +60,10 @@ window.TSAgestor.parser = (function () {
     //     "390950 N 00 70136 W" -> "390950N 0070136W"
     out = out
       .replace(/\(\s*(\d[\d\s]*)\)/g, (m, p) => '(' + p.replace(/\s/g, '') + ')')
-      .replace(/\bFL\s*(\d[\d\s]{1,3}\d|\d{2,3})\b/g, (m, p) => 'FL' + p.replace(/\s/g, ''))
+      // FL con espacios. Limitamos a 2-3 digitos totales para no glomerar
+      // el numero de seccion siguiente (p.ej. "FL 165 4. FECHAS" no debe
+      // colapsar a "FL1654."). Permitimos un espacio opcional entre digitos.
+      .replace(/\bFL\s*(\d(?:\s?\d){1,2})(?!\s?\d)/g, (m, p) => 'FL' + p.replace(/\s/g, ''))
       .replace(/(\d[\d\s]{4,7}\d)\s*([NS])\s+(\d[\d\s]{5,8}\d)\s*([EW])/g,
         (m, lat, h1, lon, h2) => lat.replace(/\s/g, '') + h1 + ' ' + lon.replace(/\s/g, '') + h2);
     return out;
@@ -834,15 +837,18 @@ window.TSAgestor.parser = (function () {
     while ((bm = blockRe.exec(text)) !== null) {
       const block = bm[0];
 
-      const nameM = block.match(/2\.\s*ZONA\s*:\s*([^\n]+)/i);
+      // PDF.js extrae todo en una sola "linea" por pagina, asi que no podemos
+      // delimitar campos con \n. Usamos el siguiente marcador numerado como
+      // terminador (3., 4., "Limites laterales").
+      const nameM = block.match(/2\.\s*ZONA\s*:\s*([\s\S]+?)\s+3\.\s*L[ÍI]MITES/i);
       if (!nameM) continue;
       const name = nameM[1].trim().replace(/\s+/g, ' ');
 
-      const vertM = block.match(/3\.\s*L[ÍI]MITES\s+VERTICALES\s*:\s*([^\n]+)/i);
+      const vertM = block.match(/3\.\s*L[ÍI]MITES\s+VERTICALES\s*:\s*([\s\S]+?)\s+4\.\s*FECHAS/i);
       let vertical = { lowerFt: 0, lowerLabel: 'GND', upperFt: 0, upperLabel: '?' };
       if (vertM) {
-        const v = parseSlashAlt(vertM[1].replace('-', '/')) ||
-                  parseVerticalBlock(vertM[1].replace('-', '/'));
+        const vTxt = vertM[1].trim().replace(/\s*[-–]\s*/, '/');
+        const v = parseSlashAlt(vTxt) || parseVerticalBlock(vTxt);
         if (v && v.lowerLabel !== '?') vertical = v;
       }
 
