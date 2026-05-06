@@ -153,42 +153,51 @@ window.TSAgestor.flightPlan = (function () {
 
   // Enriquece un waypoint con TSA contenedora y FL ajustado.
   // Si el waypoint era un genérico "lat,lon", adopta el nombre de la TSA.
-  function enrichWaypoint(pt, tsas, initialFL) {
+  function enrichWaypoint(pt, tsas, initialFL, isEndpoint) {
     const tsa = findTSAContaining([pt.lat, pt.lon], tsas);
-    // Cruce intencional: solo cuando el waypoint LLEGA aqui ya con el nombre
-    // EXACTO de la TSA en la que cae. Es el caso del clic en modo dibujo
-    // sobre un poligono (mapView crea el punto con name = tsa.name) y
-    // tambien al recargar un plan guardado. Para esos puntos ajustamos FL al
-    // rango permitido por la TSA.
-    const isExplicit = tsa && pt.name === tsa.name;
-    if (isExplicit) {
+    // Origen y destino: aeropuertos al nivel del suelo. Mantenemos `tsa`
+    // (si cae dentro de una) para que findConflicts pueda excluirla del
+    // listado: por geografia es un cruce inevitable al despegar/aterrizar.
+    if (isEndpoint) {
       return {
-        name: tsa.name,
+        name: pt.name || (pt.lat.toFixed(3) + ',' + pt.lon.toFixed(3)),
+        lat: pt.lat,
+        lon: pt.lon,
+        tsa: tsa || null,
+        fl: 0,
+      };
+    }
+    // Waypoint intermedio dentro de una TSA: la ruta adapta el FL al
+    // rango permitido por la TSA (como hacia el codigo original). Asi una
+    // ruta planeada a FL250 que entra en TSA TALAVERA MEDIUM (4000-FL80)
+    // se aplana a FL75 mientras esta dentro, y la lista de conflictos no
+    // marca esa TSA porque seg.to.tsa la identifica como cruce planeado.
+    if (tsa) {
+      return {
+        name: pt.name || tsa.name,
         lat: pt.lat,
         lon: pt.lon,
         tsa,
         fl: adjustFLForTSA(initialFL, tsa),
       };
     }
-    // Cualquier otro waypoint -- aeropuerto (LEBZ), NAVAID, fix RNAV o
-    // coordenada decimal "lat,lon" tipeada en Via -- conserva su nombre y
-    // el FL del plan. Si cae dentro de una TSA, anotamos `tsa` para que
-    // findConflicts pueda excluirla (no tiene sentido marcar como conflicto
-    // un cruce que es inevitable por la propia ubicacion del waypoint).
+    // Waypoint intermedio fuera de cualquier TSA: vuela al FL del plan.
     return {
       name: pt.name || (pt.lat.toFixed(3) + ',' + pt.lon.toFixed(3)),
       lat: pt.lat,
       lon: pt.lon,
-      tsa: tsa || null,
+      tsa: null,
       fl: initialFL,
     };
   }
 
   // Recorre los segmentos de la ruta y aplica enrichWaypoint a cada extremo.
+  // El primer y ultimo waypoint del recorrido reciben isEndpoint=true (GND).
   function annotateRouteWithFL(route, tsas, initialFL) {
     if (!route || !route.segments || !route.segments.length) return route;
     const seq = [route.segments[0].from].concat(route.segments.map(s => s.to));
-    const enriched = seq.map(p => enrichWaypoint(p, tsas, initialFL));
+    const last = seq.length - 1;
+    const enriched = seq.map((p, i) => enrichWaypoint(p, tsas, initialFL, i === 0 || i === last));
     for (let i = 0; i < route.segments.length; i++) {
       route.segments[i].from = enriched[i];
       route.segments[i].to   = enriched[i + 1];
@@ -427,12 +436,19 @@ window.TSAgestor.flightPlan = (function () {
       const segEndKm = cumKm;
       const tStart = departureUTC.getTime() + (segStartKm / NM_KM / speedKt) * 3600 * 1000;
       const tEnd   = departureUTC.getTime() + (segEndKm   / NM_KM / speedKt) * 3600 * 1000;
-      // Banda vertical del tramo: si los extremos tienen FLs distintos, el
-      // tramo se considera atravesando todas las altitudes intermedias.
+      // FL operativo del tramo: el mas alto de los dos extremos. Asi en el
+      // ascenso (origen GND -> via FL250) o el descenso (via FL250 -> destino
+      // GND) usamos FL250 para la deteccion: la aeronave alcanza ese nivel
+      // de cruise y solo se reportan conflictos con TSAs cuya banda lo
+      // incluye. Las TSAs bajas (p.ej. TLVR LOW 2500-5000ft) no se marcan
+      // como conflicto cuando el plan es FL250 porque la ruta esta por
+      // encima de ellas en cruise; durante climb/descent se asume separacion
+      // ATC.
       const flA = seg.from.fl != null ? seg.from.fl : fl;
       const flB = seg.to.fl   != null ? seg.to.fl   : fl;
-      const segLowFt  = Math.min(flA, flB) * 100;
-      const segHighFt = Math.max(flA, flB) * 100;
+      const flCruise  = Math.max(flA, flB);
+      const segLowFt  = flCruise * 100;
+      const segHighFt = flCruise * 100;
       for (const tsa of tsas) {
         // El tramo arranca o termina dentro de esta TSA (sea por clic
         // explicito en modo dibujo o porque un aeropuerto/waypoint cae
