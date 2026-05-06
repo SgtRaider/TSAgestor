@@ -282,17 +282,21 @@
     <section id="tab-cross" class="tab-content">
       <div class="toolbar">
         <span id="cross-info" class="chip"></span>
+        <label class="cross-toggle"><input id="cross-route-filter" type="checkbox" checked> Solo TSAs en ruta</label>
         <button id="btn-cross-clouds" class="btn btn-ghost" type="button">Cargar nubes (Open-Meteo)</button>
         <button id="btn-cross-clouds-clear" class="btn btn-ghost" type="button" disabled>Quitar nubes</button>
         <button id="btn-cross-gramet" class="btn btn-ghost" type="button">Cargar GRAMET (Autorouter)</button>
         <button id="btn-download-cross" class="btn btn-ghost" disabled>Descargar imagen (PNG)</button>
       </div>
-      <div id="cross-wrap">
-        <svg id="cross-svg" xmlns="http://www.w3.org/2000/svg"></svg>
-        <p id="cross-empty" class="empty">
-          Calcula un plan de vuelo (pestaña <b>Plan de vuelo</b>) o carga ≥2 TSAs para generar el corte.
-          <br>«Cargar nubes» y «Cargar GRAMET» requieren un plan calculado (no necesitan TSAs).
-        </p>
+      <div id="cross-layout">
+        <div id="cross-wrap">
+          <svg id="cross-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+          <p id="cross-empty" class="empty">
+            Calcula un plan de vuelo (pestaña <b>Plan de vuelo</b>) o carga ≥2 TSAs para generar el corte.
+            <br>«Cargar nubes» y «Cargar GRAMET» requieren un plan calculado (no necesitan TSAs).
+          </p>
+        </div>
+        <aside id="cross-list" class="cross-list" aria-label="Lista de TSAs visibles"></aside>
       </div>
       <div id="gramet-container" class="gramet-container hidden"></div>
     </section>

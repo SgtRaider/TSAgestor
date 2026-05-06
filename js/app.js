@@ -39,6 +39,8 @@
     planWPsLoaded: false,
     drawnVia: null,                                            // ruta dibujada como [{name,lat,lon}], si la hay
     crossClouds: null,                                         // nubes Open-Meteo muestreadas en los waypoints del plan
+    crossRouteFilter: true,                                    // toggle "Solo TSAs en ruta" en el corte
+    crossHighlightedId: null,                                  // TSA resaltada en corte/lista (sincroniza ambas vistas)
     legendOpen: false,                                         // toggle de la leyenda flotante de TSAs en el mapa
   };
 
@@ -395,12 +397,20 @@
     const empty = $('#cross-empty');
     const btn = $('#btn-download-cross');
     const info = $('#cross-info');
+    const filterToggle = $('#cross-route-filter');
 
     const visible = getVisible();
+    // Si la TSA resaltada ya no está en la lista visible, limpiar.
+    if (state.crossHighlightedId && !visible.some(t => t.id === state.crossHighlightedId)) {
+      state.crossHighlightedId = null;
+    }
     const opts = {
       plan: state.lastPlan || null,
       clouds: state.crossClouds || null,
+      routeFilter: state.crossRouteFilter,
+      overrideHighlightId: state.crossHighlightedId,
     };
+    if (filterToggle) filterToggle.checked = state.crossRouteFilter;
     let res;
     try {
       res = crossSection.render(svg, visible, opts);
@@ -414,24 +424,154 @@
       btn.disabled = false;
       const planTag = opts.plan ? ' · plan' : '';
       const cloudTag = opts.clouds ? ' · nubes' : '';
+      const filterTag = (state.crossRouteFilter && opts.plan) ? ' · solo en ruta' : '';
       info.textContent =
         `${res.extremes.A} → ${res.extremes.B} · ${res.distance.toFixed(1)} km · ` +
         `${res.panels} panel${res.panels === 1 ? '' : 'es'} · solapes: ${res.overlapCount}` +
-        planTag + cloudTag;
+        planTag + cloudTag + filterTag;
+      // Reaplica el highlight tras re-render (los rects son nuevos nodos).
+      if (state.crossHighlightedId) crossSection.highlight(svg, state.crossHighlightedId);
     } else {
       empty.classList.remove('hidden');
       svg.style.display = 'none';
       btn.disabled = true;
       if (res.error) {
         info.textContent = 'Error renderizando corte (ver consola): ' + res.error;
+      } else if (state.crossRouteFilter && !state.lastPlan) {
+        info.textContent = 'Carga un plan o desactiva «Solo TSAs en ruta» (lista lateral disponible)';
       } else if (state.lastPlan) {
-        info.textContent = 'Renderizando con el plan de vuelo…';
+        info.textContent = visible.length === 0
+          ? 'Sin TSAs visibles que cruce la ruta'
+          : 'Renderizando con el plan de vuelo…';
       } else if (visible.length === 0) {
         info.textContent = 'Calcula un plan o carga ≥2 TSAs para generar el corte';
       } else {
         info.textContent = 'Sólo 1 TSA visible y sin plan: necesitas ≥2 TSAs o un plan';
       }
     }
+    renderCrossList(visible, state.lastPlan);
+  }
+
+  // ── Lista lateral del corte: catálogo navegable de TSAs visibles ────
+  function nextScheduleForTsa(tsa) {
+    if (!tsa.schedules || !tsa.schedules.length) return null;
+    const now = Date.now();
+    const upcoming = tsa.schedules.find(s => s.endUTC && s.endUTC.getTime() >= now);
+    return upcoming || tsa.schedules[tsa.schedules.length - 1];
+  }
+  function formatScheduleShort(sch) {
+    if (!sch || !sch.startUTC || !sch.endUTC) return '—';
+    const pad = n => String(n).padStart(2, '0');
+    const dateStr = d => `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}`;
+    const timeStr = d => `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+    return `${dateStr(sch.startUTC)} ${timeStr(sch.startUTC)}–${timeStr(sch.endUTC)}Z`;
+  }
+  function bandColorFor(ft) {
+    const colors = { low: '#22c55e', mid: '#f59e0b', high: '#ef4444' };
+    const band = (geom && geom.altitudeBand) ? geom.altitudeBand(ft) : 'mid';
+    return colors[band] || colors.mid;
+  }
+
+  function renderCrossList(tsas, plan) {
+    const cont = $('#cross-list');
+    if (!cont) return;
+    cont.innerHTML = '';
+    if (!tsas || !tsas.length) {
+      const p = document.createElement('p');
+      p.className = 'cross-list-empty';
+      p.textContent = 'No hay TSAs visibles. Carga un PDF y selecciona TSAs.';
+      cont.appendChild(p);
+      return;
+    }
+    const inRouteIds = new Set();
+    if (plan && plan.route && flightPlan && flightPlan.findOverflownTSAs) {
+      const ov = flightPlan.findOverflownTSAs(plan.route, tsas);
+      ov.forEach(t => inRouteIds.add(t.id));
+    }
+    const sorted = tsas.slice().sort((a, b) => a.name.localeCompare(b.name, 'es'));
+
+    const head = document.createElement('div');
+    head.className = 'cross-list-head';
+    head.innerHTML =
+      `<span>TSAs visibles</span>` +
+      `<span class="cross-list-count">${sorted.length}` +
+        (inRouteIds.size ? ` · ${inRouteIds.size} en ruta` : '') +
+      `</span>`;
+    cont.appendChild(head);
+
+    for (const t of sorted) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'cross-list-item' + (state.crossHighlightedId === t.id ? ' is-active' : '');
+      item.dataset.tsaId = t.id;
+      const upcoming = nextScheduleForTsa(t);
+      const sched = formatScheduleShort(upcoming);
+      const inRouteBadge = inRouteIds.has(t.id) ? '<span class="cl-route">EN RUTA</span>' : '';
+      item.innerHTML =
+        `<span class="cl-band" style="background:${bandColorFor(t.vertical.upperFt)}"></span>` +
+        `<span class="cl-body">` +
+          `<span class="cl-name">${escapeHTML(t.name)}</span>` +
+          `<span class="cl-meta">` +
+            `<span class="cl-alt">${escapeHTML(t.vertical.lowerLabel)} → ${escapeHTML(t.vertical.upperLabel)}</span>` +
+            `<span>${escapeHTML(sched)}</span>` +
+            inRouteBadge +
+          `</span>` +
+        `</span>`;
+      cont.appendChild(item);
+    }
+  }
+
+  // Toggle del filtro y selección bidireccional SVG↔lista.
+  function onCrossRouteFilterChange(e) {
+    state.crossRouteFilter = !!e.target.checked;
+    renderCross();
+  }
+  function setCrossHighlight(tsaId) {
+    if (state.crossHighlightedId === tsaId) {
+      // Click en el mismo elemento: limpiar.
+      state.crossHighlightedId = null;
+      crossSection.clearHighlight($('#cross-svg'));
+      $$('.cross-list-item').forEach(it => it.classList.remove('is-active'));
+      // Si la TSA estaba como override (fuera de ruta), re-renderizamos
+      // para sacarla del SVG.
+      if (state.crossRouteFilter && state.lastPlan) renderCross();
+      return;
+    }
+    state.crossHighlightedId = tsaId;
+    // ¿Está la TSA en el SVG actual? Si no (override), re-render para
+    // incluirla; si sí, basta con highlight + scroll de la lista.
+    const svg = $('#cross-svg');
+    const exists = svg.querySelector(`.cs-tsa-rect[data-tsa-id="${tsaId}"]`);
+    if (!exists) {
+      renderCross(); // overrideHighlightId leerá state.crossHighlightedId
+    } else {
+      crossSection.highlight(svg, tsaId);
+    }
+    // Sincroniza estado activo en la lista y scrollea.
+    $$('.cross-list-item').forEach(it => {
+      it.classList.toggle('is-active', it.dataset.tsaId === tsaId);
+    });
+    const active = $('#cross-list .cross-list-item.is-active');
+    if (active && active.scrollIntoView) {
+      active.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }
+  function onCrossSvgClick(e) {
+    let target = e.target;
+    while (target && target !== e.currentTarget) {
+      if (target.classList && target.classList.contains('cs-tsa-rect')) {
+        const id = target.getAttribute('data-tsa-id');
+        if (id) setCrossHighlight(id);
+        return;
+      }
+      target = target.parentNode;
+    }
+  }
+  function onCrossListClick(e) {
+    const btn = e.target.closest('.cross-list-item');
+    if (!btn) return;
+    const id = btn.dataset.tsaId;
+    if (id) setCrossHighlight(id);
   }
 
   async function loadCrossClouds() {
@@ -1406,8 +1546,9 @@
       const hasContent = visible.length >= 2 || !!state.lastPlan;
       if (hasContent) {
         crossSection.render(svg, visible, {
-          plan:   state.lastPlan || null,
-          clouds: state.crossClouds || null,
+          plan:        state.lastPlan || null,
+          clouds:      state.crossClouds || null,
+          routeFilter: state.crossRouteFilter,
         });
       }
       const fname = await pdfExport.exportReport({
@@ -1486,6 +1627,9 @@
     $('#btn-cross-clouds').addEventListener('click', loadCrossClouds);
     $('#btn-cross-clouds-clear').addEventListener('click', clearCrossClouds);
     $('#btn-cross-gramet').addEventListener('click', loadGramet);
+    $('#cross-route-filter').addEventListener('change', onCrossRouteFilterChange);
+    $('#cross-svg').addEventListener('click', onCrossSvgClick);
+    $('#cross-list').addEventListener('click', onCrossListClick);
   }
 
   // Modal de bienvenida — se muestra una vez por sesión hasta que el

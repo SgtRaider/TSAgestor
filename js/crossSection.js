@@ -386,6 +386,8 @@ window.TSAgestor.crossSection = (function () {
         stroke: color,
         'stroke-width': isPrimary ? 1.8 : 1,
         'stroke-dasharray': isPrimary ? '' : '4 3',
+        class: 'cs-tsa-rect',
+        'data-tsa-id': r.tsa.id,
       }));
     };
     secondary.forEach(r => drawRect(r, false));
@@ -567,15 +569,67 @@ window.TSAgestor.crossSection = (function () {
     return 10 * pow;
   }
 
+  // ── Filtro por ruta ──────────────────────────────────────────────────
+  // Devuelve el subconjunto de TSAs que algún segmento del plan cruza.
+  // Reutiliza flightPlan.findOverflownTSAs cuando está disponible.
+  function filterByRoute(tsas, plan) {
+    if (!tsas || !tsas.length) return [];
+    if (!plan || !plan.route || !plan.route.segments) return tsas;
+    const fp = window.TSAgestor && window.TSAgestor.flightPlan;
+    if (fp && typeof fp.findOverflownTSAs === 'function') {
+      return fp.findOverflownTSAs(plan.route, tsas);
+    }
+    return tsas;
+  }
+
   // ── Render principal ─────────────────────────────────────────────────
-  // opts = { plan, clouds }
+  // opts = { plan, clouds, routeFilter, overrideHighlightId }
   function render(svgEl, tsas, opts) {
     opts = opts || {};
     const plan = opts.plan || null;
     const clouds = opts.clouds || null;
+    const routeFilter = opts.routeFilter !== false;
+    const overrideId = opts.overrideHighlightId || null;
     tsas = tsas || [];
 
     while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+
+    // Filtro por ruta: si hay plan y filtro activo, solo TSAs cruzadas.
+    // overrideHighlightId permite forzar la inclusión de una TSA fuera de
+    // la ruta (cuando el usuario la pincha en la lista lateral).
+    let drawnTsas = tsas;
+    if (routeFilter && plan && plan.route) {
+      const inRoute = filterByRoute(tsas, plan);
+      if (overrideId) {
+        const ov = tsas.find(t => t.id === overrideId);
+        if (ov && !inRoute.some(t => t.id === overrideId)) inRoute.push(ov);
+      }
+      drawnTsas = inRoute;
+    }
+
+    // Sin plan y filtro activo: el usuario debe consultar la lista o
+    // desactivar el filtro. Sin TSAs aún tras filtrar: empty state.
+    if (routeFilter && !plan) {
+      svgEl.setAttribute('viewBox', '0 0 600 200');
+      svgEl.setAttribute('width', '600');
+      svgEl.setAttribute('height', '200');
+      svgEl.appendChild(text(300, 100,
+        'Carga un plan de vuelo o desactiva «Solo TSAs en ruta» para ver todas',
+        { 'text-anchor': 'middle', fill: '#64748b', 'font-size': 14 }));
+      return { ok: false };
+    }
+    if (routeFilter && plan && drawnTsas.length === 0) {
+      svgEl.setAttribute('viewBox', '0 0 600 200');
+      svgEl.setAttribute('width', '600');
+      svgEl.setAttribute('height', '200');
+      svgEl.appendChild(text(300, 100,
+        'La ruta no cruza ninguna TSA visible. Consulta la lista lateral.',
+        { 'text-anchor': 'middle', fill: '#64748b', 'font-size': 14 }));
+      return { ok: false };
+    }
+
+    // A partir de aquí, dibujamos con drawnTsas (no con tsas).
+    tsas = drawnTsas;
 
     const axis = pickAxis(tsas, plan);
     if (!axis) {
@@ -792,5 +846,23 @@ window.TSAgestor.crossSection = (function () {
     });
   }
 
-  return { render, toPNGDataURL };
+  // ── Highlight / dim ──────────────────────────────────────────────────
+  // Resalta el rect cuyo data-tsa-id coincide y atenúa el resto. Idempotente.
+  function highlight(svgEl, tsaId) {
+    if (!svgEl) return;
+    const rects = svgEl.querySelectorAll('.cs-tsa-rect');
+    rects.forEach(r => {
+      const isMatch = r.getAttribute('data-tsa-id') === tsaId;
+      r.classList.toggle('is-highlighted', isMatch);
+      r.classList.toggle('is-dimmed', !isMatch);
+    });
+  }
+  function clearHighlight(svgEl) {
+    if (!svgEl) return;
+    svgEl.querySelectorAll('.cs-tsa-rect').forEach(r => {
+      r.classList.remove('is-highlighted', 'is-dimmed');
+    });
+  }
+
+  return { render, toPNGDataURL, filterByRoute, highlight, clearHighlight };
 })();
