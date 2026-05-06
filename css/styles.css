@@ -551,6 +551,19 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   padding: 10px;
   color: #64748b;
 }
+.tsa-legend-window-bar {
+  padding: 4px 10px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 600;
+  border-bottom: 1px solid #e2e8f0;
+  letter-spacing: 0.3px;
+}
+.tsa-legend-window {
+  font-size: 11px;
+  color: #475569;
+}
 .tsa-legend-row {
   display: flex;
   gap: 8px;

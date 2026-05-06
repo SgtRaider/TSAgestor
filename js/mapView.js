@@ -270,27 +270,58 @@ window.TSAgestor.mapView = (function () {
   let tsaLegendCtl = null;
   let tsaLegendTSAs = [];
 
+  // Ventana [hoy 00:00 UTC, pasado-manyana 00:00 UTC) = 48h de calendario.
+  function todayPlusTomorrowUTC() {
+    const now = new Date();
+    const startMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    return { startMs, endMs: startMs + 2 * 86400000 };
+  }
+
+  // Filtra TSAs y sus schedules para mostrar solo lo que cae en hoy+manyana.
+  function filterForTodayAndTomorrow(tsas) {
+    const { startMs, endMs } = todayPlusTomorrowUTC();
+    const out = [];
+    for (const t of tsas) {
+      const inWindow = (t.schedules || []).filter(s =>
+        s.startUTC.getTime() < endMs && s.endUTC.getTime() > startMs
+      );
+      if (inWindow.length) out.push(Object.assign({}, t, { schedules: inWindow }));
+    }
+    return out;
+  }
+
   function buildTSALegendHTML(tsas) {
-    if (!tsas.length) {
-      return '<div class="tsa-legend-empty"><i>Sin TSAs visibles</i></div>';
+    const filtered = filterForTodayAndTomorrow(tsas);
+    const win = todayPlusTomorrowUTC();
+    const winLabel = (() => {
+      const a = new Date(win.startMs);
+      const b = new Date(win.endMs - 86400000);  // ultimo dia inclusivo
+      const fmtDate = d => `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}`;
+      return `${fmtDate(a)} – ${fmtDate(b)} UTC`;
+    })();
+    if (!filtered.length) {
+      return `
+        <div class="tsa-legend-head">TSAs hoy + manyana <span class="tsa-legend-count">0</span></div>
+        <div class="tsa-legend-empty"><i>Ninguna TSA activa hoy o manyana</i><br><span class="tsa-legend-window">${winLabel}</span></div>`;
     }
     const fmt = window.TSAgestor.scheduleFmt;
-    const rows = tsas.map(t => {
+    const rows = filtered.map(t => {
       const band = geom.altitudeBand(t.vertical.upperFt);
       const color = BAND_COLORS[band];
-      const sched = fmt ? escapeHTMLLocal(fmt.summary(t.schedules)) : '';
+      const schedHTML = fmt ? fmt.listHTML(t.schedules) : '';
       return `
         <div class="tsa-legend-row">
           <span class="tsa-legend-swatch" style="background:${color}"></span>
           <div class="tsa-legend-text">
             <div class="tsa-legend-name">${escapeHTMLLocal(t.name)}</div>
             <div class="tsa-legend-alt">${escapeHTMLLocal(t.vertical.lowerLabel)} – ${escapeHTMLLocal(t.vertical.upperLabel)}</div>
-            <div class="tsa-legend-sched">${sched || '<i>sin horario</i>'}</div>
+            <div class="tsa-legend-sched">${schedHTML}</div>
           </div>
         </div>`;
     }).join('');
     return `
-      <div class="tsa-legend-head">TSAs activas <span class="tsa-legend-count">${tsas.length}</span></div>
+      <div class="tsa-legend-head">TSAs hoy + manyana <span class="tsa-legend-count">${filtered.length}</span></div>
+      <div class="tsa-legend-window-bar">${winLabel}</div>
       <div class="tsa-legend-body">${rows}</div>`;
   }
 
