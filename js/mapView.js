@@ -301,8 +301,8 @@ window.TSAgestor.mapView = (function () {
     })();
     if (!filtered.length) {
       return `
-        <div class="tsa-legend-head">TSAs hoy + manyana <span class="tsa-legend-count">0</span></div>
-        <div class="tsa-legend-empty"><i>Ninguna TSA activa hoy o manyana</i><br><span class="tsa-legend-window">${winLabel}</span></div>`;
+        <div class="tsa-legend-head">TSAs activas hoy &amp; mañana <span class="tsa-legend-count">0</span></div>
+        <div class="tsa-legend-empty"><i>Ninguna TSA activa hoy o mañana</i><br><span class="tsa-legend-window">${winLabel}</span></div>`;
     }
     const fmt = window.TSAgestor.scheduleFmt;
     const rows = filtered.map(t => {
@@ -320,7 +320,7 @@ window.TSAgestor.mapView = (function () {
         </div>`;
     }).join('');
     return `
-      <div class="tsa-legend-head">TSAs hoy + manyana <span class="tsa-legend-count">${filtered.length}</span></div>
+      <div class="tsa-legend-head">TSAs activas hoy &amp; mañana <span class="tsa-legend-count">${filtered.length}</span></div>
       <div class="tsa-legend-window-bar">${winLabel}</div>
       <div class="tsa-legend-body">${rows}</div>`;
   }
