@@ -973,7 +973,7 @@
         const li = document.createElement('li');
         li.innerHTML = `
           <b>${escapeHTML(c.tsa.name)}</b> · ${escapeHTML(c.tsa.vertical.lowerLabel)} – ${escapeHTML(c.tsa.vertical.upperLabel)}
-          <br><span class="dim">Segmento ${escapeHTML(c.segment.from.name || '—')} → ${escapeHTML(c.segment.to.name || '—')} (${escapeHTML(c.segment.airway || 'DCT')}) · paso aprox. ${formatUTC(c.tStart)} – ${formatUTC(c.tEnd)}</span>
+          <br><span class="dim">Segmento ${escapeHTML(wpDisplay(c.segment.from))} → ${escapeHTML(wpDisplay(c.segment.to))} (${escapeHTML(c.segment.airway || 'DCT')}) · paso aprox. ${formatUTC(c.tStart)} – ${formatUTC(c.tEnd)}</span>
         `;
         ul.appendChild(li);
       }
@@ -1317,6 +1317,34 @@
     const h = Math.floor(min / 60);
     const m = Math.round(min % 60);
     return h > 0 ? `${h}h ${String(m).padStart(2, '0')}min` : `${m} min`;
+  }
+
+  // Convierte lat/lon a formato OACI compacto DDMM[N|S]DDDMM[E|W]
+  // (3853N00649W). Replicamos la logica de flightPlan.formatICAOCoord
+  // localmente para no exponer otra funcion del modulo.
+  function icaoCoord(lat, lon) {
+    const fmt = (v, deg, pos, neg) => {
+      const sign = v >= 0 ? pos : neg;
+      const a = Math.abs(v);
+      const d = Math.floor(a);
+      const m = Math.round((a - d) * 60);
+      const dd = m === 60 ? d + 1 : d;
+      const mm = m === 60 ? 0 : m;
+      return String(dd).padStart(deg, '0') + String(mm).padStart(2, '0') + sign;
+    };
+    return fmt(lat, 2, 'N', 'S') + fmt(lon, 3, 'E', 'W');
+  }
+
+  // Nombre legible de un waypoint del plan: misma logica que
+  // flightPlan.buildNarrative -- aeropuertos/NAVAIDs/RNAVs por nombre,
+  // puntos sin nombre o cuya etiqueta es la TSA en la que cayeron al
+  // dibujar -> coordenada DMS compacta.
+  function wpDisplay(wp) {
+    if (!wp) return '—';
+    const isDecimalCoords = /^-?\d+\.\d+,-?\d+\.\d+$/.test(wp.name || '');
+    if (!wp.name || isDecimalCoords) return icaoCoord(wp.lat, wp.lon);
+    if (wp.tsa && wp.name === wp.tsa.name) return icaoCoord(wp.lat, wp.lon);
+    return wp.name;
   }
   function formatUTC(d) {
     if (!d) return '—';

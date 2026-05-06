@@ -18,6 +18,26 @@ window.TSAgestor.pdfExport = (function () {
     return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}-${p(d.getUTCHours())}${p(d.getUTCMinutes())}`;
   }
 
+  function icaoCoord(lat, lon) {
+    const fmt = (v, deg, pos, neg) => {
+      const sign = v >= 0 ? pos : neg;
+      const a = Math.abs(v);
+      const d = Math.floor(a);
+      const m = Math.round((a - d) * 60);
+      const dd = m === 60 ? d + 1 : d;
+      const mm = m === 60 ? 0 : m;
+      return String(dd).padStart(deg, '0') + String(mm).padStart(2, '0') + sign;
+    };
+    return fmt(lat, 2, 'N', 'S') + fmt(lon, 3, 'E', 'W');
+  }
+  function wpDisplay(wp) {
+    if (!wp) return '—';
+    const isDecimalCoords = /^-?\d+\.\d+,-?\d+\.\d+$/.test(wp.name || '');
+    if (!wp.name || isDecimalCoords) return icaoCoord(wp.lat, wp.lon);
+    if (wp.tsa && wp.name === wp.tsa.name) return icaoCoord(wp.lat, wp.lon);
+    return wp.name;
+  }
+
   // Carga el logo EA y lo cachea como dataURL para reutilizar entre exports.
   let _logoCache = null;
   async function loadLogoDataURL() {
@@ -197,7 +217,7 @@ window.TSAgestor.pdfExport = (function () {
       doc.setFontSize(9);
       doc.setTextColor(80);
       for (const c of plan.conflicts) {
-        const text = `• ${c.tsa.name}  (${c.tsa.vertical.lowerLabel} – ${c.tsa.vertical.upperLabel})  · segmento ${c.segment.from.name || '—'} → ${c.segment.to.name || '—'}  · paso ${formatUTC(c.tStart)} – ${formatUTC(c.tEnd)}`;
+        const text = `• ${c.tsa.name}  (${c.tsa.vertical.lowerLabel} – ${c.tsa.vertical.upperLabel})  · segmento ${wpDisplay(c.segment.from)} → ${wpDisplay(c.segment.to)}  · paso ${formatUTC(c.tStart)} – ${formatUTC(c.tEnd)}`;
         const wrapped = doc.splitTextToSize(text, pageW - margin * 2);
         for (const line of wrapped) {
           y = ensureSpace(doc, y, 4, margin);
