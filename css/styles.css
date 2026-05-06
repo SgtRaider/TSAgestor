@@ -516,15 +516,18 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   border: 1px solid var(--border, #cbd5e1);
   border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  width: 640px;
+  width: 720px;
   max-width: calc(100vw - 60px);
-  max-height: calc(100vh - 80px);
+  max-height: calc(100vh - 100px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   font-family: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
   color: #0f172a;
   font-size: 12px;
+  /* min-height:0 a nivel container para que el body interior pueda
+     reducirse y activar overflow-y:auto cuando el contenido excede. */
+  min-height: 0;
 }
 .tsa-legend-head {
   font-weight: 700;
@@ -546,8 +549,11 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   border-radius: 10px;
 }
 .tsa-legend-body {
+  /* min-height:0 + flex:1 1 auto hace que el body se ajuste al espacio
+     disponible y permita scroll cuando hay mas TSAs de las que entran. */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  flex: 1;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   column-gap: 1px;
