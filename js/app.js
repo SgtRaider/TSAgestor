@@ -413,19 +413,12 @@
       svg.style.display = 'block';
       btn.disabled = false;
       const cloudTag = opts.clouds ? ' · nubes' : '';
-      if (res.mode === 'altitudeList') {
-        info.textContent =
-          `Inventario altitudinal · ${res.count} TSA${res.count === 1 ? '' : 's'}` +
-          ` · ${res.clusters} grupo${res.clusters === 1 ? '' : 's'}` +
-          ` · ${res.overlapCount} solape${res.overlapCount === 1 ? '' : 's'} altitudinal${res.overlapCount === 1 ? '' : 'es'}` +
-          ` · escala GND→${res.extremes.B}`;
-      } else {
-        const planTag = opts.plan ? ' · plan' : '';
-        info.textContent =
-          `${res.extremes.A} → ${res.extremes.B} · ${res.distance.toFixed(1)} km · ` +
-          `${res.panels} panel${res.panels === 1 ? '' : 'es'} · solapes: ${res.overlapCount}` +
-          planTag + cloudTag;
-      }
+      const planTag = opts.plan ? ' · plan' : '';
+      const groupTag = res.clusters > 0 ? ` · ${res.clusters} grupo${res.clusters === 1 ? '' : 's'}` : '';
+      info.textContent =
+        `${res.extremes.A} → ${res.extremes.B} · ${res.distance.toFixed(1)} km · ` +
+        `${res.panels} panel${res.panels === 1 ? '' : 'es'} · solapes: ${res.overlapCount}` +
+        groupTag + planTag + cloudTag;
     } else {
       empty.classList.remove('hidden');
       svg.style.display = 'none';
@@ -435,7 +428,7 @@
       } else if (state.lastPlan) {
         info.textContent = 'Renderizando con el plan de vuelo…';
       } else if (visible.length === 0) {
-        info.textContent = 'Carga ≥1 TSA para ver el inventario altitudinal';
+        info.textContent = 'Calcula un plan o carga ≥2 TSAs para generar el corte';
       } else {
         info.textContent = 'Sólo 1 TSA visible y sin plan: necesitas ≥2 TSAs o un plan';
       }
