@@ -604,10 +604,67 @@ window.TSAgestor.crossSection = (function () {
 
   // ── Vista de inventario altitudinal (sin plan) ────────────────────────
   // Cuando no hay ruta, la proyeccion espacial es engañosa con TSAs
-  // concentricas (caso Talavera): 30 TSAs centradas en el mismo punto se
-  // pisan al proyectarlas sobre cualquier eje. En lugar de eso, una fila
-  // por TSA, X = altitud (escala compartida), Y = indice. Sin solapes,
-  // cada TSA visible con su rango y horario.
+  // concentricas (caso Talavera). Agrupamos por proximidad geografica
+  // (cluster <30NM = mismo "complejo" militar), y dentro de cada cluster
+  // ordenamos por altitud para que el solape se lea visualmente: dos TSAs
+  // adyacentes con barras que se superponen en X comparten airspace.
+
+  // Prefijo comun mas largo (case-insensitive en separadores) — sirve
+  // para nombrar el cluster como "TSA TALAVERA" si todas comparten root.
+  function commonNamePrefix(names) {
+    if (!names.length) return '';
+    let p = names[0];
+    for (let i = 1; i < names.length; i++) {
+      while (p.length && !names[i].startsWith(p)) p = p.slice(0, -1);
+      if (!p) break;
+    }
+    return p.replace(/[\s\-_·]+$/, '').trim();
+  }
+
+  // Cluster greedy por distancia entre centroides (km).
+  function clusterTsasByCentroid(tsas, distanceKm) {
+    distanceKm = distanceKm || 56; // ~30 NM
+    const clusters = [];
+    for (const t of tsas) {
+      let best = null, bestD = Infinity;
+      for (const c of clusters) {
+        const d = geom.greatCircleDistance(t.centroid, c.centroid);
+        if (d < bestD && d <= distanceKm) { bestD = d; best = c; }
+      }
+      if (best) {
+        best.tsas.push(t);
+        const n = best.tsas.length;
+        best.centroid = [
+          (best.centroid[0] * (n - 1) + t.centroid[0]) / n,
+          (best.centroid[1] * (n - 1) + t.centroid[1]) / n,
+        ];
+      } else {
+        clusters.push({ centroid: t.centroid.slice(), tsas: [t] });
+      }
+    }
+    for (const c of clusters) {
+      c.tsas.sort((a, b) => {
+        if (a.vertical.lowerFt !== b.vertical.lowerFt) return a.vertical.lowerFt - b.vertical.lowerFt;
+        if (a.vertical.upperFt !== b.vertical.upperFt) return a.vertical.upperFt - b.vertical.upperFt;
+        return a.name.localeCompare(b.name);
+      });
+      const prefix = commonNamePrefix(c.tsas.map(t => t.name));
+      c.name = prefix && prefix.length >= 4
+        ? prefix
+        : `Grupo ${c.centroid[0].toFixed(2)}°N ${Math.abs(c.centroid[1]).toFixed(2)}°${c.centroid[1] < 0 ? 'W' : 'E'}`;
+    }
+    // Norte primero (latitud descendente).
+    clusters.sort((a, b) => b.centroid[0] - a.centroid[0]);
+    return clusters;
+  }
+
+  function fmtCoord(latLon) {
+    const lat = latLon[0], lon = latLon[1];
+    const ns = lat >= 0 ? 'N' : 'S';
+    const ew = lon >= 0 ? 'E' : 'W';
+    return `${Math.abs(lat).toFixed(2)}°${ns} ${Math.abs(lon).toFixed(2)}°${ew}`;
+  }
+
   function renderAltitudeList(svgEl, tsas, opts) {
     opts = opts || {};
     while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
@@ -622,25 +679,27 @@ window.TSAgestor.crossSection = (function () {
       return { ok: false };
     }
 
-    // Orden: por banda (low→high), luego lower asc, luego nombre.
-    const sorted = tsas.slice().sort((a, b) => {
-      const la = a.vertical.lowerFt, lb = b.vertical.lowerFt;
-      if (la !== lb) return la - lb;
-      const ua = a.vertical.upperFt, ub = b.vertical.upperFt;
-      if (ua !== ub) return ua - ub;
-      return a.name.localeCompare(b.name);
-    });
+    const clusters = clusterTsasByCentroid(tsas);
 
     const ROW_H = 26;
+    const CLUSTER_HDR_H = 30;
+    const CLUSTER_GAP = 10;
     const HEADER = 76;
-    const FOOTER = 50;
+    const FOOTER = 56;
     const NAME_W = 230;
     const SCHED_W = 200;
     const PADDING = 16;
     const BAR_X0 = NAME_W + PADDING * 2;
     const BAR_W  = WIDTH - BAR_X0 - SCHED_W - PADDING * 2;
 
-    const totalH = HEADER + sorted.length * ROW_H + FOOTER;
+    // Altura total: cabecera + sum(cluster_hdr + tsas*ROW_H) + gaps + footer.
+    let bodyH = 0;
+    for (let i = 0; i < clusters.length; i++) {
+      bodyH += CLUSTER_HDR_H + clusters[i].tsas.length * ROW_H;
+      if (i < clusters.length - 1) bodyH += CLUSTER_GAP;
+    }
+    const totalH = HEADER + bodyH + FOOTER;
+
     svgEl.setAttribute('viewBox', `0 0 ${WIDTH} ${totalH}`);
     svgEl.setAttribute('width', WIDTH);
     svgEl.setAttribute('height', totalH);
@@ -649,14 +708,14 @@ window.TSAgestor.crossSection = (function () {
 
     // Cabecera
     svgEl.appendChild(text(WIDTH / 2, 28,
-      `Inventario altitudinal — ${sorted.length} TSA${sorted.length === 1 ? '' : 's'} visibles`,
+      `Inventario altitudinal — ${tsas.length} TSA${tsas.length === 1 ? '' : 's'} en ${clusters.length} grupo${clusters.length === 1 ? '' : 's'}`,
       { 'text-anchor': 'middle', 'font-size': 16, 'font-weight': 700, fill: '#0f172a' }));
     svgEl.appendChild(text(WIDTH / 2, 48,
-      'Cada fila = una TSA · escala horizontal = altitud · color = banda',
+      'Agrupadas por proximidad (<30 NM) y ordenadas por altitud · barras superpuestas dentro de un grupo = solape de airspace',
       { 'text-anchor': 'middle', 'font-size': 11, fill: '#64748b' }));
 
-    // Escala de altitud: max FL redondeado al alza para grid limpio.
-    const maxFt = Math.max(20000, ...sorted.map(t => Math.max(t.vertical.upperFt, t.vertical.lowerFt + 100)));
+    // Escala de altitud comun a todos los clusters.
+    const maxFt = Math.max(20000, ...tsas.map(t => Math.max(t.vertical.upperFt, t.vertical.lowerFt + 100)));
     const niceMax = Math.ceil(maxFt / 5000) * 5000;
     const xScaleFt = ft => BAR_X0 + (Math.max(0, Math.min(ft, niceMax)) / niceMax) * BAR_W;
 
@@ -665,7 +724,7 @@ window.TSAgestor.crossSection = (function () {
     for (let ft = 0; ft <= niceMax; ft += 5000) gridStops.push(ft);
     if (gridStops[gridStops.length - 1] !== niceMax) gridStops.push(niceMax);
     const gridY1 = HEADER - 12;
-    const gridY2 = HEADER + sorted.length * ROW_H + 6;
+    const gridY2 = HEADER + bodyH + 6;
     for (const ft of gridStops) {
       const x = xScaleFt(ft);
       svgEl.appendChild(el('line', {
@@ -677,8 +736,6 @@ window.TSAgestor.crossSection = (function () {
         'text-anchor': 'middle', 'font-size': 10, fill: '#64748b', 'font-weight': 600,
       }));
     }
-
-    // Cabecera de columnas
     svgEl.appendChild(text(PADDING, HEADER - 18, 'TSA', {
       'font-size': 10, fill: '#64748b', 'font-weight': 700,
     }));
@@ -686,74 +743,134 @@ window.TSAgestor.crossSection = (function () {
       'text-anchor': 'end', 'font-size': 10, fill: '#64748b', 'font-weight': 700,
     }));
 
-    // Filas
-    sorted.forEach((tsa, i) => {
-      const y = HEADER + i * ROW_H;
-      // Background alterno
-      if (i % 2 === 0) {
-        svgEl.appendChild(el('rect', { x: 0, y, width: WIDTH, height: ROW_H, fill: '#f8fafc' }));
-      }
-      // Nombre
-      const name = tsa.name.length > 32 ? tsa.name.slice(0, 31) + '…' : tsa.name;
-      svgEl.appendChild(text(PADDING, y + ROW_H / 2 + 4, name, {
-        'font-size': 12, 'font-weight': 600, fill: '#0f172a',
-      }));
-      // Bar
-      const x1 = xScaleFt(tsa.vertical.lowerFt);
-      const x2 = xScaleFt(Math.max(tsa.vertical.lowerFt + 100, tsa.vertical.upperFt));
-      const band = (geom.altitudeBand && geom.altitudeBand(tsa.vertical.upperFt)) || 'mid';
-      const color = BAND_COLORS[band] || BAND_COLORS.mid;
+    // Renderiza cada cluster.
+    let yCursor = HEADER;
+    let totalOverlaps = 0;
+    for (const cluster of clusters) {
+      // Banda de fondo del cluster (sutil) que abarca cabecera + filas.
+      const clusterTopY = yCursor;
+      const clusterH = CLUSTER_HDR_H + cluster.tsas.length * ROW_H;
       svgEl.appendChild(el('rect', {
-        x: x1, y: y + 5, width: Math.max(2, x2 - x1), height: ROW_H - 10,
-        fill: color, 'fill-opacity': 0.42,
-        stroke: color, 'stroke-width': 1.4,
-        class: 'cs-tsa-rect', 'data-tsa-id': tsa.id,
+        x: 0, y: clusterTopY, width: WIDTH, height: clusterH,
+        fill: '#f1f5f9', 'fill-opacity': 0.5,
       }));
-      // Etiquetas lower / upper en los extremos
-      svgEl.appendChild(haloText(x1 - 4, y + ROW_H / 2 + 4, tsa.vertical.lowerLabel, {
-        'text-anchor': 'end', 'font-size': 10, fill: '#0f172a', 'font-weight': 600,
+      // Linea separadora superior gruesa
+      svgEl.appendChild(el('line', {
+        x1: 0, y1: clusterTopY, x2: WIDTH, y2: clusterTopY,
+        stroke: '#cbd5e1', 'stroke-width': 1.5,
       }));
-      svgEl.appendChild(haloText(x2 + 4, y + ROW_H / 2 + 4, tsa.vertical.upperLabel, {
-        'text-anchor': 'start', 'font-size': 10, fill: '#0f172a', 'font-weight': 600,
-      }));
-      // Schedule resumido (1ra ventana)
-      const sch = tsa.schedules && tsa.schedules[0];
-      let schedTxt = '—';
-      if (sch && sch.startUTC && sch.endUTC) {
-        const pad = n => String(n).padStart(2, '0');
-        const d = sch.startUTC;
-        schedTxt = `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)} ` +
-                   `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}` +
-                   `–${pad(sch.endUTC.getUTCHours())}:${pad(sch.endUTC.getUTCMinutes())}Z`;
-        if (tsa.schedules.length > 1) schedTxt += ` (+${tsa.schedules.length - 1})`;
-      }
-      svgEl.appendChild(text(WIDTH - PADDING, y + ROW_H / 2 + 4, schedTxt, {
-        'text-anchor': 'end', 'font-size': 10, fill: '#475569',
-      }));
-    });
 
-    // Pie con leyenda de bandas
-    const legY = HEADER + sorted.length * ROW_H + 24;
+      // Cabecera del cluster
+      svgEl.appendChild(text(PADDING, yCursor + 20,
+        cluster.name,
+        { 'font-size': 13, 'font-weight': 700, fill: '#0f172a' }));
+      svgEl.appendChild(text(WIDTH - PADDING, yCursor + 20,
+        `${cluster.tsas.length} TSA${cluster.tsas.length === 1 ? '' : 's'} · centro ${fmtCoord(cluster.centroid)}`,
+        { 'text-anchor': 'end', 'font-size': 11, fill: '#475569' }));
+      yCursor += CLUSTER_HDR_H;
+
+      // Filas del cluster
+      const rowYs = []; // para dibujar marcadores de solape despues
+      cluster.tsas.forEach((tsa, idx) => {
+        const y = yCursor + idx * ROW_H;
+        rowYs.push(y);
+        if (idx % 2 === 1) {
+          svgEl.appendChild(el('rect', { x: 0, y, width: WIDTH, height: ROW_H, fill: '#ffffff', 'fill-opacity': 0.6 }));
+        }
+        const name = tsa.name.length > 32 ? tsa.name.slice(0, 31) + '…' : tsa.name;
+        svgEl.appendChild(text(PADDING + 8, y + ROW_H / 2 + 4, name, {
+          'font-size': 12, 'font-weight': 600, fill: '#0f172a',
+        }));
+        const x1 = xScaleFt(tsa.vertical.lowerFt);
+        const x2 = xScaleFt(Math.max(tsa.vertical.lowerFt + 100, tsa.vertical.upperFt));
+        const band = (geom.altitudeBand && geom.altitudeBand(tsa.vertical.upperFt)) || 'mid';
+        const color = BAND_COLORS[band] || BAND_COLORS.mid;
+        svgEl.appendChild(el('rect', {
+          x: x1, y: y + 5, width: Math.max(2, x2 - x1), height: ROW_H - 10,
+          fill: color, 'fill-opacity': 0.42,
+          stroke: color, 'stroke-width': 1.4,
+          class: 'cs-tsa-rect', 'data-tsa-id': tsa.id,
+        }));
+        svgEl.appendChild(haloText(x1 - 4, y + ROW_H / 2 + 4, tsa.vertical.lowerLabel, {
+          'text-anchor': 'end', 'font-size': 10, fill: '#0f172a', 'font-weight': 600,
+        }));
+        svgEl.appendChild(haloText(x2 + 4, y + ROW_H / 2 + 4, tsa.vertical.upperLabel, {
+          'text-anchor': 'start', 'font-size': 10, fill: '#0f172a', 'font-weight': 600,
+        }));
+        const sch = tsa.schedules && tsa.schedules[0];
+        let schedTxt = '—';
+        if (sch && sch.startUTC && sch.endUTC) {
+          const pad = n => String(n).padStart(2, '0');
+          const d = sch.startUTC;
+          schedTxt = `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)} ` +
+                     `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}` +
+                     `–${pad(sch.endUTC.getUTCHours())}:${pad(sch.endUTC.getUTCMinutes())}Z`;
+          if (tsa.schedules.length > 1) schedTxt += ` (+${tsa.schedules.length - 1})`;
+        }
+        svgEl.appendChild(text(WIDTH - PADDING, y + ROW_H / 2 + 4, schedTxt, {
+          'text-anchor': 'end', 'font-size': 10, fill: '#475569',
+        }));
+      });
+
+      // Marcadores de solape altitudinal: contamos TODOS los pares con
+      // intersection, pero dibujamos solo los pares ADYACENTES (i, i+1).
+      // Asi el solape se ve a simple vista como una "escalera" descendente
+      // sin saturar el SVG con N*(N-1)/2 marcadores cuando hay 30+ TSAs.
+      for (let i = 0; i < cluster.tsas.length; i++) {
+        for (let j = i + 1; j < cluster.tsas.length; j++) {
+          const a = cluster.tsas[i], b = cluster.tsas[j];
+          const lo = Math.max(a.vertical.lowerFt, b.vertical.lowerFt);
+          const hi = Math.min(a.vertical.upperFt, b.vertical.upperFt);
+          if (hi <= lo) continue;
+          totalOverlaps++;
+        }
+      }
+      for (let i = 0; i < cluster.tsas.length - 1; i++) {
+        const a = cluster.tsas[i], b = cluster.tsas[i + 1];
+        const lo = Math.max(a.vertical.lowerFt, b.vertical.lowerFt);
+        const hi = Math.min(a.vertical.upperFt, b.vertical.upperFt);
+        if (hi <= lo) continue;
+        const xA = xScaleFt(lo), xB = xScaleFt(hi);
+        const yA = rowYs[i] + ROW_H - 4;
+        const yB = rowYs[i + 1] + 4;
+        // Banda hatch sutil entre las dos filas en la franja de solape.
+        svgEl.appendChild(el('rect', {
+          x: xA, y: yA, width: Math.max(2, xB - xA), height: yB - yA,
+          fill: '#dc2626', 'fill-opacity': 0.18,
+          stroke: '#dc2626', 'stroke-width': 0.8, 'stroke-dasharray': '3 2',
+          'stroke-opacity': 0.7,
+        }));
+      }
+
+      yCursor += cluster.tsas.length * ROW_H + CLUSTER_GAP;
+    }
+
+    // Pie con leyenda
+    const legY = HEADER + bodyH + 30;
     const legendItems = [
       { c: BAND_COLORS.low,  l: 'Banda baja (≤ FL100)' },
-      { c: BAND_COLORS.mid,  l: 'Banda media (FL100–FL245)' },
+      { c: BAND_COLORS.mid,  l: 'Banda media' },
       { c: BAND_COLORS.high, l: 'Banda alta (> FL245)' },
     ];
     let lx = PADDING;
     for (const it of legendItems) {
       svgEl.appendChild(el('rect', { x: lx, y: legY - 9, width: 14, height: 10, fill: it.c, 'fill-opacity': 0.6, stroke: it.c }));
       svgEl.appendChild(text(lx + 18, legY, it.l, { 'font-size': 11, fill: '#475569' }));
-      lx += 220;
+      lx += 180;
     }
+    // Indicador de solapes
+    svgEl.appendChild(el('line', { x1: lx, y1: legY - 5, x2: lx + 14, y2: legY - 5, stroke: '#dc2626', 'stroke-width': 1, 'stroke-dasharray': '3 2' }));
+    svgEl.appendChild(text(lx + 18, legY, `Solape altitudinal (${totalOverlaps})`, { 'font-size': 11, fill: '#475569' }));
 
     return {
       ok: true,
       mode: 'altitudeList',
-      count: sorted.length,
+      count: tsas.length,
+      clusters: clusters.length,
+      overlapCount: totalOverlaps,
       extremes: { A: 'GND', B: `FL${(niceMax / 100) | 0}` },
       distance: niceMax,
-      panels: 1,
-      overlapCount: 0,
+      panels: clusters.length,
     };
   }
 

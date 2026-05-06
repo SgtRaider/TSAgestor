@@ -414,7 +414,11 @@
       btn.disabled = false;
       const cloudTag = opts.clouds ? ' · nubes' : '';
       if (res.mode === 'altitudeList') {
-        info.textContent = `Inventario altitudinal · ${res.count} TSA${res.count === 1 ? '' : 's'} · escala GND→${res.extremes.B}`;
+        info.textContent =
+          `Inventario altitudinal · ${res.count} TSA${res.count === 1 ? '' : 's'}` +
+          ` · ${res.clusters} grupo${res.clusters === 1 ? '' : 's'}` +
+          ` · ${res.overlapCount} solape${res.overlapCount === 1 ? '' : 's'} altitudinal${res.overlapCount === 1 ? '' : 'es'}` +
+          ` · escala GND→${res.extremes.B}`;
       } else {
         const planTag = opts.plan ? ' · plan' : '';
         info.textContent =
