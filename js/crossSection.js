@@ -232,6 +232,55 @@ window.TSAgestor.crossSection = (function () {
     return inside;
   }
 
+  // Interseccion de dos segmentos en plano lat/lon (aproximacion plana,
+  // valida para distancias de TSAs militares <100 NM).
+  function segIntersect(p1, p2, p3, p4) {
+    const x1 = p1[1], y1 = p1[0], x2 = p2[1], y2 = p2[0];
+    const x3 = p3[1], y3 = p3[0], x4 = p4[1], y4 = p4[0];
+    const den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    if (Math.abs(den) < 1e-12) return false;
+    const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den;
+    const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / den;
+    return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+  }
+
+  // Dos poligonos estan en contacto lateral si:
+  //   (a) algun vertice de A cae dentro de B (o viceversa),
+  //   (b) alguna arista de A cruza alguna arista de B, o
+  //   (c) algun vertice esta a <= bufferKm de alguna arista del otro
+  //       (cubre el caso de arcos discretizados que no llegan a tocarse
+  //       por error de muestreo).
+  function polygonsTouch(polyA, polyB, bufferKm) {
+    if (!polyA || !polyB || !polyA.length || !polyB.length) return false;
+    bufferKm = bufferKm == null ? 1.852 : bufferKm; // ~1 NM por defecto
+    // (a)
+    for (const v of polyA) if (pointInPoly(v, polyB)) return true;
+    for (const v of polyB) if (pointInPoly(v, polyA)) return true;
+    // (b)
+    const nA = polyA.length, nB = polyB.length;
+    for (let i = 0; i < nA; i++) {
+      const a1 = polyA[i], a2 = polyA[(i + 1) % nA];
+      for (let j = 0; j < nB; j++) {
+        const b1 = polyB[j], b2 = polyB[(j + 1) % nB];
+        if (segIntersect(a1, a2, b1, b2)) return true;
+      }
+    }
+    // (c) — buffer
+    if (bufferKm > 0 && geom.pointToSegmentKm) {
+      for (const v of polyA) {
+        for (let j = 0; j < nB; j++) {
+          if (geom.pointToSegmentKm(v, polyB[j], polyB[(j + 1) % nB]) <= bufferKm) return true;
+        }
+      }
+      for (const v of polyB) {
+        for (let i = 0; i < nA; i++) {
+          if (geom.pointToSegmentKm(v, polyA[i], polyA[(i + 1) % nA]) <= bufferKm) return true;
+        }
+      }
+    }
+    return false;
+  }
+
   function formatFL(ft) {
     if (ft >= 99999) return 'UNL';
     if (ft <= 0) return 'GND';
@@ -621,37 +670,71 @@ window.TSAgestor.crossSection = (function () {
     return p.replace(/[\s\-_·]+$/, '').trim();
   }
 
-  // Cluster greedy por distancia entre centroides (km).
-  function clusterTsasByCentroid(tsas, distanceKm) {
-    distanceKm = distanceKm || 56; // ~30 NM
-    const clusters = [];
-    for (const t of tsas) {
-      let best = null, bestD = Infinity;
-      for (const c of clusters) {
-        const d = geom.greatCircleDistance(t.centroid, c.centroid);
-        if (d < bestD && d <= distanceKm) { bestD = d; best = c; }
-      }
-      if (best) {
-        best.tsas.push(t);
-        const n = best.tsas.length;
-        best.centroid = [
-          (best.centroid[0] * (n - 1) + t.centroid[0]) / n,
-          (best.centroid[1] * (n - 1) + t.centroid[1]) / n,
-        ];
-      } else {
-        clusters.push({ centroid: t.centroid.slice(), tsas: [t] });
+  // Clustering por componentes conectadas: dos TSAs en el mismo grupo si
+  // sus poligonos estan en contacto lateral (intersectan, una contiene a
+  // la otra, o sus bordes estan a <= bufferKm).
+  // Como pre-filtro barato (evita O(N^2) con poligonos grandes) usamos un
+  // bounding-box test: si las bbox no se solapan +buffer, no hay contacto.
+  function bboxOf(poly) {
+    let latMin = Infinity, latMax = -Infinity, lonMin = Infinity, lonMax = -Infinity;
+    for (const v of poly) {
+      if (v[0] < latMin) latMin = v[0];
+      if (v[0] > latMax) latMax = v[0];
+      if (v[1] < lonMin) lonMin = v[1];
+      if (v[1] > lonMax) lonMax = v[1];
+    }
+    return { latMin, latMax, lonMin, lonMax };
+  }
+  function bboxesOverlap(a, b, padDeg) {
+    padDeg = padDeg || 0;
+    return !(a.latMax + padDeg < b.latMin
+          || a.latMin - padDeg > b.latMax
+          || a.lonMax + padDeg < b.lonMin
+          || a.lonMin - padDeg > b.lonMax);
+  }
+
+  function clusterTsasByContact(tsas, bufferKm) {
+    bufferKm = bufferKm == null ? 1.852 : bufferKm;
+    const padDeg = bufferKm / 110; // ~conversion grados a km en lat
+    const N = tsas.length;
+    if (!N) return [];
+    const bboxes = tsas.map(t => bboxOf(t.polygon));
+    // Union-find
+    const parent = Array.from({ length: N }, (_, i) => i);
+    function find(i) { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; }
+    function union(i, j) { const a = find(i), b = find(j); if (a !== b) parent[a] = b; }
+    for (let i = 0; i < N; i++) {
+      for (let j = i + 1; j < N; j++) {
+        if (find(i) === find(j)) continue;
+        if (!bboxesOverlap(bboxes[i], bboxes[j], padDeg)) continue;
+        if (polygonsTouch(tsas[i].polygon, tsas[j].polygon, bufferKm)) {
+          union(i, j);
+        }
       }
     }
-    for (const c of clusters) {
-      c.tsas.sort((a, b) => {
+    // Agrupa por raiz
+    const byRoot = new Map();
+    for (let i = 0; i < N; i++) {
+      const r = find(i);
+      if (!byRoot.has(r)) byRoot.set(r, []);
+      byRoot.get(r).push(tsas[i]);
+    }
+    const clusters = [];
+    for (const list of byRoot.values()) {
+      // centroide del cluster = media de centroides
+      let lat = 0, lon = 0;
+      for (const t of list) { lat += t.centroid[0]; lon += t.centroid[1]; }
+      lat /= list.length; lon /= list.length;
+      list.sort((a, b) => {
         if (a.vertical.lowerFt !== b.vertical.lowerFt) return a.vertical.lowerFt - b.vertical.lowerFt;
         if (a.vertical.upperFt !== b.vertical.upperFt) return a.vertical.upperFt - b.vertical.upperFt;
         return a.name.localeCompare(b.name);
       });
-      const prefix = commonNamePrefix(c.tsas.map(t => t.name));
-      c.name = prefix && prefix.length >= 4
+      const prefix = commonNamePrefix(list.map(t => t.name));
+      const name = prefix && prefix.length >= 4
         ? prefix
-        : `Grupo ${c.centroid[0].toFixed(2)}°N ${Math.abs(c.centroid[1]).toFixed(2)}°${c.centroid[1] < 0 ? 'W' : 'E'}`;
+        : `Grupo ${lat.toFixed(2)}°N ${Math.abs(lon).toFixed(2)}°${lon < 0 ? 'W' : 'E'}`;
+      clusters.push({ centroid: [lat, lon], tsas: list, name });
     }
     // Norte primero (latitud descendente).
     clusters.sort((a, b) => b.centroid[0] - a.centroid[0]);
@@ -679,7 +762,7 @@ window.TSAgestor.crossSection = (function () {
       return { ok: false };
     }
 
-    const clusters = clusterTsasByCentroid(tsas);
+    const clusters = clusterTsasByContact(tsas);
 
     const ROW_H = 26;
     const CLUSTER_HDR_H = 30;
@@ -711,7 +794,7 @@ window.TSAgestor.crossSection = (function () {
       `Inventario altitudinal — ${tsas.length} TSA${tsas.length === 1 ? '' : 's'} en ${clusters.length} grupo${clusters.length === 1 ? '' : 's'}`,
       { 'text-anchor': 'middle', 'font-size': 16, 'font-weight': 700, fill: '#0f172a' }));
     svgEl.appendChild(text(WIDTH / 2, 48,
-      'Agrupadas por proximidad (<30 NM) y ordenadas por altitud · barras superpuestas dentro de un grupo = solape de airspace',
+      'Agrupadas por contacto lateral de polígonos · ordenadas por altitud · franja roja punteada = solape de airspace entre filas adyacentes',
       { 'text-anchor': 'middle', 'font-size': 11, fill: '#64748b' }));
 
     // Escala de altitud comun a todos los clusters.
