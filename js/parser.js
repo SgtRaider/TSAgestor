@@ -50,7 +50,20 @@ window.TSAgestor.parser = (function () {
       );
       pages.push(lines.join('\n'));
     }
-    return pages.join('\n\n');
+    let out = pages.join('\n\n');
+    // Post-proceso: PDF.js junta items en una linea con un espacio entre
+    // ellos. Eso parte tokens "tight" en piezas: "(16)" -> "(1 6 )",
+    // "0070136W" -> "0 070136 W", "FL350" -> "FL 3 50", etc. Normalizamos:
+    //   - parens con digitos sueltos y espacios:  "( 1 6 )" -> "(16)"
+    //   - FL con espacios:                         "FL 3 50" -> "FL350"
+    //   - coordenadas lat/lon con digitos partidos:
+    //     "390950 N 00 70136 W" -> "390950N 0070136W"
+    out = out
+      .replace(/\(\s*(\d[\d\s]*)\)/g, (m, p) => '(' + p.replace(/\s/g, '') + ')')
+      .replace(/\bFL\s*(\d[\d\s]{1,3}\d|\d{2,3})\b/g, (m, p) => 'FL' + p.replace(/\s/g, ''))
+      .replace(/(\d[\d\s]{4,7}\d)\s*([NS])\s+(\d[\d\s]{5,8}\d)\s*([EW])/g,
+        (m, lat, h1, lon, h2) => lat.replace(/\s/g, '') + h1 + ' ' + lon.replace(/\s/g, '') + h2);
+    return out;
   }
 
   // ── Coordinate / altitude helpers ────────────────────────────────────
@@ -332,7 +345,9 @@ window.TSAgestor.parser = (function () {
   function parseCircleDefinition(text) {
     // Soporta español ("CIRCULO DE 08NM DE RADIO CENTRADO EN") e inglés
     // ("CIRCLE OF 08NM RADIUS CENTRED ON" / "CENTERED ON").
-    const re = /(?:C[IÍ]RCULO\s+DE|CIRCLE\s+OF)\s+([\d.,]+)\s*NM\s+(?:DE\s+RADIO\s+CENTRADO\s+EN|RADIUS\s+CENT(?:E|RE)D\s+ON)\s+(\d{6}(?:\.\d+)?[NS])\s+(\d{7}(?:\.\d+)?[EW])/i;
+    // Tambien acepta variantes con "el punto" o "the point" intermedios:
+    // "centrado en el punto 385329N 0064917W".
+    const re = /(?:C[IÍ]RCULO\s+DE|CIRCLE\s+OF)\s+([\d.,]+)\s*NM\s+(?:DE\s+RADIO\s+CENTRADO\s+EN|RADIUS\s+CENT(?:E|RE)D\s+ON)(?:\s+(?:EL\s+PUNTO|THE\s+POINT))?\s+(\d{6}(?:\.\d+)?[NS])\s+(\d{7}(?:\.\d+)?[EW])/i;
     const m = text.match(re);
     if (!m) return null;
     const radiusNM = parseFloat(m[1].replace(',', '.'));
@@ -751,11 +766,121 @@ window.TSAgestor.parser = (function () {
     return tsas;
   }
 
+  // ── RFC parser ───────────────────────────────────────────────────────
+  // Formato "Solicitud de Reserva de Espacio Aereo NR 05" emitido por las
+  // unidades militares (RFC). Cada bloque empieza por "(N) Se solicita
+  // publicacion de RESERVA DE ESPACIO AEREO" y contiene:
+  //   2. ZONA: TSA <name>
+  //   3. LIMITES VERTICALES: <range>
+  //   4. FECHAS: ... <D mes YYYY  HH:MMZ-HH:MMZ [HH:MMZ-HH:MMZ]> ...
+  //   Limites laterales. ... [coords | "Circulo de XNM ..."]
+
+  const SPANISH_MONTHS = {
+    enero:0, febrero:1, marzo:2, abril:3, mayo:4, junio:5,
+    julio:6, agosto:7, septiembre:8, octubre:9, noviembre:10, diciembre:11,
+  };
+
+  function parseRFCSchedules(text) {
+    // "DD <mes> YYYY  HH:MMZ-HH:MMZ" (puede haber 2 ventanas en la misma linea).
+    const out = [];
+    const re = /\b(\d{1,2})\s+([a-záéíóúñ]+)\s+(\d{4})\s+((?:\d{2}:\d{2}Z\s*-\s*\d{2}:\d{2}Z\s*){1,3})/gi;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const day = +m[1];
+      const month = SPANISH_MONTHS[m[2].toLowerCase()];
+      const year = +m[3];
+      if (month === undefined) continue;
+      const winRe = /(\d{2}):(\d{2})Z\s*-\s*(\d{2}):(\d{2})Z/g;
+      let w;
+      while ((w = winRe.exec(m[4])) !== null) {
+        const s = new Date(Date.UTC(year, month, day, +w[1], +w[2]));
+        let e = new Date(Date.UTC(year, month, day, +w[3], +w[4]));
+        if (e <= s) e = new Date(e.getTime() + 24 * 3600 * 1000);
+        out.push({ startUTC: s, endUTC: e, raw: `${day} ${m[2]} ${year} ${w[0]}` });
+      }
+    }
+    return out;
+  }
+
+  // Extrae poligono lateral del bloque de "Limites laterales". Soporta:
+  //   - Lista de coords (>=3 puntos) -> poligono directo.
+  //   - "Circulo de XNM de radio centrado en el punto <coord>" (formato AIP).
+  //   - "Radio de XNM desde <coord>" (formato RFC variante).
+  //   - "Circulo de XNM de radio. <texto> centrado en el punto <coord>" (varias
+  //     secciones "De SFC a Yft" en formato RFC).
+  // Estrategia: si hay poligono valido en coords, usarlo. Si no, buscar
+  // primer "<num>NM" del texto y combinarlo con el primer coord encontrado.
+  function parseRFCLateral(text) {
+    if (!text) return [];
+    const coords = parseCoordinates(text);
+    if (coords.length >= 3) return coords;
+    // Buscar radio en cualquiera de los formatos vistos.
+    const radiusM = text.match(/([\d.,]+)\s*NM/i);
+    if (radiusM && coords.length >= 1) {
+      const radiusNM = parseFloat(radiusM[1].replace(',', '.'));
+      if (Number.isFinite(radiusNM) && radiusNM > 0 && radiusNM < 100) {
+        return geom.circleToPolygon(coords[0], radiusNM * 1.852, 48);
+      }
+    }
+    return coords;
+  }
+
+  function parseRFC(rawText, defaultYear) {
+    const text = rawText.replace(/\r\n?/g, '\n');
+    const out = [];
+    // Cada bloque empieza por "(N)" al inicio de linea (con o sin espacios).
+    const blockRe = /(?:^|\n)\s*\(\d+\)\s+Se\s+solicita[\s\S]+?(?=\n\s*\(\d+\)\s+Se\s+solicita|$)/gi;
+    let bm;
+    while ((bm = blockRe.exec(text)) !== null) {
+      const block = bm[0];
+
+      const nameM = block.match(/2\.\s*ZONA\s*:\s*([^\n]+)/i);
+      if (!nameM) continue;
+      const name = nameM[1].trim().replace(/\s+/g, ' ');
+
+      const vertM = block.match(/3\.\s*L[ÍI]MITES\s+VERTICALES\s*:\s*([^\n]+)/i);
+      let vertical = { lowerFt: 0, lowerLabel: 'GND', upperFt: 0, upperLabel: '?' };
+      if (vertM) {
+        const v = parseSlashAlt(vertM[1].replace('-', '/')) ||
+                  parseVerticalBlock(vertM[1].replace('-', '/'));
+        if (v && v.lowerLabel !== '?') vertical = v;
+      }
+
+      // FECHAS hasta "Limites laterales".
+      const fechaIdx = block.search(/4\.\s*FECHAS/i);
+      const latIdx   = block.search(/Limites\s+laterales/i);
+      const fechaTxt = (fechaIdx >= 0 && latIdx >= 0)
+        ? block.slice(fechaIdx, latIdx)
+        : (fechaIdx >= 0 ? block.slice(fechaIdx) : '');
+      const schedules = parseRFCSchedules(fechaTxt);
+
+      const latTxt = latIdx >= 0 ? block.slice(latIdx) : '';
+      const polygon = parseRFCLateral(latTxt);
+
+      if (polygon.length < 3 || schedules.length === 0) continue;
+
+      out.push({
+        id: `tsa-${out.length + 1}`,
+        name,
+        polygon,
+        centroid: geom.centroid(polygon),
+        vertical,
+        schedules,
+        format: 'RFC',
+        remarks: '',
+        rawBlock: block.slice(0, 2000),
+      });
+    }
+    return out;
+  }
+
   // ── Detección y entrada pública ──────────────────────────────────────
 
   function detectFormat(text) {
     const hasAIP  = /L[ÍI]MITES\s+LATERALES/i.test(text) || /FECHAS\s+Y\s+HORARIOS/i.test(text);
     const hasICAO = /Q\)/.test(text) && /E\)/.test(text) && /[A-Z]\d{3,5}\/\d{2}/.test(text);
+    const hasRFC  = /Se\s+solicita\s+publicaci/i.test(text) && /ZONA\s*:\s*TSA/i.test(text);
+    if (hasRFC) return 'RFC';
     if (hasAIP && !hasICAO) return 'AIP';
     if (hasICAO && !hasAIP) return 'ICAO';
     if (hasAIP && hasICAO) return 'BOTH';
@@ -766,6 +891,9 @@ window.TSAgestor.parser = (function () {
     const year = (opts && opts.year) || new Date().getUTCFullYear();
     const fmt = detectFormat(rawText);
     let out = [];
+    if (fmt === 'RFC') {
+      out = out.concat(parseRFC(rawText, year));
+    }
     if (fmt === 'AIP' || fmt === 'BOTH' || fmt === 'UNKNOWN') {
       out = out.concat(parseAIP(rawText, year));
     }
