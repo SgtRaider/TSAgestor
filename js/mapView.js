@@ -308,14 +308,16 @@ window.TSAgestor.mapView = (function () {
     const rows = filtered.map(t => {
       const band = geom.altitudeBand(t.vertical.upperFt);
       const color = BAND_COLORS[band];
-      const schedHTML = fmt ? fmt.listHTML(t.schedules) : '';
+      // Compactamos los grupos horarios en una sola linea separados por
+      // " · " para que la fila sea fina y entren mas TSAs visibles a la vez.
+      const schedTxt = fmt ? fmt.listText(t.schedules).join(' · ') : '';
       return `
         <div class="tsa-legend-row">
           <span class="tsa-legend-swatch" style="background:${color}"></span>
           <div class="tsa-legend-text">
             <div class="tsa-legend-name">${escapeHTMLLocal(t.name)}</div>
             <div class="tsa-legend-alt">${escapeHTMLLocal(t.vertical.lowerLabel)} – ${escapeHTMLLocal(t.vertical.upperLabel)}</div>
-            <div class="tsa-legend-sched">${schedHTML}</div>
+            <div class="tsa-legend-sched">${escapeHTMLLocal(schedTxt)}</div>
           </div>
         </div>`;
     }).join('');

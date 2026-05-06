@@ -508,15 +508,17 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
 .leaflet-tooltip.wp-label.rnav   { color: #334155; }
 .leaflet-tooltip.wp-label::before { display: none; }
 
-/* Leyenda flotante de TSAs activas (toggle desde la pestana Mapa). */
+/* Leyenda flotante de TSAs activas (toggle desde la pestana Mapa).
+   Layout: panel mas ancho con cuerpo en grid 2 columnas y filas finas para
+   poder ver todas las TSAs activas hoy+manyana sin scrollear. */
 .tsa-legend {
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--border, #cbd5e1);
   border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  width: 320px;
+  width: 540px;
   max-width: calc(100vw - 60px);
-  max-height: calc(100vh - 160px);
+  max-height: calc(100vh - 80px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -546,6 +548,10 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
 .tsa-legend-body {
   overflow-y: auto;
   flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 1px;
+  background: #e2e8f0;
 }
 .tsa-legend-empty {
   padding: 10px;
@@ -566,16 +572,17 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
 }
 .tsa-legend-row {
   display: flex;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: 6px;
+  padding: 3px 8px;
+  background: #ffffff;
   border-bottom: 1px solid #e2e8f0;
 }
 .tsa-legend-row:last-child { border-bottom: 0; }
 .tsa-legend-swatch {
-  flex: 0 0 8px;
-  width: 8px;
+  flex: 0 0 6px;
+  width: 6px;
   border-radius: 2px;
-  margin-top: 2px;
+  margin-top: 3px;
 }
 .tsa-legend-text { flex: 1; min-width: 0; }
 .tsa-legend-name {
@@ -584,15 +591,25 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 11px;
+  line-height: 1.2;
 }
 .tsa-legend-alt {
   color: #475569;
-  font-size: 11px;
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .tsa-legend-sched {
   color: #1e3a8a;
-  font-size: 11px;
-  margin-top: 2px;
+  font-size: 10px;
+  line-height: 1.2;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Estado pulsado del boton toggle de la leyenda. */
