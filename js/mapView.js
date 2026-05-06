@@ -327,30 +327,53 @@ window.TSAgestor.mapView = (function () {
       <div class="tsa-legend-body">${rows}</div>`;
   }
 
+  // Ajusta dinamicamente max-height del panel a la PORCION VISIBLE del
+  // mapa dentro del viewport (no a map.getSize().y, que devuelve la altura
+  // del div del mapa: si el #map tiene min-height fijo y el viewport es
+  // pequenyo, el div se sale del viewport y la leyenda lo seguia, dejando
+  // filas inferiores inalcanzables). Restamos margen para la attribution
+  // de Leaflet y aire visual.
+  function fitLegendToMap() {
+    if (!tsaLegendCtl || !map) return;
+    const cont = tsaLegendCtl.getContainer();
+    if (!cont) return;
+    const r = map.getContainer().getBoundingClientRect();
+    const top = Math.max(0, r.top);
+    const bottom = Math.min(window.innerHeight, r.bottom);
+    const visible = Math.max(0, bottom - top);
+    const margin = 30;
+    cont.style.maxHeight = Math.max(120, visible - margin) + 'px';
+  }
+
   function setLegendVisible(visible, tsas) {
     tsaLegendTSAs = tsas || [];
     if (!visible) {
       if (tsaLegendCtl && map) tsaLegendCtl.remove();
       tsaLegendCtl = null;
+      if (map) map.off('resize', fitLegendToMap);
+      window.removeEventListener('resize', fitLegendToMap);
       return;
     }
     if (!map) return;
     if (tsaLegendCtl) {
-      // Ya visible -> solo refresca contenido
       const cont = tsaLegendCtl.getContainer();
       if (cont) cont.innerHTML = buildTSALegendHTML(tsaLegendTSAs);
+      fitLegendToMap();
       return;
     }
     tsaLegendCtl = L.control({ position: 'topright' });
     tsaLegendCtl.onAdd = function () {
       const div = L.DomUtil.create('div', 'tsa-legend');
       div.innerHTML = buildTSALegendHTML(tsaLegendTSAs);
-      // Permite scroll dentro del panel sin pannear el mapa.
       L.DomEvent.disableClickPropagation(div);
       L.DomEvent.disableScrollPropagation(div);
       return div;
     };
     tsaLegendCtl.addTo(map);
+    fitLegendToMap();
+    // Si el usuario redimensiona la ventana o cambia de pestana, recalc.
+    map.on('resize', fitLegendToMap);
+    window.addEventListener('resize', fitLegendToMap);
   }
 
   function updateLegend(tsas) {
