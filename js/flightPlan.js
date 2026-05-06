@@ -446,6 +446,31 @@ window.TSAgestor.flightPlan = (function () {
     });
   }
 
+  // TSAs sobrevoladas lateralmente por la ruta, sin filtrar por FL ni
+  // horario (a diferencia de findConflicts). Incluye tambien los TSAs en
+  // los que el usuario clico explicitamente al dibujar (point.tsa). Una
+  // sola entrada por TSA aunque la ruta la cruce varias veces (ida y vuelta).
+  function findOverflownTSAs(route, tsas) {
+    if (!route || !tsas || !tsas.length) return [];
+    const seen = new Set();
+    const out = [];
+    function add(tsa) {
+      if (!tsa || seen.has(tsa.id)) return;
+      seen.add(tsa.id); out.push(tsa);
+    }
+    for (const seg of route.segments) {
+      if (seg.from && seg.from.tsa) add(seg.from.tsa);
+      if (seg.to   && seg.to.tsa)   add(seg.to.tsa);
+      const a = [seg.from.lat, seg.from.lon];
+      const b = [seg.to.lat,   seg.to.lon];
+      for (const tsa of tsas) {
+        if (seen.has(tsa.id)) continue;
+        if (segCrossesPolygon(a, b, tsa.polygon)) add(tsa);
+      }
+    }
+    return out;
+  }
+
   function segCrossesPolygon(a, b, poly) {
     if (pointInPoly(a, poly) || pointInPoly(b, poly)) return true;
     const n = poly.length;
@@ -541,6 +566,7 @@ window.TSAgestor.flightPlan = (function () {
     const timeMinutes = (distNM / speedKt) * 60;
     const eta = new Date(depUTC.getTime() + timeMinutes * 60 * 1000);
     const conflicts = findConflicts(route, opts.tsas || [], fl, depUTC, speedKt);
+    const overflownTSAs = findOverflownTSAs(route, opts.tsas || []);
 
     const result = {
       origin: origin.name,
@@ -556,6 +582,7 @@ window.TSAgestor.flightPlan = (function () {
       distanceNM: distNM,
       timeMinutes,
       conflicts,
+      overflownTSAs,
     };
     return result;
   }

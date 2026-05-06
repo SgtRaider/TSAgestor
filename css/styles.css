@@ -793,6 +793,7 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   font-weight: 500;
 }
 .plan-narrative,
+.plan-remarks,
 .plan-conflicts,
 .plan-coords {
   background: var(--bg-panel);
@@ -801,6 +802,7 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   padding: 14px 16px;
 }
 .plan-narrative h3,
+.plan-remarks h3,
 .plan-conflicts h3,
 .plan-coords h3 {
   margin: 0 0 10px;
@@ -809,6 +811,20 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+#plan-remarks-text {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.plan-remarks .hint { margin: 8px 0 0; font-size: 12px; }
 .notam-source {
   margin-top: 16px;
   padding: 12px 16px;

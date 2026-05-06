@@ -955,6 +955,11 @@
 
     $('#plan-narrative-text').textContent = p.narrative;
 
+    // Remarks: lista de TSAs sobrevoladas (sin duplicar en ida y vuelta).
+    const remarks = (p.overflownTSAs || []).map(t => t.name);
+    $('#plan-remarks-text').textContent = remarks.length ? remarks.join(', ') : '—';
+    $('#plan-remarks-count').textContent = remarks.length;
+
     const ul = $('#plan-conflicts-list');
     ul.innerHTML = '';
     $('#plan-conflicts-count').textContent = p.conflicts.length;
@@ -1302,6 +1307,12 @@
     copyText(state.lastPlan.narrative, '#btn-plan-copy');
   }
 
+  function copyRemarks() {
+    if (!state.lastPlan) return;
+    const list = (state.lastPlan.overflownTSAs || []).map(t => t.name);
+    copyText(list.join(', '), '#btn-plan-remarks-copy');
+  }
+
   function formatDuration(min) {
     const h = Math.floor(min / 60);
     const m = Math.round(min % 60);
@@ -1427,6 +1438,7 @@
     $('#btn-plan-calc').addEventListener('click', calcPlan);
     $('#btn-plan-clear').addEventListener('click', clearPlan);
     $('#btn-plan-copy').addEventListener('click', copyNarrative);
+    $('#btn-plan-remarks-copy').addEventListener('click', copyRemarks);
     $('#btn-plan-draw').addEventListener('click', startDrawing);
     $('#plan-via').addEventListener('input', () => { state.drawnVia = null; });
     $('#plan-log-table tbody').addEventListener('input', onLegInputChange);
