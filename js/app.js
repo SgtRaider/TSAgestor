@@ -412,12 +412,16 @@
       empty.classList.add('hidden');
       svg.style.display = 'block';
       btn.disabled = false;
-      const planTag = opts.plan ? ' · plan' : '';
       const cloudTag = opts.clouds ? ' · nubes' : '';
-      info.textContent =
-        `${res.extremes.A} → ${res.extremes.B} · ${res.distance.toFixed(1)} km · ` +
-        `${res.panels} panel${res.panels === 1 ? '' : 'es'} · solapes: ${res.overlapCount}` +
-        planTag + cloudTag;
+      if (res.mode === 'altitudeList') {
+        info.textContent = `Inventario altitudinal · ${res.count} TSA${res.count === 1 ? '' : 's'} · escala GND→${res.extremes.B}`;
+      } else {
+        const planTag = opts.plan ? ' · plan' : '';
+        info.textContent =
+          `${res.extremes.A} → ${res.extremes.B} · ${res.distance.toFixed(1)} km · ` +
+          `${res.panels} panel${res.panels === 1 ? '' : 'es'} · solapes: ${res.overlapCount}` +
+          planTag + cloudTag;
+      }
     } else {
       empty.classList.remove('hidden');
       svg.style.display = 'none';
@@ -427,7 +431,7 @@
       } else if (state.lastPlan) {
         info.textContent = 'Renderizando con el plan de vuelo…';
       } else if (visible.length === 0) {
-        info.textContent = 'Calcula un plan o carga ≥2 TSAs para generar el corte';
+        info.textContent = 'Carga ≥1 TSA para ver el inventario altitudinal';
       } else {
         info.textContent = 'Sólo 1 TSA visible y sin plan: necesitas ≥2 TSAs o un plan';
       }
@@ -1403,7 +1407,9 @@
       // SVG en el DOM se regeneraba SIN el plan tras cada exportación, lo que
       // luego hacia que el corte en pantalla apareciese sin la ruta hasta
       // cambiar de pestaña, y el PDF nunca incluia la ruta dibujada.
-      const hasContent = visible.length >= 2 || !!state.lastPlan;
+      // ≥1 TSA basta para la vista altitudinal; con plan, ≥2 TSAs o
+      // tener ruta justifica el corte espacial.
+      const hasContent = visible.length >= 1 || !!state.lastPlan;
       if (hasContent) {
         crossSection.render(svg, visible, {
           plan:   state.lastPlan || null,
