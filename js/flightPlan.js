@@ -383,18 +383,23 @@ window.TSAgestor.flightPlan = (function () {
   // Cadena de ruta: ORIGIN DCT WPT DCT WPT ... DCT DESTINATION.
   // Sin nivel de vuelo, sin codigo de aerovia, sin nombre de TSA.
   // Cada waypoint:
-  //   - Aeropuerto / waypoint con nombre real (POPUL, VNV, ...) -> nombre
-  //   - Punto dibujado (sin nombre o nombre "lat,lon") o cruce de TSA
-  //     (point.tsa presente, donde el nombre seria el de la TSA) -> formato
-  //     OACI compacto DDMM[N|S]DDDMM[E|W] (ej. 3853N00649W)
+  //   - Aeropuerto / waypoint con nombre real (LEBZ, POPUL, VNV, ...) ->
+  //     se imprime el nombre tal cual, INCLUSO si cae dentro de una TSA
+  //     (LEBZ esta dentro de TSA TALAVERA LOW AUTOMATICO; aun asi
+  //     queremos "LEBZ" en origen/destino, no las coords).
+  //   - Punto dibujado sin nombre, nombre "lat,lon" decimal, o waypoint
+  //     cuyo nombre es el de su TSA (caso clasico: el usuario clica
+  //     dentro de una TSA al dibujar y enrichWaypoint pone name=tsa.name)
+  //     -> formato OACI compacto DDMM[N|S]DDDMM[E|W] (ej. 3853N00649W).
   function buildNarrative(route /*, fl */) {
     if (!route.segments.length) return '';
     const segs = route.segments;
     const fmtWp = wp => {
       const isDecimalCoords = /^-?\d+\.\d+,-?\d+\.\d+$/.test(wp.name || '');
-      if (!wp.name || isDecimalCoords || wp.tsa) {
-        return formatICAOCoord(wp.lat, wp.lon);
-      }
+      if (!wp.name || isDecimalCoords) return formatICAOCoord(wp.lat, wp.lon);
+      // El name coincide con el de una TSA -> es un cruce/punto generico
+      // dentro de la TSA, no un waypoint con identidad propia.
+      if (wp.tsa && wp.name === wp.tsa.name) return formatICAOCoord(wp.lat, wp.lon);
       return wp.name;
     };
     let out = fmtWp(segs[0].from);
