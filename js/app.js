@@ -954,7 +954,6 @@
     `;
 
     $('#plan-narrative-text').textContent = p.narrative;
-    $('#plan-fpl-text').textContent = p.fpl15 || flightPlan.buildICAOFPL15(p);
 
     const ul = $('#plan-conflicts-list');
     ul.innerHTML = '';
@@ -1303,51 +1302,6 @@
     copyText(state.lastPlan.narrative, '#btn-plan-copy');
   }
 
-  function copyFPL() {
-    if (!state.lastPlan) return;
-    const text = state.lastPlan.fpl15 || flightPlan.buildICAOFPL15(state.lastPlan);
-    copyText(text, '#btn-fpl-copy');
-  }
-
-  function importFPL() {
-    const errEl = $('#fpl-import-error');
-    errEl.classList.add('hidden');
-    const raw = $('#fpl-import-text').value.trim();
-    if (!raw) { errEl.textContent = 'Pega una cadena de ruta primero.'; errEl.classList.remove('hidden'); return; }
-
-    const parsed = flightPlan.parseICAOFPL15(raw);
-    if (parsed.error) {
-      errEl.textContent = parsed.error;
-      errEl.classList.remove('hidden');
-      return;
-    }
-
-    // Volcamos al formulario y delegamos el cálculo en calcPlan() para
-    // reusar toda la lógica de combustible, render y conflictos.
-    // Field 15 puro (sin origen/destino) → conservamos los del formulario.
-    if (parsed.origin)      $('#plan-origin').value = parsed.origin;
-    if (parsed.destination) $('#plan-dest').value   = parsed.destination;
-    if (!$('#plan-origin').value.trim() || !$('#plan-dest').value.trim()) {
-      errEl.textContent = 'La cadena no incluye origen/destino. Rellena ambos campos antes de importar un Field 15 puro.';
-      errEl.classList.remove('hidden');
-      return;
-    }
-    if (parsed.flightLevel) $('#plan-fl').value = parsed.flightLevel;
-    if (parsed.speedKt)     $('#plan-speed').value = parsed.speedKt;
-
-    // Vía: códigos OACI conocidos como texto, coords como "lat,lon".
-    const viaTokens = parsed.via.map(v => {
-      if (typeof v === 'string') return v;
-      // Objeto con {name, lat, lon}: si el name es OACI 7-char usamos
-      // el formato decimal que parseViaToken acepta.
-      return v.lat.toFixed(4) + ',' + v.lon.toFixed(4);
-    });
-    $('#plan-via').value = viaTokens.join(' ');
-    state.drawnVia = null;  // invalidamos cualquier ruta dibujada anterior
-
-    calcPlan();
-  }
-
   function formatDuration(min) {
     const h = Math.floor(min / 60);
     const m = Math.round(min % 60);
@@ -1473,11 +1427,6 @@
     $('#btn-plan-calc').addEventListener('click', calcPlan);
     $('#btn-plan-clear').addEventListener('click', clearPlan);
     $('#btn-plan-copy').addEventListener('click', copyNarrative);
-    $('#btn-fpl-copy').addEventListener('click', copyFPL);
-    $('#btn-fpl-import').addEventListener('click', importFPL);
-    $('#fpl-import-text').addEventListener('keydown', e => {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); importFPL(); }
-    });
     $('#btn-plan-draw').addEventListener('click', startDrawing);
     $('#plan-via').addEventListener('input', () => { state.drawnVia = null; });
     $('#plan-log-table tbody').addEventListener('input', onLegInputChange);

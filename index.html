@@ -311,16 +311,6 @@
         <div id="saved-plans-list" class="saved-plans-list"></div>
       </div>
 
-      <div class="plan-import">
-        <h3>Importar FPL ICAO</h3>
-        <p class="hint">Pega una cadena tipo <code>LEMD UN733 LEZL GCLP FL250</code> o un Field 15 (<code>N0420F340 UN733 LEZL</code>). Las aerovías reconocidas se ignoran y los tramos quedan DCT entre waypoints.</p>
-        <div class="plan-import-row">
-          <textarea id="fpl-import-text" rows="2" placeholder="LEMD UN733 LEZL GCLP FL250" autocomplete="off"></textarea>
-          <button id="btn-fpl-import" class="btn" type="button">Importar y calcular</button>
-        </div>
-        <div id="fpl-import-error" class="plan-error hidden"></div>
-      </div>
-
       <div class="plan-form">
         <div class="plan-fields">
           <label>Origen
@@ -386,15 +376,6 @@
             <button id="btn-plan-copy" class="btn btn-ghost" type="button">Copiar</button>
           </div>
           <pre id="plan-narrative-text"></pre>
-        </div>
-
-        <div class="plan-fpl">
-          <div class="plan-block-head">
-            <h3>FPL ICAO — Field 15</h3>
-            <button id="btn-fpl-copy" class="btn btn-ghost" type="button">Copiar</button>
-          </div>
-          <pre id="plan-fpl-text"></pre>
-          <p class="hint">Cadena lista para pegar en el sistema operativo (Field 15 — ruta). Origen y destino se incluyen al final como referencia; quita el último token si tu sistema rechaza el destino duplicado.</p>
         </div>
 
         <div class="plan-conflicts">
