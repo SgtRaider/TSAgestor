@@ -68,41 +68,9 @@ window.TSAgestor.crossSection = (function () {
     return { A: tsas[best.i], B: tsas[best.j], distance: best.d };
   }
 
-  // Eje Norte-Sur: meridiano que pasa por la longitud media de las TSAs
-  // visibles, entre la latitud minima (km 0, sur) y la maxima (norte).
-  // Devuelve null si las TSAs estan tan agrupadas en latitud que el corte
-  // resulta degenerado (caera en chooseExtremes como fallback).
-  function chooseNorthSouthAxis(tsas) {
-    if (!tsas || !tsas.length) return null;
-    let latMin = Infinity, latMax = -Infinity;
-    let lonSum = 0, lonN = 0;
-    for (const t of tsas) {
-      if (t.centroid && Number.isFinite(t.centroid[1])) {
-        lonSum += t.centroid[1];
-        lonN++;
-      }
-      const poly = t.polygon || [];
-      for (const v of poly) {
-        const lat = v[0];
-        if (!Number.isFinite(lat)) continue;
-        if (lat < latMin) latMin = lat;
-        if (lat > latMax) latMax = lat;
-      }
-    }
-    if (!Number.isFinite(latMin) || !Number.isFinite(latMax)) return null;
-    if ((latMax - latMin) < 0.05) return null; // ~5.5 km — degenerado
-    const lonC = lonN ? lonSum / lonN : 0;
-    const A = { name: `${latMin.toFixed(2)}°N`, centroid: [latMin, lonC] };
-    const B = { name: `${latMax.toFixed(2)}°N`, centroid: [latMax, lonC] };
-    return { A, B, distance: geom.greatCircleDistance(A.centroid, B.centroid) };
-  }
-
-  // Decide qué eje usar:
-  //   - Hay plan: la distancia acumulada de la ruta (vale para circuitos).
-  //   - Sin plan: meridiano N→S que pasa por el centro de las TSAs (km 0
-  //     queda en la latitud mas al sur, donde "toca tierra").
-  //   - Fallback (TSAs casi alineadas en latitud): geodesica entre los dos
-  //     TSAs mas alejados (comportamiento previo).
+  // Decide qué eje usar: si hay plan, la distancia acumulada de la ruta
+  // (válida para circuitos donde origen = destino); si no, geodésica entre
+  // los dos TSAs más alejados.
   function pickAxis(tsas, plan) {
     if (plan && plan.coords && plan.coords.length >= 2) {
       const f = plan.coords[0];
@@ -115,11 +83,8 @@ window.TSAgestor.crossSection = (function () {
         fromPlan: true,
       };
     }
-    if (!tsas || !tsas.length) return null;
-    const ns = chooseNorthSouthAxis(tsas);
-    if (ns) return Object.assign({ fromPlan: false, axisKind: 'NS' }, ns);
-    if (tsas.length >= 2) {
-      return Object.assign({ fromPlan: false, axisKind: 'extremes' }, chooseExtremes(tsas));
+    if (tsas && tsas.length >= 2) {
+      return Object.assign({ fromPlan: false }, chooseExtremes(tsas));
     }
     return null;
   }
@@ -230,55 +195,6 @@ window.TSAgestor.crossSection = (function () {
       if (cond) inside = !inside;
     }
     return inside;
-  }
-
-  // Interseccion de dos segmentos en plano lat/lon (aproximacion plana,
-  // valida para distancias de TSAs militares <100 NM).
-  function segIntersect(p1, p2, p3, p4) {
-    const x1 = p1[1], y1 = p1[0], x2 = p2[1], y2 = p2[0];
-    const x3 = p3[1], y3 = p3[0], x4 = p4[1], y4 = p4[0];
-    const den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-    if (Math.abs(den) < 1e-12) return false;
-    const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den;
-    const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / den;
-    return t >= 0 && t <= 1 && u >= 0 && u <= 1;
-  }
-
-  // Dos poligonos estan en contacto lateral si:
-  //   (a) algun vertice de A cae dentro de B (o viceversa),
-  //   (b) alguna arista de A cruza alguna arista de B, o
-  //   (c) algun vertice esta a <= bufferKm de alguna arista del otro
-  //       (cubre el caso de arcos discretizados que no llegan a tocarse
-  //       por error de muestreo).
-  function polygonsTouch(polyA, polyB, bufferKm) {
-    if (!polyA || !polyB || !polyA.length || !polyB.length) return false;
-    bufferKm = bufferKm == null ? 1.852 : bufferKm; // ~1 NM por defecto
-    // (a)
-    for (const v of polyA) if (pointInPoly(v, polyB)) return true;
-    for (const v of polyB) if (pointInPoly(v, polyA)) return true;
-    // (b)
-    const nA = polyA.length, nB = polyB.length;
-    for (let i = 0; i < nA; i++) {
-      const a1 = polyA[i], a2 = polyA[(i + 1) % nA];
-      for (let j = 0; j < nB; j++) {
-        const b1 = polyB[j], b2 = polyB[(j + 1) % nB];
-        if (segIntersect(a1, a2, b1, b2)) return true;
-      }
-    }
-    // (c) — buffer
-    if (bufferKm > 0 && geom.pointToSegmentKm) {
-      for (const v of polyA) {
-        for (let j = 0; j < nB; j++) {
-          if (geom.pointToSegmentKm(v, polyB[j], polyB[(j + 1) % nB]) <= bufferKm) return true;
-        }
-      }
-      for (const v of polyB) {
-        for (let i = 0; i < nA; i++) {
-          if (geom.pointToSegmentKm(v, polyA[i], polyA[(i + 1) % nA]) <= bufferKm) return true;
-        }
-      }
-    }
-    return false;
   }
 
   function formatFL(ft) {
@@ -651,125 +567,6 @@ window.TSAgestor.crossSection = (function () {
     return 10 * pow;
   }
 
-  // ── Vista de inventario altitudinal (sin plan) ────────────────────────
-  // Cuando no hay ruta, la proyeccion espacial es engañosa con TSAs
-  // concentricas (caso Talavera). Agrupamos por proximidad geografica
-  // (cluster <30NM = mismo "complejo" militar), y dentro de cada cluster
-  // ordenamos por altitud para que el solape se lea visualmente: dos TSAs
-  // adyacentes con barras que se superponen en X comparten airspace.
-
-  // Prefijo comun mas largo (case-insensitive en separadores) — sirve
-  // para nombrar el cluster como "TSA TALAVERA" si todas comparten root.
-  function commonNamePrefix(names) {
-    if (!names.length) return '';
-    let p = names[0];
-    for (let i = 1; i < names.length; i++) {
-      while (p.length && !names[i].startsWith(p)) p = p.slice(0, -1);
-      if (!p) break;
-    }
-    return p.replace(/[\s\-_·]+$/, '').trim();
-  }
-
-  // Clustering por componentes conectadas: dos TSAs en el mismo grupo si
-  // sus poligonos estan en contacto lateral (intersectan, una contiene a
-  // la otra, o sus bordes estan a <= bufferKm).
-  // Como pre-filtro barato (evita O(N^2) con poligonos grandes) usamos un
-  // bounding-box test: si las bbox no se solapan +buffer, no hay contacto.
-  function bboxOf(poly) {
-    let latMin = Infinity, latMax = -Infinity, lonMin = Infinity, lonMax = -Infinity;
-    for (const v of poly) {
-      if (v[0] < latMin) latMin = v[0];
-      if (v[0] > latMax) latMax = v[0];
-      if (v[1] < lonMin) lonMin = v[1];
-      if (v[1] > lonMax) lonMax = v[1];
-    }
-    return { latMin, latMax, lonMin, lonMax };
-  }
-  function bboxesOverlap(a, b, padDeg) {
-    padDeg = padDeg || 0;
-    return !(a.latMax + padDeg < b.latMin
-          || a.latMin - padDeg > b.latMax
-          || a.lonMax + padDeg < b.lonMin
-          || a.lonMin - padDeg > b.lonMax);
-  }
-
-  function clusterTsasByContact(tsas, bufferKm) {
-    bufferKm = bufferKm == null ? 1.852 : bufferKm;
-    const padDeg = bufferKm / 110; // ~conversion grados a km en lat
-    const N = tsas.length;
-    if (!N) return [];
-    const bboxes = tsas.map(t => bboxOf(t.polygon));
-    // Union-find
-    const parent = Array.from({ length: N }, (_, i) => i);
-    function find(i) { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; }
-    function union(i, j) { const a = find(i), b = find(j); if (a !== b) parent[a] = b; }
-    for (let i = 0; i < N; i++) {
-      for (let j = i + 1; j < N; j++) {
-        if (find(i) === find(j)) continue;
-        if (!bboxesOverlap(bboxes[i], bboxes[j], padDeg)) continue;
-        if (polygonsTouch(tsas[i].polygon, tsas[j].polygon, bufferKm)) {
-          union(i, j);
-        }
-      }
-    }
-    // Agrupa por raiz
-    const byRoot = new Map();
-    for (let i = 0; i < N; i++) {
-      const r = find(i);
-      if (!byRoot.has(r)) byRoot.set(r, []);
-      byRoot.get(r).push(tsas[i]);
-    }
-    const clusters = [];
-    for (const list of byRoot.values()) {
-      // centroide del cluster = media de centroides
-      let lat = 0, lon = 0;
-      for (const t of list) { lat += t.centroid[0]; lon += t.centroid[1]; }
-      lat /= list.length; lon /= list.length;
-      list.sort((a, b) => {
-        if (a.vertical.lowerFt !== b.vertical.lowerFt) return a.vertical.lowerFt - b.vertical.lowerFt;
-        if (a.vertical.upperFt !== b.vertical.upperFt) return a.vertical.upperFt - b.vertical.upperFt;
-        return a.name.localeCompare(b.name);
-      });
-      const prefix = commonNamePrefix(list.map(t => t.name));
-      const name = prefix && prefix.length >= 4
-        ? prefix
-        : `Grupo ${lat.toFixed(2)}°N ${Math.abs(lon).toFixed(2)}°${lon < 0 ? 'W' : 'E'}`;
-      clusters.push({ centroid: [lat, lon], tsas: list, name });
-    }
-    // Norte primero (latitud descendente).
-    clusters.sort((a, b) => b.centroid[0] - a.centroid[0]);
-    return clusters;
-  }
-
-  // Unifica xMin/xMax (y centreKm) de todos los rects que pertenecen a
-  // un mismo cluster de contacto lateral. Devuelve el numero de clusters
-  // que tienen >= 2 miembros (para el chip de info).
-  function applyClusterGrouping(rects, tsas) {
-    const clusters = clusterTsasByContact(tsas);
-    const rectByTsaId = new Map(rects.map(r => [r.tsa.id, r]));
-    let merged = 0;
-    for (const cluster of clusters) {
-      if (cluster.tsas.length < 2) continue;
-      let xMin = Infinity, xMax = -Infinity;
-      const memberRects = [];
-      for (const t of cluster.tsas) {
-        const r = rectByTsaId.get(t.id);
-        if (!r) continue;
-        memberRects.push(r);
-        if (r.xMin < xMin) xMin = r.xMin;
-        if (r.xMax > xMax) xMax = r.xMax;
-      }
-      if (memberRects.length < 2) continue;
-      for (const r of memberRects) {
-        r.xMin = xMin;
-        r.xMax = xMax;
-        r.centreKm = (xMin + xMax) / 2;
-      }
-      merged++;
-    }
-    return merged;
-  }
-
   // ── Render principal ─────────────────────────────────────────────────
   // opts = { plan, clouds }
   function render(svgEl, tsas, opts) {
@@ -791,21 +588,12 @@ window.TSAgestor.crossSection = (function () {
       return { ok: false };
     }
 
-    const { A, B, distance, fromPlan, axisKind } = axis;
+    const { A, B, distance, fromPlan } = axis;
     // Cuando hay plan, las TSAs se proyectan sobre el segmento más cercano de
     // la ruta; sin plan, sobre la geodésica A→B (extremos de TSAs).
     const rects = fromPlan
       ? buildRectsForPlan(tsas, plan.coords)
       : buildRects(tsas, A, B);
-
-    // Agrupacion: TSAs en contacto lateral comparten columna X. Asi 30 TSAs
-    // concentricas (caso TALAVERA) se ven como una sola columna con bandas
-    // altitudinales apiladas, en lugar de 30 rectangulos solapados. Solo
-    // sin plan; con plan cada cruce es un evento que merece su propio rect.
-    let clusterCount = 0;
-    if (!fromPlan && tsas.length > 1) {
-      clusterCount = applyClusterGrouping(rects, tsas);
-    }
 
     // Normaliza a partir de 0. Cuando es plan, todo arranca en 0 (cumDist).
     const xMinRaw = fromPlan ? 0 : Math.min(0, ...rects.map(r => r.xMin));
@@ -852,11 +640,9 @@ window.TSAgestor.crossSection = (function () {
     svgEl.appendChild(el('rect', { x: 0, y: 0, width: WIDTH, height, fill: '#ffffff' }));
 
     // Cabecera
-    const axisLabel = fromPlan
-      ? '  ·  ruta del plan de vuelo'
-      : (axisKind === 'NS' ? '  ·  eje Sur → Norte' : '');
     svgEl.appendChild(text(WIDTH / 2, 26,
-      `Corte transversal: ${A.name}  →  ${B.name}${axisLabel}`,
+      `Corte transversal: ${A.name}  →  ${B.name}` +
+        (fromPlan ? '  ·  ruta del plan de vuelo' : ''),
       { 'text-anchor': 'middle', 'font-size': 16, 'font-weight': 700, fill: '#0f172a' }
     ));
     const subParts = [
@@ -969,7 +755,6 @@ window.TSAgestor.crossSection = (function () {
       extremes: { A: A.name, B: B.name },
       distance,
       panels: panels.length,
-      clusters: clusterCount,
     };
   }
 

@@ -412,13 +412,12 @@
       empty.classList.add('hidden');
       svg.style.display = 'block';
       btn.disabled = false;
-      const cloudTag = opts.clouds ? ' · nubes' : '';
       const planTag = opts.plan ? ' · plan' : '';
-      const groupTag = res.clusters > 0 ? ` · ${res.clusters} grupo${res.clusters === 1 ? '' : 's'}` : '';
+      const cloudTag = opts.clouds ? ' · nubes' : '';
       info.textContent =
         `${res.extremes.A} → ${res.extremes.B} · ${res.distance.toFixed(1)} km · ` +
         `${res.panels} panel${res.panels === 1 ? '' : 'es'} · solapes: ${res.overlapCount}` +
-        groupTag + planTag + cloudTag;
+        planTag + cloudTag;
     } else {
       empty.classList.remove('hidden');
       svg.style.display = 'none';
@@ -1404,9 +1403,7 @@
       // SVG en el DOM se regeneraba SIN el plan tras cada exportación, lo que
       // luego hacia que el corte en pantalla apareciese sin la ruta hasta
       // cambiar de pestaña, y el PDF nunca incluia la ruta dibujada.
-      // ≥1 TSA basta para la vista altitudinal; con plan, ≥2 TSAs o
-      // tener ruta justifica el corte espacial.
-      const hasContent = visible.length >= 1 || !!state.lastPlan;
+      const hasContent = visible.length >= 2 || !!state.lastPlan;
       if (hasContent) {
         crossSection.render(svg, visible, {
           plan:   state.lastPlan || null,
