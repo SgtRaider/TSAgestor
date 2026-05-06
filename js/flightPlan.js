@@ -424,10 +424,17 @@ window.TSAgestor.flightPlan = (function () {
       const segLowFt  = Math.min(flA, flB) * 100;
       const segHighFt = Math.max(flA, flB) * 100;
       for (const tsa of tsas) {
-        // El tramo arranca o termina explícitamente en esta TSA → cruce
-        // intencional, no se reporta como conflicto.
-        if (seg.from.tsa && seg.from.tsa.id === tsa.id) continue;
-        if (seg.to.tsa   && seg.to.tsa.id   === tsa.id) continue;
+        // El tramo arranca o termina con un clic EXPLICITO sobre esta TSA
+        // (modo dibujo: enrichWaypoint pone name=tsa.name solo cuando el
+        // waypoint era generico, p.ej. "lat,lon"). Eso es un cruce
+        // intencional; no se reporta como conflicto. Aeropuertos u otros
+        // waypoints con nombre propio que caen geograficamente dentro de
+        // una TSA (LEBZ esta dentro de TSA TALAVERA LOW AUTOMATICO) NO
+        // cuentan como intencional y deben aparecer como conflicto si
+        // proceden por FL y horario.
+        const fromExplicit = seg.from.tsa && seg.from.tsa.id === tsa.id && seg.from.name === tsa.name;
+        const toExplicit   = seg.to.tsa   && seg.to.tsa.id   === tsa.id && seg.to.name   === tsa.name;
+        if (fromExplicit || toExplicit) continue;
         if (segHighFt < tsa.vertical.lowerFt) continue;
         if (segLowFt  > tsa.vertical.upperFt) continue;
         if (!segCrossesPolygon(
