@@ -155,21 +155,31 @@ window.TSAgestor.flightPlan = (function () {
   // Si el waypoint era un genérico "lat,lon", adopta el nombre de la TSA.
   function enrichWaypoint(pt, tsas, initialFL) {
     const tsa = findTSAContaining([pt.lat, pt.lon], tsas);
-    const isGenericName = !pt.name || /^-?\d+\.\d+,-?\d+\.\d+$/.test(pt.name);
-    if (tsa) {
+    // Cruce intencional: solo cuando el waypoint LLEGA aqui ya con el nombre
+    // EXACTO de la TSA en la que cae. Es el caso del clic en modo dibujo
+    // sobre un poligono (mapView crea el punto con name = tsa.name) y
+    // tambien al recargar un plan guardado. Para esos puntos ajustamos FL al
+    // rango permitido por la TSA.
+    const isExplicit = tsa && pt.name === tsa.name;
+    if (isExplicit) {
       return {
-        name: isGenericName ? tsa.name : pt.name,
+        name: tsa.name,
         lat: pt.lat,
         lon: pt.lon,
         tsa,
         fl: adjustFLForTSA(initialFL, tsa),
       };
     }
+    // Cualquier otro waypoint -- aeropuerto (LEBZ), NAVAID, fix RNAV o
+    // coordenada decimal "lat,lon" tipeada en Via -- conserva su nombre y
+    // el FL del plan. Si cae dentro de una TSA, anotamos `tsa` para que
+    // findConflicts pueda excluirla (no tiene sentido marcar como conflicto
+    // un cruce que es inevitable por la propia ubicacion del waypoint).
     return {
       name: pt.name || (pt.lat.toFixed(3) + ',' + pt.lon.toFixed(3)),
       lat: pt.lat,
       lon: pt.lon,
-      tsa: null,
+      tsa: tsa || null,
       fl: initialFL,
     };
   }
@@ -424,17 +434,12 @@ window.TSAgestor.flightPlan = (function () {
       const segLowFt  = Math.min(flA, flB) * 100;
       const segHighFt = Math.max(flA, flB) * 100;
       for (const tsa of tsas) {
-        // El tramo arranca o termina con un clic EXPLICITO sobre esta TSA
-        // (modo dibujo: enrichWaypoint pone name=tsa.name solo cuando el
-        // waypoint era generico, p.ej. "lat,lon"). Eso es un cruce
-        // intencional; no se reporta como conflicto. Aeropuertos u otros
-        // waypoints con nombre propio que caen geograficamente dentro de
-        // una TSA (LEBZ esta dentro de TSA TALAVERA LOW AUTOMATICO) NO
-        // cuentan como intencional y deben aparecer como conflicto si
-        // proceden por FL y horario.
-        const fromExplicit = seg.from.tsa && seg.from.tsa.id === tsa.id && seg.from.name === tsa.name;
-        const toExplicit   = seg.to.tsa   && seg.to.tsa.id   === tsa.id && seg.to.name   === tsa.name;
-        if (fromExplicit || toExplicit) continue;
+        // El tramo arranca o termina dentro de esta TSA (sea por clic
+        // explicito en modo dibujo o porque un aeropuerto/waypoint cae
+        // geograficamente dentro): cruce esperado, no se reporta como
+        // conflicto.
+        if (seg.from.tsa && seg.from.tsa.id === tsa.id) continue;
+        if (seg.to.tsa   && seg.to.tsa.id   === tsa.id) continue;
         if (segHighFt < tsa.vertical.lowerFt) continue;
         if (segLowFt  > tsa.vertical.upperFt) continue;
         if (!segCrossesPolygon(
