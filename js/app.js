@@ -39,6 +39,7 @@
     planWPsLoaded: false,
     drawnVia: null,                                            // ruta dibujada como [{name,lat,lon}], si la hay
     crossClouds: null,                                         // nubes Open-Meteo muestreadas en los waypoints del plan
+    legendOpen: false,                                         // toggle de la leyenda flotante de TSAs en el mapa
   };
 
   // ── Utilidades DOM ───────────────────────────────────────────────────
@@ -335,6 +336,20 @@
       mapView.setWaypointClickHandler(addWaypointToVia);
     }
     state.mapReady = true;
+  }
+
+  // Toggle de la leyenda flotante de TSAs en el mapa. Al activar, anyade
+  // un control Leaflet en la esquina top-right con la lista de TSAs
+  // visibles + horario; al desactivar, lo retira sin tocar el mapa.
+  function toggleMapLegend() {
+    ensureMap();
+    state.legendOpen = !state.legendOpen;
+    const btn = $('#btn-map-legend');
+    btn.setAttribute('aria-pressed', String(state.legendOpen));
+    btn.classList.toggle('is-active', state.legendOpen);
+    if (mapView.setLegendVisible) {
+      mapView.setLegendVisible(state.legendOpen, getVisible());
+    }
   }
 
   // Anyade un codigo de waypoint al final del campo Via del plan, evitando
@@ -1422,7 +1437,12 @@
   // ── Pipelines de render ──────────────────────────────────────────────
 
   function renderViews() {
-    if (state.mapReady) mapView.render(getVisible());
+    const visible = getVisible();
+    if (state.mapReady) {
+      mapView.render(visible);
+      // Refresca el contenido de la leyenda flotante si esta activa.
+      if (state.legendOpen && mapView.updateLegend) mapView.updateLegend(visible);
+    }
     renderCross();
     refreshExportUI();
   }
@@ -1447,6 +1467,7 @@
 
   function wireActions() {
     $('#btn-fit-bounds').addEventListener('click', () => mapView.fitBounds());
+    $('#btn-map-legend').addEventListener('click', toggleMapLegend);
     $('#btn-download-cross').addEventListener('click', downloadCrossPNG);
     $('#btn-export-pdf').addEventListener('click', exportPDF);
     $('#btn-plan-calc').addEventListener('click', calcPlan);

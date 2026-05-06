@@ -260,6 +260,73 @@ window.TSAgestor.mapView = (function () {
     }
   }
 
+  // ── Leyenda flotante de TSAs activas ───────────────────────────────
+  // Panel scrollable en la esquina top-right del mapa con la lista de
+  // TSAs visibles (selección ∩ filtro), su rango vertical y el resumen
+  // de horario. Es un toggle: al activar se anyade el control, al
+  // desactivar se elimina. updateLegend() refresca el contenido sin
+  // tocar el estado de visibilidad (lo llama app.js cuando cambia la
+  // seleccion o el filtro).
+  let tsaLegendCtl = null;
+  let tsaLegendTSAs = [];
+
+  function buildTSALegendHTML(tsas) {
+    if (!tsas.length) {
+      return '<div class="tsa-legend-empty"><i>Sin TSAs visibles</i></div>';
+    }
+    const fmt = window.TSAgestor.scheduleFmt;
+    const rows = tsas.map(t => {
+      const band = geom.altitudeBand(t.vertical.upperFt);
+      const color = BAND_COLORS[band];
+      const sched = fmt ? escapeHTMLLocal(fmt.summary(t.schedules)) : '';
+      return `
+        <div class="tsa-legend-row">
+          <span class="tsa-legend-swatch" style="background:${color}"></span>
+          <div class="tsa-legend-text">
+            <div class="tsa-legend-name">${escapeHTMLLocal(t.name)}</div>
+            <div class="tsa-legend-alt">${escapeHTMLLocal(t.vertical.lowerLabel)} – ${escapeHTMLLocal(t.vertical.upperLabel)}</div>
+            <div class="tsa-legend-sched">${sched || '<i>sin horario</i>'}</div>
+          </div>
+        </div>`;
+    }).join('');
+    return `
+      <div class="tsa-legend-head">TSAs activas <span class="tsa-legend-count">${tsas.length}</span></div>
+      <div class="tsa-legend-body">${rows}</div>`;
+  }
+
+  function setLegendVisible(visible, tsas) {
+    tsaLegendTSAs = tsas || [];
+    if (!visible) {
+      if (tsaLegendCtl && map) tsaLegendCtl.remove();
+      tsaLegendCtl = null;
+      return;
+    }
+    if (!map) return;
+    if (tsaLegendCtl) {
+      // Ya visible -> solo refresca contenido
+      const cont = tsaLegendCtl.getContainer();
+      if (cont) cont.innerHTML = buildTSALegendHTML(tsaLegendTSAs);
+      return;
+    }
+    tsaLegendCtl = L.control({ position: 'topright' });
+    tsaLegendCtl.onAdd = function () {
+      const div = L.DomUtil.create('div', 'tsa-legend');
+      div.innerHTML = buildTSALegendHTML(tsaLegendTSAs);
+      // Permite scroll dentro del panel sin pannear el mapa.
+      L.DomEvent.disableClickPropagation(div);
+      L.DomEvent.disableScrollPropagation(div);
+      return div;
+    };
+    tsaLegendCtl.addTo(map);
+  }
+
+  function updateLegend(tsas) {
+    if (!tsaLegendCtl) { tsaLegendTSAs = tsas || []; return; }
+    setLegendVisible(true, tsas);
+  }
+
+  function isLegendVisible() { return !!tsaLegendCtl; }
+
   let meteoLayer = null;
   let meteoLoadedAll = false;     // ya se cargaron todos los aeropuertos
   let meteoBoundLoad = false;     // listener add/remove ya enganchado
@@ -970,5 +1037,6 @@ window.TSAgestor.mapView = (function () {
     applyOpacities,
     getAirwayLayerState,
     setWaypointClickHandler,
+    setLegendVisible, updateLegend, isLegendVisible,
   };
 })();

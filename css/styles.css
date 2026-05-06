@@ -508,6 +508,87 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
 .leaflet-tooltip.wp-label.rnav   { color: #334155; }
 .leaflet-tooltip.wp-label::before { display: none; }
 
+/* Leyenda flotante de TSAs activas (toggle desde la pestana Mapa). */
+.tsa-legend {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  width: 320px;
+  max-width: calc(100vw - 60px);
+  max-height: calc(100vh - 160px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  color: #0f172a;
+  font-size: 12px;
+}
+.tsa-legend-head {
+  font-weight: 700;
+  font-size: 13px;
+  padding: 8px 10px;
+  background: #003764;
+  color: #ffffff;
+  border-bottom: 1px solid #1e293b;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.tsa-legend-count {
+  background: #facc15;
+  color: #003764;
+  font-weight: 700;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 10px;
+}
+.tsa-legend-body {
+  overflow-y: auto;
+  flex: 1;
+}
+.tsa-legend-empty {
+  padding: 10px;
+  color: #64748b;
+}
+.tsa-legend-row {
+  display: flex;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.tsa-legend-row:last-child { border-bottom: 0; }
+.tsa-legend-swatch {
+  flex: 0 0 8px;
+  width: 8px;
+  border-radius: 2px;
+  margin-top: 2px;
+}
+.tsa-legend-text { flex: 1; min-width: 0; }
+.tsa-legend-name {
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tsa-legend-alt {
+  color: #475569;
+  font-size: 11px;
+}
+.tsa-legend-sched {
+  color: #1e3a8a;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+/* Estado pulsado del boton toggle de la leyenda. */
+.btn.is-active {
+  background: var(--ea-amarillo, #facc15);
+  color: var(--ea-gris-aviador, #0f172a);
+  border-color: var(--ea-amarillo, #facc15);
+}
+
 /* Toast flotante sobre el mapa para confirmar acciones (anyadir waypoint, ...) */
 .map-toast {
   position: absolute;
