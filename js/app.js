@@ -695,8 +695,9 @@
             <span class="dim">${sub}</span>
           </div>
           <div class="saved-plan-actions">
-            <button class="btn btn-ghost" type="button" data-action="load" data-name="${escapeHTML(p.name)}">Cargar</button>
-            <button class="btn btn-ghost" type="button" data-action="del"  data-name="${escapeHTML(p.name)}">Borrar</button>
+            <button class="btn btn-ghost" type="button" data-action="load"   data-name="${escapeHTML(p.name)}">Cargar</button>
+            <button class="btn btn-ghost" type="button" data-action="export" data-name="${escapeHTML(p.name)}">Exportar</button>
+            <button class="btn btn-ghost" type="button" data-action="del"    data-name="${escapeHTML(p.name)}">Borrar</button>
           </div>
         </div>`;
     }).join('');
@@ -746,8 +747,81 @@
     const btn = e.target.closest('button[data-action]');
     if (!btn) return;
     const name = btn.dataset.name;
-    if (btn.dataset.action === 'load')      loadPlanByName(name);
-    else if (btn.dataset.action === 'del')  deletePlanByName(name);
+    if (btn.dataset.action === 'load')         loadPlanByName(name);
+    else if (btn.dataset.action === 'export')  exportPlanByName(name);
+    else if (btn.dataset.action === 'del')     deletePlanByName(name);
+  }
+
+  // ── Export / import de planes guardados a JSON ─────────────────────
+
+  // Sanitiza un nombre para usarlo como parte de un filename (espacios y
+  // caracteres raros -> "_"). Mantiene letras/numeros/guion/punto.
+  function sanitizeFilename(s) {
+    return String(s || 'plan').replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 60) || 'plan';
+  }
+
+  // Descarga el plan dado en un .json autocontenido. Wrapping con _format
+  // y _version para futura migracion si cambia el esquema interno.
+  function exportPlanByName(name) {
+    if (!savedPlans) return;
+    const p = savedPlans.get(name);
+    if (!p) { alert(`No se encuentra el plan "${name}".`); return; }
+    const envelope = {
+      _format: 'tsagestor-plan',
+      _version: 1,
+      exportedAt: new Date().toISOString(),
+      plan: p,
+    };
+    const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const stamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 13);
+    a.download = `tsagestor-plan-${sanitizeFilename(name)}-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function importPlanFromFile(file) {
+    if (!savedPlans || !file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      let parsed;
+      try { parsed = JSON.parse(reader.result); }
+      catch (e) { alert('El archivo no es JSON válido: ' + e.message); return; }
+      // Acepta envelope nuevo (_format) o un objeto plan plano (legacy).
+      const plan = (parsed && parsed._format === 'tsagestor-plan' && parsed.plan) ? parsed.plan : parsed;
+      if (!plan || typeof plan !== 'object' || (!plan.origin && !plan.destination && !plan.flightLevel)) {
+        alert('El archivo no parece un plan exportado de TSAgestor.');
+        return;
+      }
+      let name = String(plan.name || '').trim() || 'Plan importado';
+      if (savedPlans.has(name)) {
+        const ok = confirm(`Ya existe un plan llamado "${name}". ¿Sobrescribir? (Cancelar = guardar con otro nombre)`);
+        if (!ok) {
+          let i = 2;
+          while (savedPlans.has(`${name} (${i})`)) i++;
+          name = `${name} (${i})`;
+        }
+      }
+      // Reusamos savedPlans.save() para que aplique nombre + fecha de guardado
+      // y descartamos cualquier `name`/`saved` heredado.
+      const data = Object.assign({}, plan);
+      delete data.name; delete data.saved;
+      savedPlans.save(name, data);
+      renderSavedPlansList();
+      alert(`Plan "${name}" importado correctamente.`);
+    };
+    reader.onerror = () => alert('No se pudo leer el archivo.');
+    reader.readAsText(file, 'utf-8');
+  }
+
+  function onImportPlanFileChange(e) {
+    const f = e.target.files && e.target.files[0];
+    if (f) importPlanFromFile(f);
+    e.target.value = ''; // permite re-seleccionar el mismo archivo despues
   }
 
   function calcPlan() {
@@ -1484,6 +1558,8 @@
       if (e.key === 'Enter') { e.preventDefault(); savePlanByName(); }
     });
     $('#saved-plans-list').addEventListener('click', onSavedPlanListClick);
+    $('#btn-import-plan').addEventListener('click', () => $('#file-import-plan').click());
+    $('#file-import-plan').addEventListener('change', onImportPlanFileChange);
     $('#btn-cross-clouds').addEventListener('click', loadCrossClouds);
     $('#btn-cross-clouds-clear').addEventListener('click', clearCrossClouds);
     $('#btn-cross-gramet').addEventListener('click', loadGramet);

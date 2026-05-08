@@ -307,6 +307,8 @@
           <div class="save-row">
             <input type="text" id="saved-plan-name" placeholder="Nombre del plan…" maxlength="40" autocomplete="off">
             <button id="btn-save-plan" class="btn" type="button">Guardar plan actual</button>
+            <button id="btn-import-plan" class="btn btn-ghost" type="button" title="Cargar un plan exportado previamente desde un archivo .json">Importar plan…</button>
+            <input id="file-import-plan" type="file" accept="application/json,.json" hidden>
           </div>
         </div>
         <div id="saved-plans-list" class="saved-plans-list"></div>
