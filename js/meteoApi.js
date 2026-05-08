@@ -11,7 +11,7 @@ window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.meteoApi = (function () {
   'use strict';
 
-  const MODULE_BUILD = 'meteoApi v11 (gramet: bins finos + filtra co-localizados a endpoints)';
+  const MODULE_BUILD = 'meteoApi v12 (gramet: cap 30 waypoints, bins ~43 NM)';
   console.info('[TSAgestor]', MODULE_BUILD);
 
   // Detección de entorno: en deploy HTTPS no-local asumimos que tenemos
@@ -508,7 +508,7 @@ window.TSAgestor.meteoApi = (function () {
   // Limites empiricos de Autorouter /met/gramet para evitar HTTP 500/504:
   //   - mas de ~15 waypoints o totaleet > ~6h hace que el upstream falle.
   //   - origen == destino con 0 NM intermedios (caso circuito) tambien.
-  const MAX_GRAMET_WAYPOINTS = 25;
+  const MAX_GRAMET_WAYPOINTS = 30;
   const MAX_GRAMET_TOTALEET  = 6 * 3600;
 
   function getGrametUrl(plan, format, strategy) {
