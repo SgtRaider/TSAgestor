@@ -1471,6 +1471,7 @@
     $('#plan-via').addEventListener('input', () => { state.drawnVia = null; });
     $('#plan-log-table tbody').addEventListener('input', onLegInputChange);
     $('#btn-draw-undo').addEventListener('click', () => mapView.undoDrawingPoint());
+    $('#btn-draw-return').addEventListener('click', () => mapView.addReturnLeg());
     $('#btn-draw-finish').addEventListener('click', () => mapView.finishDrawingRoute());
     $('#btn-draw-cancel').addEventListener('click', () => {
       mapView.cancelDrawingRoute();

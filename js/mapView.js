@@ -947,6 +947,31 @@ window.TSAgestor.mapView = (function () {
     if (drawState.onUpdate) drawState.onUpdate(drawState.points.slice());
   }
 
+  // Anade los waypoints intermedios en orden INVERSO (excepto el ultimo,
+  // para no duplicarlo) -> circuito de ida y vuelta. Si el plan es
+  // origen->A->B->C->destino, tras "Vuelta" queda
+  // origen->A->B->C->B->A->destino. Util cuando origen == destino.
+  function addReturnLeg() {
+    if (!drawState || drawState.points.length < 1) return 0;
+    const reversed = drawState.points.slice().reverse().slice(1); // sin duplicar el actual ultimo
+    if (!reversed.length) {
+      // Solo hay 1 punto: la "vuelta" trivial seria pasar por el origen
+      // de nuevo. Anadimos un waypoint con las coords del origen.
+      const o = drawState.origin;
+      drawState.points.push({ name: o.name || null, lat: o.lat, lon: o.lon, tsa: null, fl: drawState.initialFL });
+    } else {
+      for (const p of reversed) {
+        // Clonamos para no compartir referencias entre ida y vuelta.
+        drawState.points.push({
+          name: p.name, lat: p.lat, lon: p.lon, tsa: p.tsa || null, fl: p.fl,
+        });
+      }
+    }
+    redrawDrawing();
+    if (drawState.onUpdate) drawState.onUpdate(drawState.points.slice());
+    return drawState.points.length;
+  }
+
   function teardownDrawing() {
     if (!drawState) return;
     if (drawState.clickCapture) {
@@ -1088,7 +1113,7 @@ window.TSAgestor.mapView = (function () {
   return {
     init, render, fitBounds, invalidateSize, fitToDefault,
     renderFlightPlan, clearFlightPlan,
-    startDrawingRoute, finishDrawingRoute, cancelDrawingRoute, undoDrawingPoint,
+    startDrawingRoute, finishDrawingRoute, cancelDrawingRoute, undoDrawingPoint, addReturnLeg,
     setWeatherMarkers, clearWeatherMarkers,
     applyOpacities,
     getAirwayLayerState,
