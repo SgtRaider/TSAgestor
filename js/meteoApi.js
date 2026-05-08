@@ -11,7 +11,7 @@ window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.meteoApi = (function () {
   'use strict';
 
-  const MODULE_BUILD = 'meteoApi v12 (gramet: cap 30 waypoints, bins ~43 NM)';
+  const MODULE_BUILD = 'meteoApi v13 (CTH con TIME explicito + cache-bust 15min)';
   console.info('[TSAgestor]', MODULE_BUILD);
 
   // Detección de entorno: en deploy HTTPS no-local asumimos que tenemos
@@ -199,11 +199,29 @@ window.TSAgestor.meteoApi = (function () {
     throw new Error('RainViewer no devolvió ni satélite ni radar.');
   }
 
+  // Calcula el TIME mas reciente disponible para CTH MSG. EumetSat publica
+  // un mosaico nuevo cada 15 min (HH:00, HH:15, HH:30, HH:45) con un retraso
+  // tipico de procesamiento de 5-8 min. Devolvemos el slot anterior al actual
+  // para garantizar que ya este publicado.
+  // Formato: 'YYYY-MM-DDTHH:MM:00Z' (ISO 8601 con segundos a 0).
+  function latestCthTimeISO() {
+    const now = new Date();
+    const minute = now.getUTCMinutes();
+    const slot = Math.floor(minute / 15) * 15;
+    now.setUTCMinutes(slot - 15, 0, 0); // un slot por detras
+    const pad = n => String(n).padStart(2, '0');
+    return `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}` +
+           `T${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:00Z`;
+  }
+
   // EUMETVIEW MSG CTH WMS — devuelve { url, options, title, legendUrl }
-  // para L.tileLayer.wms. La capa tiene una time dimension cuyo "default"
-  // es el último mosaico publicado, así que NO pasamos TIME y dejamos que
-  // GeoServer sirva la imagen más reciente automáticamente.
+  // para L.tileLayer.wms. Pasamos TIME explicito (slot de 15 min anterior
+  // al actual) por dos motivos: (1) forzar el mosaico mas reciente sin
+  // depender del "default" del servidor, (2) cache-bust automatico cada
+  // 15 min porque la URL cambia con TIME -> el navegador no sirve tiles
+  // viejos cacheados.
   function getEumetCthWMS() {
+    const time = latestCthTimeISO();
     const legendUrl = `${EUMET_WMS}?service=WMS&version=1.3.0` +
       `&request=GetLegendGraphic&format=image/png&width=640&height=80` +
       `&layer=${EUMET_LAYER}&access_token=${EUMET_TOKEN}`;
@@ -211,6 +229,7 @@ window.TSAgestor.meteoApi = (function () {
       url: EUMET_WMS,
       title: EUMET_TITLE,
       legendUrl,
+      time,
       options: {
         layers: EUMET_LAYER,
         format: 'image/png',
@@ -218,6 +237,7 @@ window.TSAgestor.meteoApi = (function () {
         version: '1.3.0',
         attribution: '© EUMETSAT · MSG CTH',
         access_token: EUMET_TOKEN,
+        time,
       },
     };
   }
