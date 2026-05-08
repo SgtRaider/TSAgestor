@@ -559,7 +559,7 @@
       const wrap = c.querySelector('.gramet-img-wrap');
       const strategyLabel = {
         full:    { txt: 'Ruta completa', cls: 'gramet-strat-ok' },
-        nearby:  { txt: 'Ruta aproximada (aeropuertos/NAVAIDs a ≤30 NM de la polilínea del plan)', cls: 'gramet-strat-warn' },
+        nearby:  { txt: 'Ruta aproximada (aeropuertos/NAVAIDs a ≤30 NM de la polilínea — ampliado a 60/100 NM si la ruta es offshore)', cls: 'gramet-strat-warn' },
         minimal: { txt: 'Solo origen → destino (gran círculo)', cls: 'gramet-strat-warn' },
       }[result.strategy] || { txt: result.strategy, cls: '' };
       const wpHtml = result.waypoints && result.waypoints.length

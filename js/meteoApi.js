@@ -11,7 +11,7 @@ window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.meteoApi = (function () {
   'use strict';
 
-  const MODULE_BUILD = 'meteoApi v6 (gramet: muestreo a lo largo de la ruta, ≤30 NM)';
+  const MODULE_BUILD = 'meteoApi v7 (gramet: corredor adaptativo 30→60→100 NM)';
   console.info('[TSAgestor]', MODULE_BUILD);
 
   // Detección de entorno: en deploy HTTPS no-local asumimos que tenemos
@@ -623,18 +623,20 @@ window.TSAgestor.meteoApi = (function () {
   }
 
   // Construye la ruta efectiva para GRAMET muestreando a lo largo de la
-  // polilinea real del plan: para cada aeropuerto/NAVAID conocido se mide
-  // su distancia perpendicular MINIMA a cada segmento de la ruta; si esa
-  // distancia es <= NEAR_NM, el punto entra como candidato anclado al
-  // along-track del segmento donde mejor encaja. Asi obtenemos puntos
-  // realmente alineados con la ruta y no aeropuertos remotos elegidos por
-  // estar cerca de un centroide TSA arbitrario.
+  // polilinea real del plan. Para cada aeropuerto/NAVAID conocido se mide
+  // la distancia perpendicular MINIMA a cada segmento de la ruta; si es
+  // <= threshold, entra como candidato anclado al along-track del
+  // segmento donde mejor encaja.
+  //
+  // Threshold adaptativo: empezamos con 30 NM (preferencia del usuario),
+  // pero si la ruta es offshore o pasa lejos de aerodromos costeros y no
+  // hay suficientes candidatos, ampliamos a 60 NM y luego a 100 NM. Asi
+  // rutas cortas terrestres mantienen precision y rutas largas siempre
+  // tienen suficientes anclas para que GRAMET sea util.
   function buildNearbyWaypoints(plan) {
     const aw = window.TSAgestor && window.TSAgestor.airways;
     if (!aw || !aw.waypoints || !aw.waypointTypes) return `${plan.origin} ${plan.destination}`;
     if (!plan.coords || plan.coords.length < 2) return `${plan.origin} ${plan.destination}`;
-
-    const NEAR_NM = 30;
 
     // Catalogo "fiable" para Autorouter: aeropuertos OACI y NAVAIDs.
     const known = [];
@@ -646,15 +648,12 @@ window.TSAgestor.meteoApi = (function () {
     }
     if (!known.length) return `${plan.origin} ${plan.destination}`;
 
-    // Distancia plana en NM (suficiente para <100 NM).
     function approxNM(la, lo, lb, bo) {
       const dla = (lb - la) * 60;
       const ml = ((la + lb) / 2) * Math.PI / 180;
       const dlo = (bo - lo) * 60 * Math.cos(ml);
       return Math.sqrt(dla * dla + dlo * dlo);
     }
-    // Proyecta P sobre el segmento A->B en plano lat/lon equirectangular.
-    // Devuelve t (clamp 0-1, fraccion del segmento) y la distancia perpendicular en NM.
     function projectOnSeg(P, A, B) {
       const ml = ((A[0] + B[0]) / 2) * Math.PI / 180;
       const cosml = Math.cos(ml);
@@ -670,7 +669,6 @@ window.TSAgestor.meteoApi = (function () {
       return { t, dist: approxNM(P[0], P[1], cy, cx) };
     }
 
-    // Path real del plan + tabla de longitudes acumuladas en NM.
     const path = plan.coords.map(c => [c.lat, c.lon]);
     const segLens = [];
     const cumNM = [0];
@@ -680,34 +678,47 @@ window.TSAgestor.meteoApi = (function () {
       cumNM.push(cumNM[i] + len);
     }
 
-    // Para cada (known, segmento), si la perpendicular es <= NEAR_NM lo
-    // anyadimos como candidato. Un mismo aeropuerto puede aparecer varias
-    // veces si el plan vuelve a pasar cerca (caso circuito): cada paso
-    // queda en su along-track correspondiente.
-    const candidates = [];
+    // Pre-calculo: para cada known, MEJOR proyeccion sobre cada segmento
+    // (distancia + along) — no depende del threshold, asi que lo cacheamos.
+    const allHits = []; // {id, along, dist}
     for (const k of known) {
-      // Optimizacion: bbox check rapido (rechaza known >NEAR_NM del bbox del path).
-      // No es estrictamente necesario; con catalogos de pocos miles funciona OK.
       for (let i = 0; i < path.length - 1; i++) {
         const proj = projectOnSeg([k.lat, k.lon], path[i], path[i + 1]);
-        if (proj.dist > NEAR_NM) continue;
         const along = cumNM[i] + proj.t * segLens[i];
-        candidates.push({ id: k.id, along, dist: proj.dist });
+        allHits.push({ id: k.id, along, dist: proj.dist });
       }
     }
 
-    // Ordena por avance y elimina duplicados consecutivos.
-    candidates.sort((a, b) => a.along - b.along);
-    const ordered = [];
-    for (const c of candidates) {
-      if (ordered.length && ordered[ordered.length - 1].id === c.id) continue;
-      ordered.push(c);
+    function buildList(thresholdNM) {
+      const filtered = allHits.filter(h => h.dist <= thresholdNM);
+      filtered.sort((a, b) => a.along - b.along);
+      const out = [];
+      for (const c of filtered) {
+        if (out.length && out[out.length - 1].id === c.id) continue;
+        out.push(c);
+      }
+      // ID unicos para el conteo de "candidatos reales".
+      const uniqueIds = new Set(out.map(c => c.id));
+      return { ordered: out, uniqueCount: uniqueIds.size };
     }
 
-    let names = ordered.map(c => c.id);
+    // Adaptativo: 30 -> 60 -> 100 NM hasta tener al menos MIN_HITS unicos.
+    const THRESHOLDS = [30, 60, 100];
+    const MIN_HITS = 4;
+    let chosen = null, usedNM = THRESHOLDS[0];
+    for (const t of THRESHOLDS) {
+      const r = buildList(t);
+      chosen = r;
+      usedNM = t;
+      if (r.uniqueCount >= MIN_HITS) break;
+    }
+    if (usedNM > 30) {
+      console.info('[gramet] Pocos aerodromos a <=30 NM; ampliado el corredor a', usedNM, 'NM (', chosen.uniqueCount, 'puntos unicos)');
+    }
+
+    let names = chosen.ordered.map(c => c.id);
     if (!names.length || names[0] !== plan.origin) names.unshift(plan.origin);
     if (names[names.length - 1] !== plan.destination) names.push(plan.destination);
-    // Dedup final por si origen/destino se solapan con el primero/ultimo del muestreo.
     const result = [];
     for (const n of names) {
       if (result.length && result[result.length - 1] === n) continue;
