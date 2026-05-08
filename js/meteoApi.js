@@ -11,7 +11,7 @@ window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.meteoApi = (function () {
   'use strict';
 
-  const MODULE_BUILD = 'meteoApi v7 (gramet: corredor adaptativo 30→60→100 NM)';
+  const MODULE_BUILD = 'meteoApi v8 (gramet: incluye RNAV fixes + cap 20 waypoints)';
   console.info('[TSAgestor]', MODULE_BUILD);
 
   // Detección de entorno: en deploy HTTPS no-local asumimos que tenemos
@@ -508,7 +508,7 @@ window.TSAgestor.meteoApi = (function () {
   // Limites empiricos de Autorouter /met/gramet para evitar HTTP 500/504:
   //   - mas de ~15 waypoints o totaleet > ~6h hace que el upstream falle.
   //   - origen == destino con 0 NM intermedios (caso circuito) tambien.
-  const MAX_GRAMET_WAYPOINTS = 15;
+  const MAX_GRAMET_WAYPOINTS = 20;
   const MAX_GRAMET_TOTALEET  = 6 * 3600;
 
   function getGrametUrl(plan, format, strategy) {
@@ -580,7 +580,7 @@ window.TSAgestor.meteoApi = (function () {
     let best = null, bestD = Infinity;
     for (const [id, pt] of Object.entries(aw.waypoints)) {
       const type = aw.waypointTypes[id];
-      if (type !== 'AIRPORT' && type !== 'NAVAID') continue;
+      if (type !== 'AIRPORT' && type !== 'NAVAID' && type !== 'RNAV') continue;
       if (id === plan.origin) continue; // evita devolver el propio origen
       const dla = (pt[0] - farLat) * 60;
       const ml  = ((pt[0] + farLat) / 2) * Math.PI / 180;
@@ -638,12 +638,15 @@ window.TSAgestor.meteoApi = (function () {
     if (!aw || !aw.waypoints || !aw.waypointTypes) return `${plan.origin} ${plan.destination}`;
     if (!plan.coords || plan.coords.length < 2) return `${plan.origin} ${plan.destination}`;
 
-    // Catalogo "fiable" para Autorouter: aeropuertos OACI y NAVAIDs.
+    // Catalogo Autorouter: aeropuertos OACI, NAVAIDs y fixes RNAV. Los
+    // RNAV de 5 letras (NAPES, CLANA, TUTIS, ...) son intersecciones
+    // publicadas en el AIP que Eurocontrol EAD reconoce, asi que pueden
+    // entrar en /met/gramet sin problema.
     const known = [];
     for (const [id, pt] of Object.entries(aw.waypoints)) {
       const type = aw.waypointTypes[id];
-      if (type === 'AIRPORT' || type === 'NAVAID') {
-        known.push({ id, lat: pt[0], lon: pt[1] });
+      if (type === 'AIRPORT' || type === 'NAVAID' || type === 'RNAV') {
+        known.push({ id, lat: pt[0], lon: pt[1], type });
       }
     }
     if (!known.length) return `${plan.origin} ${plan.destination}`;
