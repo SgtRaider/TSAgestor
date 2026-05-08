@@ -11,7 +11,7 @@ window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.meteoApi = (function () {
   'use strict';
 
-  const MODULE_BUILD = 'meteoApi v10 (gramet: binning por proximidad, cap 25 waypoints)';
+  const MODULE_BUILD = 'meteoApi v11 (gramet: bins finos + filtra co-localizados a endpoints)';
   console.info('[TSAgestor]', MODULE_BUILD);
 
   // Detección de entorno: en deploy HTTPS no-local asumimos que tenemos
@@ -554,26 +554,48 @@ window.TSAgestor.meteoApi = (function () {
   }
 
   // Selecciona como mucho `count` candidatos de una lista ordenada por
-  // along-track, dividiendo la ruta en bins iguales y quedandose con el
-  // hit MAS CERCANO a la centerline en cada bin. Asi waypoints clave
-  // (AMPIR a 0.4 NM, TUTIS a 0.3 NM, etc.) ganan a vecinos mas alejados.
+  // along-track. Divide la ruta en bins y en cada uno se queda con los
+  // DOS hits mas cercanos a la centerline (el #1 y el #2). Asi en zonas
+  // densas (Estrecho, costa, vecindad de aeropuertos) se cogen pares
+  // de waypoints adyacentes en lugar de uno solo, dando mas densidad
+  // sin perder cobertura geografica. El numero de bins se ajusta para
+  // que (bins * 2) ~= count.
   function selectByProximityBins(hits, count) {
     if (hits.length <= count) return hits;
+    // Bins pequenos (1 pick por bin) para maxima resolucion espacial.
+    // Si quieres mas densidad subes count, no PICKS_PER_BIN.
+    const nBins = count;
     const minA = hits[0].along;
     const maxA = hits[hits.length - 1].along;
     const span = Math.max(1, maxA - minA);
-    const binW = span / count;
+    const binW = span / nBins;
     const bins = new Map();
     for (const h of hits) {
-      const idx = Math.min(count - 1, Math.floor((h.along - minA) / binW));
-      const cur = bins.get(idx);
-      if (!cur || h.dist < cur.dist) bins.set(idx, h);
+      const idx = Math.min(nBins - 1, Math.floor((h.along - minA) / binW));
+      let arr = bins.get(idx);
+      if (!arr) { arr = []; bins.set(idx, arr); }
+      arr.push(h);
     }
     const out = [];
-    for (let i = 0; i < count; i++) {
-      if (bins.has(i)) out.push(bins.get(i));
+    for (let i = 0; i < nBins; i++) {
+      const arr = bins.get(i);
+      if (!arr) continue;
+      arr.sort((a, b) => a.dist - b.dist);
+      // Por bin: el waypoint mas cercano. Si el id ya aparecio en un bin
+      // adyacente (puede pasar con multiples proyecciones), saltamos al
+      // segundo mas cercano para no repetir.
+      const lastId = out.length ? out[out.length - 1].id : null;
+      let picked = null;
+      for (const h of arr) {
+        if (h.id === lastId) continue;
+        picked = h;
+        break;
+      }
+      if (picked) out.push(picked);
+      else if (arr.length) out.push(arr[0]);
     }
-    return out;
+    out.sort((a, b) => a.along - b.along);
+    return out.slice(0, count);
   }
   function dedupeConsecutive(arr) {
     const out = [];
@@ -675,12 +697,26 @@ window.TSAgestor.meteoApi = (function () {
     // RNAV de 5 letras (NAPES, CLANA, TUTIS, ...) son intersecciones
     // publicadas en el AIP que Eurocontrol EAD reconoce, asi que pueden
     // entrar en /met/gramet sin problema.
+    // Filtramos waypoints co-localizados con origen/destino (p.ej. VBZ
+    // en LEBZ) -- aniaden ruido al chart sin info adicional sobre el
+    // tiempo y le quitan slots a fixes intermedios mas alejados.
+    const NEAR_ENDPOINT_NM = 3;
+    const oPt = aw.waypoints[plan.origin] || null;
+    const dPt = aw.waypoints[plan.destination] || null;
+    const sameSpot = (a, b) => {
+      const dla = (a[0] - b[0]) * 60;
+      const ml  = ((a[0] + b[0]) / 2) * Math.PI / 180;
+      const dlo = (a[1] - b[1]) * 60 * Math.cos(ml);
+      return Math.sqrt(dla * dla + dlo * dlo) < NEAR_ENDPOINT_NM;
+    };
     const known = [];
     for (const [id, pt] of Object.entries(aw.waypoints)) {
       const type = aw.waypointTypes[id];
-      if (type === 'AIRPORT' || type === 'NAVAID' || type === 'RNAV') {
-        known.push({ id, lat: pt[0], lon: pt[1], type });
-      }
+      if (type !== 'AIRPORT' && type !== 'NAVAID' && type !== 'RNAV') continue;
+      if (id === plan.origin || id === plan.destination) continue;
+      if (oPt && sameSpot(pt, oPt)) continue;
+      if (dPt && dPt !== oPt && sameSpot(pt, dPt)) continue;
+      known.push({ id, lat: pt[0], lon: pt[1], type });
     }
     if (!known.length) return `${plan.origin} ${plan.destination}`;
 
@@ -726,15 +762,15 @@ window.TSAgestor.meteoApi = (function () {
     }
 
     function buildList(thresholdNM) {
+      // Conserva TODAS las entradas (cada (id, segmento) es un candidato
+      // distinto en una posicion along-track distinta). El dedup por id
+      // se hace dentro de selectByProximityBins para no perder la mejor
+      // proyeccion de un waypoint cuando otra suya peor le precede en
+      // orden por along.
       const filtered = allHits.filter(h => h.dist <= thresholdNM);
       filtered.sort((a, b) => a.along - b.along);
-      const out = [];
-      for (const c of filtered) {
-        if (out.length && out[out.length - 1].id === c.id) continue;
-        out.push(c);
-      }
-      const uniqueIds = new Set(out.map(c => c.id));
-      return { ordered: out, uniqueCount: uniqueIds.size };
+      const uniqueIds = new Set(filtered.map(c => c.id));
+      return { ordered: filtered, uniqueCount: uniqueIds.size };
     }
 
     // Adaptativo: 30 -> 60 -> 100 NM hasta tener al menos MIN_HITS unicos.
@@ -751,16 +787,12 @@ window.TSAgestor.meteoApi = (function () {
       console.info('[gramet] Pocos aerodromos a <=30 NM; ampliado a', usedNM, 'NM (', chosen.uniqueCount, 'unicos)');
     }
 
-    // Seleccion final: en lugar de muestreo uniforme, dividimos la ruta
-    // en bins y nos quedamos con el waypoint MAS CERCANO a la centerline
-    // en cada bin. Asi se priorizan los cercanos (0.3-1.6 NM) frente a
-    // los del limite (28-30 NM) cuando hay muchos candidatos.
-    // Excluimos origen/destino del concurso porque van fuera del binning
-    // (se anyaden aparte) y sus dist=0 NM ganarian sus bins despojando a
-    // los waypoints ICAO/RNAV cercanos al inicio o final de la ruta.
-    const inner = chosen.ordered.filter(h => h.id !== plan.origin && h.id !== plan.destination);
+    // Seleccion final: bins pequenos por along-track, en cada bin el
+    // waypoint mas cercano a la centerline. Como origen, destino y los
+    // waypoints co-localizados con ellos ya estan filtrados arriba, todo
+    // chosen.ordered es candidato.
     const slots = Math.max(2, MAX_GRAMET_WAYPOINTS - 2); // margen para origen/destino
-    const selected = selectByProximityBins(inner, slots);
+    const selected = selectByProximityBins(chosen.ordered, slots);
 
     let names = selected.map(c => c.id);
     if (!names.length || names[0] !== plan.origin) names.unshift(plan.origin);
