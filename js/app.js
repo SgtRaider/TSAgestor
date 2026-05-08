@@ -642,6 +642,10 @@
   // ── Planes guardados ────────────────────────────────────────────────
 
   function capturePlanFormState() {
+    // Snapshot de TSAs SELECCIONADAS para que el plan sea autocontenido:
+    // al volver a cargarlo (mismo navegador o tras importar) se restauran
+    // las TSAs con sus horarios/poligonos sin necesidad del PDF original.
+    const sel = (state.tsas || []).filter(t => state.selected.has(t.id));
     return {
       origin:       $('#plan-origin').value.trim(),
       destination:  $('#plan-dest').value.trim(),
@@ -655,7 +659,35 @@
       fuelUnit:     $('#plan-fuel-unit').value,
       joker:        Number($('#plan-joker').value) || 0,
       bingo:        Number($('#plan-bingo').value) || 0,
+      tsas:         sel.length ? sel : null,
+      filter:       Object.assign({}, state.filter),
     };
+  }
+
+  // Tras un roundtrip JSON.stringify/parse las fechas vienen como strings.
+  // Las revive en cada schedule para que el resto del codigo siga
+  // tratandolas como Date (calculo de ventana activa, conflictos, etc.).
+  function reviveTsasFromJSON(tsas) {
+    if (!Array.isArray(tsas)) return [];
+    return tsas.map(t => {
+      const out = Object.assign({}, t);
+      if (Array.isArray(out.schedules)) {
+        out.schedules = out.schedules.map(s => ({
+          startUTC: s && s.startUTC ? (s.startUTC instanceof Date ? s.startUTC : new Date(s.startUTC)) : null,
+          endUTC:   s && s.endUTC   ? (s.endUTC   instanceof Date ? s.endUTC   : new Date(s.endUTC))   : null,
+          raw: s && s.raw,
+        })).filter(s => s.startUTC && s.endUTC);
+      }
+      return out;
+    });
+  }
+
+  function applyFilterToForm(f) {
+    f = f || { dateFrom: '', dateTo: '', timeFrom: '', timeTo: '' };
+    $('#filter-date-from').value = f.dateFrom || '';
+    $('#filter-date-to').value   = f.dateTo   || '';
+    $('#filter-time-from').value = f.timeFrom || '';
+    $('#filter-time-to').value   = f.timeTo   || '';
   }
 
   function applyPlanFormState(p) {
@@ -673,6 +705,22 @@
     setVal('plan-joker',        p.joker);
     setVal('plan-bingo',        p.bingo);
     state.drawnVia = (p.drawnVia && p.drawnVia.length) ? p.drawnVia : null;
+
+    // Restaurar TSAs y filtro si el plan los trae (autocontenido).
+    if (Array.isArray(p.tsas) && p.tsas.length) {
+      state.tsas = reviveTsasFromJSON(p.tsas);
+      state.selected = new Set(state.tsas.map(t => t.id));
+      if (p.filter && typeof p.filter === 'object') {
+        state.filter = Object.assign(
+          { dateFrom: '', dateTo: '', timeFrom: '', timeTo: '' }, p.filter
+        );
+        applyFilterToForm(state.filter);
+      }
+      $('#filter-bar').classList.remove('hidden');
+      ensureMap();
+      renderAll();
+      setStatus(`${state.tsas.length} TSAs cargadas desde el plan.`, 'ok');
+    }
   }
 
   function renderSavedPlansList() {
