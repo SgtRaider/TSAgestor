@@ -430,6 +430,20 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
 
 .leaflet-popup-content { font-size: 12px; line-height: 1.5; }
 .leaflet-popup-content b { color: #0f172a; }
+.tsa-popup-multi {
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.tsa-popup-head {
+  position: sticky; top: 0;
+  background: #f8fafc;
+  padding: 4px 6px;
+  margin: -4px -4px 6px;
+  border-bottom: 1px solid #e2e8f0;
+  font-weight: 700;
+  color: #0f172a;
+}
 
 .map-legend {
   background: rgba(255, 255, 255, 0.92);

@@ -716,6 +716,23 @@ window.TSAgestor.mapView = (function () {
     `;
   }
 
+  // Cuando varias TSAs solapan en un punto, Leaflet solo dispara el click
+  // en una (la de encima). Aqui combinamos todas las TSAs cuyo poligono
+  // contiene la coordenada del click para mostrarlas en un solo popup.
+  function buildCombinedPopup(tsas) {
+    if (tsas.length === 1) return buildPopup(tsas[0]);
+    const head = `<div class="tsa-popup-head"><b>${tsas.length} TSAs en este punto</b></div>`;
+    // Ordena por banda altitudinal (lower asc) para que se lean apiladas.
+    const sorted = tsas.slice().sort((a, b) => {
+      if (a.vertical.lowerFt !== b.vertical.lowerFt) return a.vertical.lowerFt - b.vertical.lowerFt;
+      return a.name.localeCompare(b.name);
+    });
+    const blocks = sorted.map(buildPopup).join(
+      '<hr style="margin:6px 0;border:0;border-top:1px dashed #94a3b8">'
+    );
+    return `<div class="tsa-popup-multi">${head}${blocks}</div>`;
+  }
+
   function render(tsas) {
     if (!map) return;
     layerGroup.clearLayers();
@@ -723,6 +740,8 @@ window.TSAgestor.mapView = (function () {
 
     const allLatLngs = [];
     const tsaOpacity = settingsGet('opacity.tsaFill', 0.30);
+    // Snapshot del listado para el handler de click (cierra sobre tsas).
+    const tsaList = tsas.slice();
     for (const tsa of tsas) {
       const band = geom.altitudeBand(tsa.vertical.upperFt);
       const color = BAND_COLORS[band];
@@ -730,7 +749,18 @@ window.TSAgestor.mapView = (function () {
         color, weight: 2, fillColor: color, fillOpacity: tsaOpacity,
         pane: 'tsaPane',
       });
-      poly.bindPopup(buildPopup(tsa));
+      // En lugar de un popup por poligono (que esconde los solapados),
+      // al click recopilamos TODAS las TSAs cuyo poligono contiene el
+      // punto y abrimos un popup combinado.
+      poly.on('click', e => {
+        const latlon = [e.latlng.lat, e.latlng.lng];
+        const containing = tsaList.filter(t => pointInPoly(latlon, t.polygon));
+        if (!containing.length) return;
+        L.popup({ maxWidth: 520, minWidth: 280, autoPan: true })
+          .setLatLng(e.latlng)
+          .setContent(buildCombinedPopup(containing))
+          .openOn(map);
+      });
       poly.bindTooltip(tsa.name, { direction: 'center', className: 'tsa-tooltip' });
       poly.addTo(layerGroup);
       for (const pt of tsa.polygon) allLatLngs.push(pt);
