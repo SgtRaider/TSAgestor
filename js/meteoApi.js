@@ -11,7 +11,7 @@ window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.meteoApi = (function () {
   'use strict';
 
-  const MODULE_BUILD = 'meteoApi v9 (gramet: full salta si no hay >=2 ICAO reales)';
+  const MODULE_BUILD = 'meteoApi v10 (gramet: binning por proximidad, cap 25 waypoints)';
   console.info('[TSAgestor]', MODULE_BUILD);
 
   // Detección de entorno: en deploy HTTPS no-local asumimos que tenemos
@@ -508,7 +508,7 @@ window.TSAgestor.meteoApi = (function () {
   // Limites empiricos de Autorouter /met/gramet para evitar HTTP 500/504:
   //   - mas de ~15 waypoints o totaleet > ~6h hace que el upstream falle.
   //   - origen == destino con 0 NM intermedios (caso circuito) tambien.
-  const MAX_GRAMET_WAYPOINTS = 20;
+  const MAX_GRAMET_WAYPOINTS = 25;
   const MAX_GRAMET_TOTALEET  = 6 * 3600;
 
   function getGrametUrl(plan, format, strategy) {
@@ -535,7 +535,8 @@ window.TSAgestor.meteoApi = (function () {
   }
 
   // Decima un array conservando primer y ultimo elemento + muestreo
-  // uniforme del interior, hasta un maximo de "max" entradas.
+  // uniforme del interior, hasta un maximo de "max" entradas. Usado para
+  // listas de NAMES (sin info de distancia/along).
   function decimateList(arr, max) {
     if (arr.length <= max) return arr;
     if (max < 2) return arr.slice(0, max);
@@ -549,6 +550,29 @@ window.TSAgestor.meteoApi = (function () {
       }
     }
     out.push(arr[arr.length - 1]);
+    return out;
+  }
+
+  // Selecciona como mucho `count` candidatos de una lista ordenada por
+  // along-track, dividiendo la ruta en bins iguales y quedandose con el
+  // hit MAS CERCANO a la centerline en cada bin. Asi waypoints clave
+  // (AMPIR a 0.4 NM, TUTIS a 0.3 NM, etc.) ganan a vecinos mas alejados.
+  function selectByProximityBins(hits, count) {
+    if (hits.length <= count) return hits;
+    const minA = hits[0].along;
+    const maxA = hits[hits.length - 1].along;
+    const span = Math.max(1, maxA - minA);
+    const binW = span / count;
+    const bins = new Map();
+    for (const h of hits) {
+      const idx = Math.min(count - 1, Math.floor((h.along - minA) / binW));
+      const cur = bins.get(idx);
+      if (!cur || h.dist < cur.dist) bins.set(idx, h);
+    }
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      if (bins.has(i)) out.push(bins.get(i));
+    }
     return out;
   }
   function dedupeConsecutive(arr) {
@@ -709,7 +733,6 @@ window.TSAgestor.meteoApi = (function () {
         if (out.length && out[out.length - 1].id === c.id) continue;
         out.push(c);
       }
-      // ID unicos para el conteo de "candidatos reales".
       const uniqueIds = new Set(out.map(c => c.id));
       return { ordered: out, uniqueCount: uniqueIds.size };
     }
@@ -725,10 +748,21 @@ window.TSAgestor.meteoApi = (function () {
       if (r.uniqueCount >= MIN_HITS) break;
     }
     if (usedNM > 30) {
-      console.info('[gramet] Pocos aerodromos a <=30 NM; ampliado el corredor a', usedNM, 'NM (', chosen.uniqueCount, 'puntos unicos)');
+      console.info('[gramet] Pocos aerodromos a <=30 NM; ampliado a', usedNM, 'NM (', chosen.uniqueCount, 'unicos)');
     }
 
-    let names = chosen.ordered.map(c => c.id);
+    // Seleccion final: en lugar de muestreo uniforme, dividimos la ruta
+    // en bins y nos quedamos con el waypoint MAS CERCANO a la centerline
+    // en cada bin. Asi se priorizan los cercanos (0.3-1.6 NM) frente a
+    // los del limite (28-30 NM) cuando hay muchos candidatos.
+    // Excluimos origen/destino del concurso porque van fuera del binning
+    // (se anyaden aparte) y sus dist=0 NM ganarian sus bins despojando a
+    // los waypoints ICAO/RNAV cercanos al inicio o final de la ruta.
+    const inner = chosen.ordered.filter(h => h.id !== plan.origin && h.id !== plan.destination);
+    const slots = Math.max(2, MAX_GRAMET_WAYPOINTS - 2); // margen para origen/destino
+    const selected = selectByProximityBins(inner, slots);
+
+    let names = selected.map(c => c.id);
     if (!names.length || names[0] !== plan.origin) names.unshift(plan.origin);
     if (names[names.length - 1] !== plan.destination) names.push(plan.destination);
     const result = [];
