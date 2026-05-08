@@ -21,6 +21,7 @@ window.TSAgestor.mapView = (function () {
   let map = null;
   let layerGroup = null;
   let routeLayer = null;
+  let grametLayer = null;
   let legend = null;
   let drawState = null;
   let countryLayer = null;
@@ -528,6 +529,60 @@ window.TSAgestor.mapView = (function () {
   function clearWeatherMarkers() {
     if (meteoLayer) meteoLayer.clearLayers();
     meteoLoadedAll = false;
+  }
+
+  // ── Capa de waypoints usados por GRAMET ──────────────────────────────
+  // Despues de que Autorouter genera la carta, mostramos en el mapa la
+  // ruta efectiva que ha usado (que puede diferir del plan tras decimar
+  // a 15 puntos / sustituir TSAs por aeropuertos cercanos / inyectar
+  // midpoint en circuitos). Asi el usuario ve QUE puntos se han enviado
+  // al servicio y entiende la geometria del chart.
+  function ensureGrametLayer() {
+    if (!grametLayer) grametLayer = L.layerGroup().addTo(map);
+    return grametLayer;
+  }
+  function setGrametWaypoints(items, opts) {
+    if (!map) return;
+    const layer = ensureGrametLayer();
+    layer.clearLayers();
+    if (!items || !items.length) return;
+    opts = opts || {};
+    const strategy = opts.strategy || '';
+    const pts = items.map(it => [it.lat, it.lon]);
+    // Polilinea conectora (segmentos de la ruta enviada al servicio).
+    if (pts.length >= 2) {
+      L.polyline(pts, {
+        color: '#7c3aed', weight: 2.5, opacity: 0.85,
+        dashArray: '6 4',
+      }).bindTooltip('Ruta enviada a GRAMET' + (strategy ? ` (${strategy})` : ''),
+        { sticky: true }).addTo(layer);
+    }
+    // Marcadores numerados.
+    items.forEach((it, idx) => {
+      const isOriginOrDest = idx === 0 || idx === items.length - 1;
+      const marker = L.circleMarker([it.lat, it.lon], {
+        radius: isOriginOrDest ? 7 : 5,
+        weight: 1.5,
+        color: '#4c1d95',
+        fillColor: '#a78bfa',
+        fillOpacity: 0.95,
+        pane: 'markerPane',
+      });
+      marker.bindTooltip(`${idx + 1}. ${it.name}`, {
+        direction: 'top', permanent: true, className: 'gramet-wp-tip', offset: [0, -6],
+      });
+      marker.bindPopup(
+        `<b>GRAMET waypoint #${idx + 1}</b><br>${escapeHTMLLocal(it.name)}` +
+        (it.sourceName && it.sourceName !== it.name
+          ? `<br><span class="dim">Origen plan: ${escapeHTMLLocal(it.sourceName)}</span>` : '') +
+        (strategy ? `<br><span class="dim">Estrategia: ${escapeHTMLLocal(strategy)}</span>` : '')
+      );
+      layer.addLayer(marker);
+    });
+    if (!map.hasLayer(layer)) layer.addTo(map);
+  }
+  function clearGrametWaypoints() {
+    if (grametLayer) grametLayer.clearLayers();
   }
 
   function escapeHTMLLocal(s) {
@@ -1145,6 +1200,7 @@ window.TSAgestor.mapView = (function () {
     renderFlightPlan, clearFlightPlan,
     startDrawingRoute, finishDrawingRoute, cancelDrawingRoute, undoDrawingPoint, addReturnLeg,
     setWeatherMarkers, clearWeatherMarkers,
+    setGrametWaypoints, clearGrametWaypoints,
     applyOpacities,
     getAirwayLayerState,
     setWaypointClickHandler,

@@ -464,6 +464,40 @@
     renderCross();
   }
 
+  // Resuelve los nombres devueltos por fetchGramet a {name,lat,lon} y los
+  // envia a la capa del mapa. Para cada nombre busca primero en el catalogo
+  // de aerovias (aeropuertos/NAVAIDs) y, si no aparece, intenta encontrar
+  // un waypoint del plan con ese nombre.
+  function pushGrametWaypointsToMap(names, strategy) {
+    if (!names || !names.length) {
+      mapView.clearGrametWaypoints();
+      return;
+    }
+    const aw = window.TSAgestor.airways;
+    const wpCatalog = (aw && aw.waypoints) || {};
+    const planByName = new Map();
+    if (state.lastPlan && state.lastPlan.coords) {
+      for (const c of state.lastPlan.coords) {
+        if (c.name && !planByName.has(c.name)) planByName.set(c.name, c);
+      }
+    }
+    const items = [];
+    for (const name of names) {
+      let lat = null, lon = null, sourceName = null;
+      const pt = wpCatalog[name];
+      if (pt) {
+        lat = pt[0]; lon = pt[1];
+      } else if (planByName.has(name)) {
+        const c = planByName.get(name);
+        lat = c.lat; lon = c.lon; sourceName = name;
+      }
+      if (lat != null && lon != null) {
+        items.push({ name, lat, lon, sourceName });
+      }
+    }
+    mapView.setGrametWaypoints(items, { strategy });
+  }
+
   async function loadGramet() {
     if (!meteoApi || !meteoApi.fetchGramet) {
       alert('Módulo meteo no disponible.');
@@ -507,6 +541,7 @@
     c.querySelector('#btn-gramet-close').addEventListener('click', () => {
       c.classList.add('hidden');
       c.innerHTML = '';
+      mapView.clearGrametWaypoints();
     });
     if (!serverAuth) {
       c.querySelector('#btn-gramet-logout').addEventListener('click', () => {
@@ -545,6 +580,9 @@
       dl.textContent = 'Descargar PNG';
       const ref = c.querySelector('#btn-gramet-logout') || c.querySelector('#btn-gramet-close');
       c.querySelector('.gramet-actions').insertBefore(dl, ref);
+      // Capa en el mapa con los waypoints efectivos enviados a Autorouter.
+      ensureMap();
+      pushGrametWaypointsToMap(result.waypoints, result.strategy);
     } catch (err) {
       console.error('[gramet]', err);
       const wrap = c.querySelector('.gramet-img-wrap');
@@ -975,6 +1013,7 @@
     if (state.mapReady) {
       mapView.clearFlightPlan();
       mapView.clearWeatherMarkers();
+      mapView.clearGrametWaypoints();
     }
 
     // Panel GRAMET (si estaba abierto en pestaña Corte)
