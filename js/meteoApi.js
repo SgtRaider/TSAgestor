@@ -11,7 +11,7 @@ window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.meteoApi = (function () {
   'use strict';
 
-  const MODULE_BUILD = 'meteoApi v5 (gramet: cap waypoints/totaleet, midpoint para circuitos)';
+  const MODULE_BUILD = 'meteoApi v6 (gramet: muestreo a lo largo de la ruta, ≤30 NM)';
   console.info('[TSAgestor]', MODULE_BUILD);
 
   // Detección de entorno: en deploy HTTPS no-local asumimos que tenemos
@@ -622,17 +622,21 @@ window.TSAgestor.meteoApi = (function () {
     return words.length >= 2 ? words.join(' ') : `${plan.origin} ${plan.destination}`;
   }
 
-  // Construye la ruta sustituyendo cada waypoint no reconocido (RNAV de
-  // 5 letras del AIP nuevo, coords arbitrarias) por el aeropuerto o navaid
-  // mas cercano del catalogo local. Asi Autorouter recibe nombres que su
-  // base Eurocontrol EAD sí reconoce, pero la geometria de la ruta sigue
-  // siendo aproximadamente la planificada.
+  // Construye la ruta efectiva para GRAMET muestreando a lo largo de la
+  // polilinea real del plan: para cada aeropuerto/NAVAID conocido se mide
+  // su distancia perpendicular MINIMA a cada segmento de la ruta; si esa
+  // distancia es <= NEAR_NM, el punto entra como candidato anclado al
+  // along-track del segmento donde mejor encaja. Asi obtenemos puntos
+  // realmente alineados con la ruta y no aeropuertos remotos elegidos por
+  // estar cerca de un centroide TSA arbitrario.
   function buildNearbyWaypoints(plan) {
     const aw = window.TSAgestor && window.TSAgestor.airways;
     if (!aw || !aw.waypoints || !aw.waypointTypes) return `${plan.origin} ${plan.destination}`;
+    if (!plan.coords || plan.coords.length < 2) return `${plan.origin} ${plan.destination}`;
 
-    // Catalogo de puntos "fiables" para Autorouter: aeropuertos OACI 4-letras
-    // y NAVAIDs 3-letras (estos figuran en EAD desde hace decadas).
+    const NEAR_NM = 30;
+
+    // Catalogo "fiable" para Autorouter: aeropuertos OACI y NAVAIDs.
     const known = [];
     for (const [id, pt] of Object.entries(aw.waypoints)) {
       const type = aw.waypointTypes[id];
@@ -642,43 +646,74 @@ window.TSAgestor.meteoApi = (function () {
     }
     if (!known.length) return `${plan.origin} ${plan.destination}`;
 
+    // Distancia plana en NM (suficiente para <100 NM).
     function approxNM(la, lo, lb, bo) {
       const dla = (lb - la) * 60;
       const ml = ((la + lb) / 2) * Math.PI / 180;
       const dlo = (bo - lo) * 60 * Math.cos(ml);
       return Math.sqrt(dla * dla + dlo * dlo);
     }
-    function nearestKnown(lat, lon, maxNM) {
-      let best = null, bestD = Infinity;
-      for (const k of known) {
-        const d = approxNM(lat, lon, k.lat, k.lon);
-        if (d < bestD && d <= maxNM) { bestD = d; best = k; }
-      }
-      return best;
-    }
-    function isReliableName(n) {
-      // 4-letras OACI (aeropuerto) o 3-letras (navaid clasico).
-      return /^[A-Z]{4}$/.test(n) || /^[A-Z]{3}$/.test(n);
+    // Proyecta P sobre el segmento A->B en plano lat/lon equirectangular.
+    // Devuelve t (clamp 0-1, fraccion del segmento) y la distancia perpendicular en NM.
+    function projectOnSeg(P, A, B) {
+      const ml = ((A[0] + B[0]) / 2) * Math.PI / 180;
+      const cosml = Math.cos(ml);
+      const dx = (B[1] - A[1]) * 60 * cosml;
+      const dy = (B[0] - A[0]) * 60;
+      const px = (P[1] - A[1]) * 60 * cosml;
+      const py = (P[0] - A[0]) * 60;
+      const len2 = dx * dx + dy * dy;
+      let t = len2 > 0 ? (px * dx + py * dy) / len2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      const cx = A[1] + (B[1] - A[1]) * t;
+      const cy = A[0] + (B[0] - A[0]) * t;
+      return { t, dist: approxNM(P[0], P[1], cy, cx) };
     }
 
-    const out = [];
-    for (const c of plan.coords) {
-      let candidate;
-      if (c.name && isReliableName(c.name)) {
-        candidate = c.name;
-      } else {
-        const near = nearestKnown(c.lat, c.lon, 80);
-        candidate = near ? near.id : null;
-      }
-      if (!candidate) continue;
-      // Quitar duplicados consecutivos.
-      if (out.length && out[out.length - 1] === candidate) continue;
-      out.push(candidate);
+    // Path real del plan + tabla de longitudes acumuladas en NM.
+    const path = plan.coords.map(c => [c.lat, c.lon]);
+    const segLens = [];
+    const cumNM = [0];
+    for (let i = 0; i < path.length - 1; i++) {
+      const len = approxNM(path[i][0], path[i][1], path[i + 1][0], path[i + 1][1]);
+      segLens.push(len);
+      cumNM.push(cumNM[i] + len);
     }
-    // Garantizar origen y destino al principio/final.
-    if (!out.length || out[0] !== plan.origin) out.unshift(plan.origin);
-    if (out[out.length - 1] !== plan.destination) out.push(plan.destination);
-    return out.length >= 2 ? out.join(' ') : `${plan.origin} ${plan.destination}`;
+
+    // Para cada (known, segmento), si la perpendicular es <= NEAR_NM lo
+    // anyadimos como candidato. Un mismo aeropuerto puede aparecer varias
+    // veces si el plan vuelve a pasar cerca (caso circuito): cada paso
+    // queda en su along-track correspondiente.
+    const candidates = [];
+    for (const k of known) {
+      // Optimizacion: bbox check rapido (rechaza known >NEAR_NM del bbox del path).
+      // No es estrictamente necesario; con catalogos de pocos miles funciona OK.
+      for (let i = 0; i < path.length - 1; i++) {
+        const proj = projectOnSeg([k.lat, k.lon], path[i], path[i + 1]);
+        if (proj.dist > NEAR_NM) continue;
+        const along = cumNM[i] + proj.t * segLens[i];
+        candidates.push({ id: k.id, along, dist: proj.dist });
+      }
+    }
+
+    // Ordena por avance y elimina duplicados consecutivos.
+    candidates.sort((a, b) => a.along - b.along);
+    const ordered = [];
+    for (const c of candidates) {
+      if (ordered.length && ordered[ordered.length - 1].id === c.id) continue;
+      ordered.push(c);
+    }
+
+    let names = ordered.map(c => c.id);
+    if (!names.length || names[0] !== plan.origin) names.unshift(plan.origin);
+    if (names[names.length - 1] !== plan.destination) names.push(plan.destination);
+    // Dedup final por si origen/destino se solapan con el primero/ultimo del muestreo.
+    const result = [];
+    for (const n of names) {
+      if (result.length && result[result.length - 1] === n) continue;
+      result.push(n);
+    }
+    return result.length >= 2 ? result.join(' ') : `${plan.origin} ${plan.destination}`;
   }
 
   return {
