@@ -11,7 +11,7 @@ window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.meteoApi = (function () {
   'use strict';
 
-  const MODULE_BUILD = 'meteoApi v8 (gramet: incluye RNAV fixes + cap 20 waypoints)';
+  const MODULE_BUILD = 'meteoApi v9 (gramet: full salta si no hay >=2 ICAO reales)';
   console.info('[TSAgestor]', MODULE_BUILD);
 
   // Detección de entorno: en deploy HTTPS no-local asumimos que tenemos
@@ -596,30 +596,39 @@ window.TSAgestor.meteoApi = (function () {
     let words;
 
     if (strategy === 'minimal') {
-      words = [plan.origin, plan.destination];
-    } else if (strategy === 'nearby') {
+      // Para circuitos, inyectamos un midpoint para no enviar "LEBZ LEBZ"
+      // (Autorouter responde 500). Para rutas A->B no hace falta.
+      if (isCircuit) {
+        const mid = midpointForCircuit(plan);
+        if (mid && mid !== plan.origin) {
+          return `${plan.origin} ${mid} ${plan.destination}`;
+        }
+      }
+      return `${plan.origin} ${plan.destination}`;
+    }
+
+    if (strategy === 'nearby') {
       words = buildNearbyWaypoints(plan).split(/\s+/).filter(Boolean);
     } else {
-      // 'full': mantener nombres del plan filtrados a patron tipo ICAO.
+      // 'full': mantener nombres del plan filtrados a patron tipo ICAO. Si
+      // no hay suficientes intermedios validos (caso tipico: drawnVia con
+      // nombres TSA o coords DCT), devolvemos null para que fetchGramet
+      // pase directo a "nearby" — no nos interesa que "full" tenga exito
+      // con solo origen+destino+midpoint y oculte el muestreo bueno.
       const valid = plan.coords
         .map(c => c.name)
         .filter(n => /^[A-Z][A-Z0-9]{1,4}$/.test(n));
-      words = valid.length >= 2 ? valid : [plan.origin, plan.destination];
+      // Quita origen/destino del recuento para "intermedios reales".
+      const intermediates = valid.filter(n => n !== plan.origin && n !== plan.destination);
+      if (intermediates.length < 2) return null;
+      words = valid;
     }
     words = dedupeConsecutive(words);
     words = decimateList(words, MAX_GRAMET_WAYPOINTS);
     words = dedupeConsecutive(words);
 
-    // Circuito degenerado tras dedup ("LEBZ LEBZ"): inyecta el waypoint
-    // mas alejado mapeado a un aeropuerto/NAVAID conocido. Sin esto
-    // Autorouter rechaza la peticion con HTTP 500.
-    if (isCircuit && words.length < 3) {
-      const mid = midpointForCircuit(plan);
-      if (mid && mid !== plan.origin) {
-        words = [plan.origin, mid, plan.destination];
-      }
-    }
-    return words.length >= 2 ? words.join(' ') : `${plan.origin} ${plan.destination}`;
+    if (words.length < 2) return null;
+    return words.join(' ');
   }
 
   // Construye la ruta efectiva para GRAMET muestreando a lo largo de la
