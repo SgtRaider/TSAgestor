@@ -11,7 +11,7 @@ window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.meteoApi = (function () {
   'use strict';
 
-  const MODULE_BUILD = 'meteoApi v4 (gramet: full → nearby → minimal, devuelve waypoints)';
+  const MODULE_BUILD = 'meteoApi v5 (gramet: cap waypoints/totaleet, midpoint para circuitos)';
   console.info('[TSAgestor]', MODULE_BUILD);
 
   // Detección de entorno: en deploy HTTPS no-local asumimos que tenemos
@@ -505,6 +505,12 @@ window.TSAgestor.meteoApi = (function () {
   //                o navaid mas cercano (radio 80 NM) para que Autorouter
   //                pueda muestrear meteo cerca de la linea real.
   //   'minimal' -> solo origen + destino (gran circulo).
+  // Limites empiricos de Autorouter /met/gramet para evitar HTTP 500/504:
+  //   - mas de ~15 waypoints o totaleet > ~6h hace que el upstream falle.
+  //   - origen == destino con 0 NM intermedios (caso circuito) tambien.
+  const MAX_GRAMET_WAYPOINTS = 15;
+  const MAX_GRAMET_TOTALEET  = 6 * 3600;
+
   function getGrametUrl(plan, format, strategy) {
     if (!plan || !plan.coords || plan.coords.length < 2) return null;
     format = format || 'png';
@@ -512,7 +518,11 @@ window.TSAgestor.meteoApi = (function () {
     const waypoints = buildWaypointsString(plan, strategy);
     if (!waypoints) return null;
     const departuretime = Math.floor(plan.departureUTC.getTime() / 1000);
-    const totaleet = Math.round((plan.timeMinutes || 0) * 60);
+    const totalSec = Math.round((plan.timeMinutes || 0) * 60);
+    // Capamos a 6h: el chart muestra los primeros tramos (lo mas relevante
+    // para la planificacion meteo de salida); rutas mas largas haran que
+    // Autorouter responda 500.
+    const totaleet = totalSec > MAX_GRAMET_TOTALEET ? MAX_GRAMET_TOTALEET : totalSec;
     const altitude = (plan.flightLevel || 350) * 100;
     const params = new URLSearchParams({
       waypoints,
@@ -524,18 +534,92 @@ window.TSAgestor.meteoApi = (function () {
     return `${AR_BASE}/met/gramet?` + params.toString();
   }
 
+  // Decima un array conservando primer y ultimo elemento + muestreo
+  // uniforme del interior, hasta un maximo de "max" entradas.
+  function decimateList(arr, max) {
+    if (arr.length <= max) return arr;
+    if (max < 2) return arr.slice(0, max);
+    const out = [arr[0]];
+    const inner = arr.slice(1, -1);
+    const need = max - 2;
+    if (need > 0 && inner.length > 0) {
+      for (let i = 0; i < need; i++) {
+        const idx = Math.min(inner.length - 1, Math.floor((i + 0.5) * inner.length / need));
+        out.push(inner[idx]);
+      }
+    }
+    out.push(arr[arr.length - 1]);
+    return out;
+  }
+  function dedupeConsecutive(arr) {
+    const out = [];
+    for (const w of arr) {
+      if (out.length && out[out.length - 1] === w) continue;
+      out.push(w);
+    }
+    return out;
+  }
+
+  // Para circuitos (origen == destino) el 'minimal' "LEBZ LEBZ" es
+  // degenerado y Autorouter lo rechaza. Buscamos el waypoint del plan mas
+  // alejado del origen y lo mapeamos al aeropuerto/NAVAID conocido mas
+  // cercano (cualquier distancia, no solo <80 NM).
+  function midpointForCircuit(plan) {
+    const aw = window.TSAgestor && window.TSAgestor.airways;
+    if (!aw || !aw.waypoints || !aw.waypointTypes) return null;
+    const origin = aw.waypoints[plan.origin];
+    if (!origin) return null;
+    let farLat = origin[0], farLon = origin[1], farD = 0;
+    for (const c of plan.coords) {
+      const dla = (c.lat - origin[0]) * 60;
+      const ml  = ((origin[0] + c.lat) / 2) * Math.PI / 180;
+      const dlo = (c.lon - origin[1]) * 60 * Math.cos(ml);
+      const d = Math.sqrt(dla * dla + dlo * dlo);
+      if (d > farD) { farD = d; farLat = c.lat; farLon = c.lon; }
+    }
+    let best = null, bestD = Infinity;
+    for (const [id, pt] of Object.entries(aw.waypoints)) {
+      const type = aw.waypointTypes[id];
+      if (type !== 'AIRPORT' && type !== 'NAVAID') continue;
+      if (id === plan.origin) continue; // evita devolver el propio origen
+      const dla = (pt[0] - farLat) * 60;
+      const ml  = ((pt[0] + farLat) / 2) * Math.PI / 180;
+      const dlo = (pt[1] - farLon) * 60 * Math.cos(ml);
+      const d = Math.sqrt(dla * dla + dlo * dlo);
+      if (d < bestD) { bestD = d; best = id; }
+    }
+    return best;
+  }
+
   function buildWaypointsString(plan, strategy) {
+    const isCircuit = plan.origin === plan.destination;
+    let words;
+
     if (strategy === 'minimal') {
-      return `${plan.origin} ${plan.destination}`;
+      words = [plan.origin, plan.destination];
+    } else if (strategy === 'nearby') {
+      words = buildNearbyWaypoints(plan).split(/\s+/).filter(Boolean);
+    } else {
+      // 'full': mantener nombres del plan filtrados a patron tipo ICAO.
+      const valid = plan.coords
+        .map(c => c.name)
+        .filter(n => /^[A-Z][A-Z0-9]{1,4}$/.test(n));
+      words = valid.length >= 2 ? valid : [plan.origin, plan.destination];
     }
-    if (strategy === 'nearby') {
-      return buildNearbyWaypoints(plan);
+    words = dedupeConsecutive(words);
+    words = decimateList(words, MAX_GRAMET_WAYPOINTS);
+    words = dedupeConsecutive(words);
+
+    // Circuito degenerado tras dedup ("LEBZ LEBZ"): inyecta el waypoint
+    // mas alejado mapeado a un aeropuerto/NAVAID conocido. Sin esto
+    // Autorouter rechaza la peticion con HTTP 500.
+    if (isCircuit && words.length < 3) {
+      const mid = midpointForCircuit(plan);
+      if (mid && mid !== plan.origin) {
+        words = [plan.origin, mid, plan.destination];
+      }
     }
-    // 'full': mantener nombres del plan filtrados a patron tipo ICAO.
-    const valid = plan.coords
-      .map(c => c.name)
-      .filter(n => /^[A-Z][A-Z0-9]{1,4}$/.test(n));
-    return valid.length >= 2 ? valid.join(' ') : `${plan.origin} ${plan.destination}`;
+    return words.length >= 2 ? words.join(' ') : `${plan.origin} ${plan.destination}`;
   }
 
   // Construye la ruta sustituyendo cada waypoint no reconocido (RNAV de
