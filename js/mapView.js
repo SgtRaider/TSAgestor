@@ -423,6 +423,17 @@ window.TSAgestor.mapView = (function () {
     cont.style.maxHeight = Math.max(120, visible - margin) + 'px';
   }
 
+  // Calcula el ancho inicial del panel de leyenda en funcion del numero de
+  // grupos visibles: pocas TSAs -> menos columnas -> panel mas estrecho,
+  // dejando mas mapa visible. El usuario puede ampliar/reducir despues
+  // arrastrando la esquina inferior derecha (CSS resize:both).
+  // 240 px aproxima una celda; cada nueva columna anyade ese ancho.
+  function pickInitialLegendWidth(groupCount) {
+    if (groupCount <= 5)  return 240;   // 1 col
+    if (groupCount <= 12) return 480;   // 2 cols
+    return 720;                          // 3 cols (limite)
+  }
+
   function setLegendVisible(visible, tsas) {
     tsaLegendTSAs = tsas || [];
     if (!visible) {
@@ -434,6 +445,8 @@ window.TSAgestor.mapView = (function () {
     }
     if (!map) return;
     if (tsaLegendCtl) {
+      // Refresh contenido. NO tocamos el width: respetamos el resize que
+      // el usuario haya podido aplicar manualmente.
       const cont = tsaLegendCtl.getContainer();
       if (cont) cont.innerHTML = buildTSALegendHTML(tsaLegendTSAs);
       fitLegendToMap();
@@ -443,6 +456,9 @@ window.TSAgestor.mapView = (function () {
     tsaLegendCtl.onAdd = function () {
       const div = L.DomUtil.create('div', 'tsa-legend');
       div.innerHTML = buildTSALegendHTML(tsaLegendTSAs);
+      // Ancho inicial proporcional al numero de grupos (1/2/3 cols).
+      const groupCount = groupTSAsForLegend(filterForTodayAndTomorrow(tsaLegendTSAs)).length;
+      div.style.width = pickInitialLegendWidth(groupCount) + 'px';
       L.DomEvent.disableClickPropagation(div);
       L.DomEvent.disableScrollPropagation(div);
       return div;

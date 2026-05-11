@@ -581,10 +581,16 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   border: 1px solid var(--border, #cbd5e1);
   border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  /* Width pasa a ser dinamica: JS asigna el inicial (1/2/3 cols segun
+     count) y CSS la mantiene resizable por la esquina inf-der. */
   width: 720px;
   max-width: calc(100vw - 60px);
   max-height: calc(100vh - 100px);
+  min-width: 240px;
+  min-height: 120px;
+  /* Necesario para que `resize: both` funcione (no puede ser visible) */
   overflow: hidden;
+  resize: both;
   display: flex;
   flex-direction: column;
   font-family: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
@@ -615,12 +621,15 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
 }
 .tsa-legend-body {
   /* min-height:0 + flex:1 1 auto hace que el body se ajuste al espacio
-     disponible y permita scroll cuando hay mas TSAs de las que entran. */
+     disponible y permita scroll cuando hay mas TSAs de las que entran.
+     Las cells mantienen ~220px de ancho minimo; al cambiar el ancho del
+     panel por arrastre, las columnas se ajustan automaticamente (auto-fit)
+     manteniendo el tamano de cada celda. */
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   column-gap: 1px;
   background: #e2e8f0;
 }
