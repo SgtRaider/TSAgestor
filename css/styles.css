@@ -1135,11 +1135,18 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   -webkit-appearance: none;
   margin: 0;
 }
+/* Cols numericas/derechas del log: Tramo NM, TAS, Viento, GS, Espera,
+   Tiempo tramo, Tiempo total, Consumo, Combustible tramo, Restante. */
 #plan-log-table td:nth-child(3),
 #plan-log-table td:nth-child(4),
 #plan-log-table td:nth-child(5),
 #plan-log-table td:nth-child(6),
-#plan-log-table td:nth-child(7) {
+#plan-log-table td:nth-child(7),
+#plan-log-table td:nth-child(8),
+#plan-log-table td:nth-child(9),
+#plan-log-table td:nth-child(10),
+#plan-log-table td:nth-child(11),
+#plan-log-table td:nth-child(12) {
   font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
   text-align: right;
 }

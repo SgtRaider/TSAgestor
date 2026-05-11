@@ -1358,7 +1358,12 @@
     const tbody = $('#plan-coords-table tbody');
     tbody.innerHTML = '';
     const initialFL = p.flightLevel;
+    // La tabla de ruta solo muestra waypoints reales. Las filas de espera
+    // (isHold) son sinteticas y solo viven en el log de combustible.
+    let displayIdx = 0;
     p.coords.forEach((c, i) => {
+      if (c.isHold) return;
+      displayIdx++;
       const tr = document.createElement('tr');
       const inTSA = !!c.tsa;
       const flText = c.fl != null
@@ -1368,13 +1373,13 @@
         : '—';
       tr.className = inTSA ? 'in-tsa' : '';
       tr.innerHTML = `
-        <td>${i + 1}</td>
+        <td>${displayIdx}</td>
         <td><b>${escapeHTML(c.name)}</b></td>
         <td>${flText}</td>
         <td>${escapeHTML(c.airway)}</td>
         <td>${formatLat(c.lat)}</td>
         <td>${formatLon(c.lon)}</td>
-        <td>${i === 0 ? '—' : (c.legDistKm / 1.852).toFixed(1)}</td>
+        <td>${displayIdx === 1 ? '—' : (c.legDistKm / 1.852).toFixed(1)}</td>
         <td>${c.cumDistNM.toFixed(1)}</td>
         <td>${formatUTC(c.etaUTC)}</td>
       `;
