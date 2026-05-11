@@ -735,6 +735,15 @@ window.TSAgestor.flightPlan = (function () {
     const cruiseFL = Number(opts.flightLevel) || (coords[0] && coords[0].fl) || 350;
     const flPerWp = coords.map(c => Number.isFinite(c.fl) ? c.fl : cruiseFL);
 
+    // Detecta filas de "espera": coords sinteticas con isHold=true que
+    // representan un hold sobre la posicion del waypoint anterior, sin
+    // distancia ni vuelo (legNM=0). El holdMin se lee del legOverride
+    // del propio indice. Asi en el log la espera vive en su FILA propia
+    // y no se mezcla con el tiempo del tramo de vuelo.
+    function isHoldCoord(i) {
+      return !!(coords[i] && coords[i].isHold);
+    }
+
     // Para tramos donde el FL cambia >= 5000 ft (ascensos / descensos /
     // cruces de TSA con FL adaptado), subdividimos el leg en sub-legs de
     // <= 5000 ft cada uno y aplicamos el viento al FL medio del sub-leg.
@@ -814,19 +823,25 @@ window.TSAgestor.flightPlan = (function () {
       return { windSpeedKt: speed, windDir: dir };
     }
 
-    // Calcula el array de ETAs (epoch ms) integrando viento por sub-leg
-    // cuando hay cambio de FL (climb/descent/TSA con FL adaptado).
-    // etas[i] representa el instante de SALIDA del waypoint i, es decir,
-    // tras (a) volar el tramo desde el waypoint anterior y (b) realizar
-    // la espera asignada a este waypoint via overrides[i].holdMin.
+    // Espera (hold) leida de overrides[i].holdMin. Solo aplica si la
+    // coord en la posicion i es un hold sintetico (isHold=true).
     function holdMsAt(i) {
+      if (!isHoldCoord(i)) return 0;
       const ov = overrides[i] || {};
       const m = Number(ov.holdMin);
       return Number.isFinite(m) && m > 0 ? m * 60 * 1000 : 0;
     }
+
+    // Calcula el array de ETAs (epoch ms) integrando viento por sub-leg
+    // cuando hay cambio de FL. Para holds: cero vuelo, solo se suma el
+    // tiempo de espera.
     function computeEtas(prevEtas) {
-      const etas = [departureMs + holdMsAt(0)];
+      const etas = [departureMs];
       for (let i = 1; i < coords.length; i++) {
+        if (isHoldCoord(i)) {
+          etas.push(etas[i - 1] + holdMsAt(i));
+          continue;
+        }
         const legNM = (coords[i].legDistKm || 0) / NM_KM;
         let legMs;
         if (!windsHourly || !prevEtas) {
@@ -843,7 +858,7 @@ window.TSAgestor.flightPlan = (function () {
           });
           legMs = res.hours * 3600 * 1000;
         }
-        etas.push(etas[i - 1] + legMs + holdMsAt(i));
+        etas.push(etas[i - 1] + legMs);
       }
       return etas;
     }
@@ -866,6 +881,49 @@ window.TSAgestor.flightPlan = (function () {
       const ov = overrides[i] || {};
       const segFlow = Number.isFinite(ov.fuelFlow) && ov.fuelFlow >= 0 ? ov.fuelFlow : fuelFlow;
       const legNM = i === 0 ? 0 : c.legDistKm / NM_KM;
+
+      // ── Fila de espera (hold) ────────────────────────────────────────
+      // Una coord sintetica con isHold=true representa un hold sobre la
+      // posicion del waypoint anterior. No hay vuelo: la fila solo
+      // consume "holdMin" minutos al ritmo del fuel flow del tramo.
+      if (c.isHold) {
+        const holdMin = Math.max(0, Number(ov.holdMin) || 0);
+        const holdHours = holdMin / 60;
+        const holdFuel = holdHours * segFlow;
+        cumFuelUsed += holdFuel;
+        const remaining = initialFuel - cumFuelUsed;
+        let statusH = 'ok';
+        if (bingo !== null && remaining <= bingo) {
+          statusH = 'bingo';
+          if (firstBingoIdx === null) firstBingoIdx = i;
+        } else if (joker !== null && remaining <= joker) {
+          statusH = 'joker';
+          if (firstJokerIdx === null) firstJokerIdx = i;
+        }
+        rows.push({
+          index: i,
+          name: c.name,
+          airway: c.airway || 'HOLD',
+          fl: c.fl,
+          isHold: true,
+          legDistNM: 0,
+          legSpeedKt: null,
+          legGS: null,
+          legFuelFlow: segFlow,
+          wind: null,
+          legTimeMin: holdMin,
+          flyTimeMin: 0,
+          holdMin,
+          holdFuel,
+          cumTimeMin: (etas[i] - departureMs) / 60000,
+          legFuel: holdFuel,
+          cumFuelUsed,
+          remaining,
+          status: statusH,
+          etaUTC: new Date(etas[i]),
+        });
+        continue;
+      }
 
       let track = null, windInfo = null, gs = tasPerLeg[i];
       let legHoursOverride = null;
@@ -900,15 +958,8 @@ window.TSAgestor.flightPlan = (function () {
       }
 
       const legHours = i === 0 ? 0 : (legHoursOverride != null ? legHoursOverride : legNM / gs);
-      const flyTimeMin = legHours * 60;
-      // Hold/espera SOBRE este waypoint: minutos a sumar al tramo y a
-      // consumir al ritmo de fuel flow del tramo. Util para simular
-      // patrones de espera, demoras ATC, briefing en plataforma, etc.
-      const holdMin = Number.isFinite(ov.holdMin) && ov.holdMin > 0 ? ov.holdMin : 0;
-      const holdHours = holdMin / 60;
-      const holdFuel = holdHours * segFlow;
-      const legTimeMin = flyTimeMin + holdMin;
-      const legFuel = legHours * segFlow + holdFuel;
+      const legTimeMin = legHours * 60;
+      const legFuel = legHours * segFlow;
       cumFuelUsed += legFuel;
       const remaining = initialFuel - cumFuelUsed;
 
@@ -933,19 +984,16 @@ window.TSAgestor.flightPlan = (function () {
         wind: windInfo,
         speedOverridden: Number.isFinite(ov.speedKt) && ov.speedKt !== speedKt,
         flowOverridden:  Number.isFinite(ov.fuelFlow) && ov.fuelFlow !== fuelFlow,
-        legTimeMin,                                // incluye flyTime + holdMin
-        flyTimeMin,                                // solo el vuelo
-        holdMin,                                   // espera asignada en este wp
-        holdFuel,                                  // combustible consumido durante la espera
+        legTimeMin,                                // solo vuelo (los hold viven en filas propias)
+        flyTimeMin: legTimeMin,
+        holdMin: 0,
+        holdFuel: 0,
         cumTimeMin: (etas[i] - departureMs) / 60000,
-        legFuel,                                   // legFuelFlow*flyHours + holdFuel
+        legFuel,
         cumFuelUsed,
         remaining,
         status,
-        // etaUTC = arrival (antes de cualquier hold en este wp). Util para
-        // mostrar al piloto "a esta hora llego al fix". El cum time del log
-        // si incluye el hold posterior.
-        etaUTC: new Date(etas[i] - (holdMin * 60 * 1000)),
+        etaUTC: new Date(etas[i]),
       });
     }
 

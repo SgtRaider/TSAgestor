@@ -1422,16 +1422,26 @@
       tr.dataset.idx = String(r.index);
       tr.className = rowClass(r);
       const isFirst = r.index === 0;
-      const velCell = isFirst
+      const isHold = !!r.isHold;
+      // Vel/Flow: editable solo para vuelo; espera no tiene TAS, su flow
+      // sigue siendo editable porque la espera consume al ritmo /h.
+      const velCell = (isFirst || isHold)
         ? '<td>—</td>'
         : `<td><input type="number" class="leg-input leg-vel" data-leg="${r.index}" data-field="speedKt" value="${Math.round(r.legSpeedKt)}" min="50" max="900" step="5"></td>`;
       const flowCell = isFirst
         ? '<td>—</td>'
         : `<td><input type="number" class="leg-input leg-flow" data-leg="${r.index}" data-field="fuelFlow" value="${Math.round(r.legFuelFlow)}" min="0" step="10"></td>`;
-      // Espera (hold) en minutos: disponible en TODOS los waypoints, origen
-      // incluido (espera en plataforma antes de salir).
-      const holdVal = Number.isFinite(r.holdMin) && r.holdMin > 0 ? Math.round(r.holdMin) : 0;
-      const holdCell = `<td><input type="number" class="leg-input leg-hold" data-leg="${r.index}" data-field="holdMin" value="${holdVal}" min="0" max="999" step="1" title="Minutos de espera sobre este waypoint (consume al ritmo de la columna /h)"></td>`;
+      // Columna Espera:
+      //   - Fila normal: boton "+E" para insertar una fila de hold despues.
+      //   - Fila de hold: input editable + boton "✕" para borrarla.
+      let holdCell;
+      if (isHold) {
+        const holdVal = Number.isFinite(r.holdMin) ? Math.round(r.holdMin) : 0;
+        holdCell = `<td><input type="number" class="leg-input leg-hold" data-leg="${r.index}" data-field="holdMin" value="${holdVal}" min="0" max="999" step="1" title="Minutos de espera">
+          <button type="button" class="btn-hold-del" data-leg="${r.index}" title="Eliminar espera">✕</button></td>`;
+      } else {
+        holdCell = `<td><button type="button" class="btn-hold-add" data-leg="${r.index}" title="Insertar fila de espera tras este waypoint">+ Espera</button></td>`;
+      }
       const windText = isFirst || !r.wind
         ? '—'
         : `${String(Math.round(r.wind.dir)).padStart(3, '0')}/${Math.round(r.wind.speedKt)}` +
@@ -1444,24 +1454,26 @@
       const gsText = isFirst || r.legGS == null
         ? '—'
         : Math.round(r.legGS);
-      // legTimeMin ya incluye hold; mostramos "Xmin (+H espera)" para que
-      // el piloto vea la composicion del tiempo del tramo.
-      const legTimeText = isFirst && holdVal === 0
+      const legTimeText = isFirst
         ? '—'
-        : (formatDuration(r.legTimeMin) +
-            (holdVal > 0 ? ` <span class="dim">(+${holdVal}m espera)</span>` : ''));
+        : formatDuration(r.legTimeMin);
+      // Filas de hold: marca visual + nombre con icono.
+      if (isHold) tr.classList.add('hold-row');
+      const nameHTML = isHold
+        ? `<span class="hold-badge">⏱ ESPERA</span> <span class="dim">${escapeHTML(r.name.replace(/^ESPERA en\s+/, ''))}</span>`
+        : `<b>${escapeHTML(r.name)}</b>`;
       tr.innerHTML = `
         <td>${r.index + 1}</td>
-        <td><b>${escapeHTML(r.name)}</b></td>
-        <td class="cell-leg-dist">${isFirst ? '—' : r.legDistNM.toFixed(1)}</td>
+        <td>${nameHTML}</td>
+        <td class="cell-leg-dist">${isFirst || isHold ? '—' : r.legDistNM.toFixed(1)}</td>
         ${velCell}
-        <td class="cell-wind ${windCls}"${windTooltip}>${windText}</td>
-        <td class="cell-gs">${gsText}</td>
+        <td class="cell-wind ${windCls}"${windTooltip}>${isHold ? '—' : windText}</td>
+        <td class="cell-gs">${isHold ? '—' : gsText}</td>
         ${holdCell}
         <td class="cell-leg-time">${legTimeText}</td>
         <td class="cell-cum-time">${formatDuration(r.cumTimeMin)}</td>
         ${flowCell}
-        <td class="cell-leg-fuel">${isFirst && holdVal === 0 ? '—' : fmtFuel(r.legFuel) + ' ' + escapeHTML(u)}</td>
+        <td class="cell-leg-fuel">${isFirst ? '—' : fmtFuel(r.legFuel) + ' ' + escapeHTML(u)}</td>
         <td class="cell-remaining"><b>${fmtFuel(r.remaining)} ${escapeHTML(u)}</b></td>
         <td class="cell-status">${statusLabel(r.status)}</td>
       `;
@@ -1520,6 +1532,64 @@
     updateFuelLogInPlace(plan.fuel);
   }
 
+  // Inserta una fila de espera tras el waypoint `afterIdx`. La fila
+  // sintetica clona la posicion (lat/lon, fl) del waypoint y arranca
+  // con 15 min por defecto. Se reconstruye el log completo (filas y
+  // numeracion) porque insertar afecta a indices y al mapa.
+  function insertHoldRow(afterIdx) {
+    const plan = state.lastPlan;
+    if (!plan || !plan.coords) return;
+    const ref = plan.coords[afterIdx];
+    if (!ref) return;
+    const DEFAULT_HOLD_MIN = 15;
+    const holdCoord = {
+      name: 'ESPERA en ' + (ref.name || ''),
+      lat: ref.lat,
+      lon: ref.lon,
+      fl: ref.fl,
+      airway: 'HOLD',
+      tsa: null,
+      isHold: true,
+      cumDistKm: ref.cumDistKm,
+      cumDistNM: ref.cumDistNM,
+      legDistKm: 0,
+      etaUTC: ref.etaUTC,
+    };
+    plan.coords.splice(afterIdx + 1, 0, holdCoord);
+    plan.fuelOpts.legOverrides = plan.fuelOpts.legOverrides || [];
+    plan.fuelOpts.legOverrides.splice(afterIdx + 1, 0, { holdMin: DEFAULT_HOLD_MIN });
+    // Re-render completo: hay que recrear filas e indices, no basta in-place.
+    plan.fuel = flightPlan.buildFuelLog(plan.coords, plan.fuelOpts);
+    renderFuelLog(plan.fuel);
+    // Refrescar el mapa (la polilinea/lista de waypoints no cambia, pero
+    // recalculamos por consistencia con el resto del flujo).
+    if (state.mapReady) mapView.renderFlightPlan(plan);
+  }
+
+  function removeHoldRow(idx) {
+    const plan = state.lastPlan;
+    if (!plan || !plan.coords || !plan.coords[idx] || !plan.coords[idx].isHold) return;
+    plan.coords.splice(idx, 1);
+    if (plan.fuelOpts.legOverrides) plan.fuelOpts.legOverrides.splice(idx, 1);
+    plan.fuel = flightPlan.buildFuelLog(plan.coords, plan.fuelOpts);
+    renderFuelLog(plan.fuel);
+    if (state.mapReady) mapView.renderFlightPlan(plan);
+  }
+
+  function onHoldButtonClick(e) {
+    const addBtn = e.target.closest('.btn-hold-add');
+    if (addBtn) {
+      const idx = Number(addBtn.dataset.leg);
+      if (Number.isFinite(idx)) insertHoldRow(idx);
+      return;
+    }
+    const delBtn = e.target.closest('.btn-hold-del');
+    if (delBtn) {
+      const idx = Number(delBtn.dataset.leg);
+      if (Number.isFinite(idx)) removeHoldRow(idx);
+    }
+  }
+
   // Refresca los valores calculados sin tocar los inputs ni recrear filas.
   function updateFuelLogInPlace(fuel) {
     renderFuelSummary(fuel);
@@ -1537,21 +1607,9 @@
       const tdStatus  = tr.querySelector('.cell-status');
       const tdWind    = tr.querySelector('.cell-wind');
       const tdGS      = tr.querySelector('.cell-gs');
-      const holdVal = Number.isFinite(r.holdMin) && r.holdMin > 0 ? Math.round(r.holdMin) : 0;
-      if (tdLegTime) {
-        const hasContent = !isFirst || holdVal > 0;
-        if (!hasContent) {
-          tdLegTime.textContent = '—';
-        } else {
-          tdLegTime.innerHTML = formatDuration(r.legTimeMin) +
-            (holdVal > 0 ? ` <span class="dim">(+${holdVal}m espera)</span>` : '');
-        }
-      }
+      if (tdLegTime) tdLegTime.textContent = isFirst ? '—' : formatDuration(r.legTimeMin);
       if (tdCumTime) tdCumTime.textContent = formatDuration(r.cumTimeMin);
-      if (tdLegFuel) {
-        const hasContent = !isFirst || holdVal > 0;
-        tdLegFuel.textContent = hasContent ? fmtFuel(r.legFuel) + ' ' + u : '—';
-      }
+      if (tdLegFuel) tdLegFuel.textContent = isFirst ? '—' : fmtFuel(r.legFuel) + ' ' + u;
       if (tdRem)     tdRem.innerHTML = `<b>${fmtFuel(r.remaining)} ${u ? escapeHTML(u) : ''}</b>`;
       if (tdStatus)  tdStatus.textContent = statusLabel(r.status);
       if (tdWind) {
@@ -1898,6 +1956,7 @@
     $('#btn-plan-draw').addEventListener('click', startDrawing);
     $('#plan-via').addEventListener('input', () => { state.drawnVia = null; });
     $('#plan-log-table tbody').addEventListener('input', onLegInputChange);
+    $('#plan-log-table tbody').addEventListener('click', onHoldButtonClick);
     $('#btn-draw-undo').addEventListener('click', () => mapView.undoDrawingPoint());
     $('#btn-draw-return').addEventListener('click', () => mapView.addReturnLeg());
     $('#btn-draw-finish').addEventListener('click', () => mapView.finishDrawingRoute());
