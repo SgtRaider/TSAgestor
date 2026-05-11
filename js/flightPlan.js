@@ -610,7 +610,7 @@ window.TSAgestor.flightPlan = (function () {
       eta,
       route,
       narrative: buildNarrative(route, fl),
-      coords: buildCoords(route, depUTC, speedKt),
+      coords: expandClimbDescentLegs(buildCoords(route, depUTC, speedKt)),
       distanceKM: route.totalDistKm,
       distanceNM: distNM,
       timeMinutes,
@@ -618,6 +618,54 @@ window.TSAgestor.flightPlan = (function () {
       overflownTSAs,
     };
     return result;
+  }
+
+  // Inserta waypoints sinteticos en legs con cambio de FL >= 5000 ft
+  // (ascensos, descensos, transiciones a TSA con FL adaptado). El nuevo
+  // waypoint se posiciona linealmente en el leg, lleva la altitud redon-
+  // deada al FL multiple de 50 (5000 ft) mas proximo, y nombre tipo
+  // "^FL100" / "vFL250" segun direccion. Despues recalculamos
+  // cumDistKm/legDistKm para que todo el flujo aguas abajo (log de
+  // combustible, mapView, exportador) los trate como waypoints normales.
+  function expandClimbDescentLegs(coords) {
+    if (!coords || coords.length < 2) return coords;
+    const STEP_FL = 50; // 5000 ft
+    const out = [coords[0]];
+    for (let i = 1; i < coords.length; i++) {
+      const prev = coords[i - 1], cur = coords[i];
+      const flA = Number.isFinite(prev.fl) ? prev.fl : null;
+      const flB = Number.isFinite(cur.fl)  ? cur.fl  : null;
+      if (flA != null && flB != null && Math.abs(flB - flA) >= STEP_FL) {
+        const nSubs = Math.ceil(Math.abs(flB - flA) / STEP_FL);
+        const arrow = flB > flA ? '↑' : '↓';
+        for (let s = 1; s < nSubs; s++) {
+          const t = s / nSubs;
+          const lat = prev.lat + (cur.lat - prev.lat) * t;
+          const lon = prev.lon + (cur.lon - prev.lon) * t;
+          // FL redondeado al multiple de STEP_FL mas cercano (50 = FL050).
+          const flRaw = flA + (flB - flA) * t;
+          const fl = Math.round(flRaw / STEP_FL) * STEP_FL;
+          out.push({
+            name: arrow + 'FL' + String(fl).padStart(3, '0'),
+            lat, lon, fl,
+            airway: cur.airway || '-',
+            tsa: null,
+            isClimbDescentSub: true,
+            etaUTC: null, // se recomputa en buildFuelLog
+          });
+        }
+      }
+      out.push(cur);
+    }
+    // Recalcula cumDistKm/legDistKm sobre la lista expandida.
+    out[0].cumDistKm = 0;
+    out[0].legDistKm = 0;
+    for (let i = 1; i < out.length; i++) {
+      const d = geom.greatCircleDistance([out[i - 1].lat, out[i - 1].lon], [out[i].lat, out[i].lon]);
+      out[i].legDistKm = d;
+      out[i].cumDistKm = out[i - 1].cumDistKm + d;
+    }
+    return out;
   }
 
   // Log de vuelo con cálculo de combustible por tramo. Recibe los coords de

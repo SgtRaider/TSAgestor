@@ -935,20 +935,27 @@ window.TSAgestor.mapView = (function () {
 
     plan.coords.forEach((c, i) => {
       const isExtreme = i === 0 || i === plan.coords.length - 1;
+      const isSub = !!c.isClimbDescentSub;
       const m = L.circleMarker([c.lat, c.lon], {
-        radius: isExtreme ? 6 : 4,
-        color: '#1f2937',
-        fillColor: isExtreme ? '#fbbf24' : '#fde68a',
-        fillOpacity: 1, weight: 1.5,
+        radius: isExtreme ? 6 : (isSub ? 3 : 4),
+        color: isSub ? '#7c3aed' : '#1f2937',
+        fillColor: isExtreme ? '#fbbf24' : (isSub ? '#c4b5fd' : '#fde68a'),
+        fillOpacity: 1, weight: isSub ? 1 : 1.5,
         pane: 'routePane',
       }).addTo(grp);
-      const tip = c.name + (c.airway && c.airway !== '—' ? ' · ' + c.airway : '');
+      const flLabel = Number.isFinite(c.fl) ? ` · FL${String(c.fl).padStart(3, '0')}` : '';
+      const tip = c.name + (c.airway && c.airway !== '—' ? ' · ' + c.airway : '') + flLabel;
       m.bindTooltip(tip, { direction: 'top', offset: [0, -4] });
-      L.tooltip({
-        permanent: true, direction: 'right', offset: [6, 0],
-        className: 'route-label' + (isExtreme ? ' extreme' : ''),
-        interactive: false,
-      }).setLatLng([c.lat, c.lon]).setContent(c.name).addTo(grp);
+      // Etiqueta permanente solo en waypoints "reales"; los sub-legs de
+      // ascenso/descenso saturarian el mapa. Su nombre sale en el tooltip
+      // (hover) y en la fila del log.
+      if (!isSub) {
+        L.tooltip({
+          permanent: true, direction: 'right', offset: [6, 0],
+          className: 'route-label' + (isExtreme ? ' extreme' : ''),
+          interactive: false,
+        }).setLatLng([c.lat, c.lon]).setContent(c.name).addTo(grp);
+      }
     });
 
     if (plan.conflicts && plan.conflicts.length) {
