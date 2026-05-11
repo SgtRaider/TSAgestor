@@ -1017,12 +1017,25 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
 }
 #plan-coords-table th,
 #plan-coords-table td { font-size: 13px; }
-#plan-coords-table td:nth-child(4),
+/* Headers + body alineados a la derecha en cols numericas/coord/date. */
+#plan-coords-table th:nth-child(5),
+#plan-coords-table th:nth-child(6),
+#plan-coords-table th:nth-child(7),
+#plan-coords-table th:nth-child(8),
+#plan-coords-table th:nth-child(9),
 #plan-coords-table td:nth-child(5),
 #plan-coords-table td:nth-child(6),
-#plan-coords-table td:nth-child(7) {
-  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+#plan-coords-table td:nth-child(7),
+#plan-coords-table td:nth-child(8),
+#plan-coords-table td:nth-child(9) {
   text-align: right;
+}
+#plan-coords-table td:nth-child(5),
+#plan-coords-table td:nth-child(6),
+#plan-coords-table td:nth-child(7),
+#plan-coords-table td:nth-child(8),
+#plan-coords-table td:nth-child(9) {
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
 }
 
 .route-label {
@@ -1136,7 +1149,19 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   margin: 0;
 }
 /* Cols numericas/derechas del log: Tramo NM, TAS, Viento, GS, Espera,
-   Tiempo tramo, Tiempo total, Consumo, Combustible tramo, Restante. */
+   Tiempo tramo, Tiempo total, Consumo, Combustible tramo, Restante.
+   Aplicamos right-align tanto al header como al cuerpo para que
+   visualmente las cifras queden alineadas con su titulo. */
+#plan-log-table th:nth-child(3),
+#plan-log-table th:nth-child(4),
+#plan-log-table th:nth-child(5),
+#plan-log-table th:nth-child(6),
+#plan-log-table th:nth-child(7),
+#plan-log-table th:nth-child(8),
+#plan-log-table th:nth-child(9),
+#plan-log-table th:nth-child(10),
+#plan-log-table th:nth-child(11),
+#plan-log-table th:nth-child(12),
 #plan-log-table td:nth-child(3),
 #plan-log-table td:nth-child(4),
 #plan-log-table td:nth-child(5),
@@ -1147,8 +1172,17 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
 #plan-log-table td:nth-child(10),
 #plan-log-table td:nth-child(11),
 #plan-log-table td:nth-child(12) {
-  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
   text-align: right;
+}
+#plan-log-table td:nth-child(3),
+#plan-log-table td:nth-child(4),
+#plan-log-table td:nth-child(5),
+#plan-log-table td:nth-child(6),
+#plan-log-table td:nth-child(8),
+#plan-log-table td:nth-child(9),
+#plan-log-table td:nth-child(11),
+#plan-log-table td:nth-child(12) {
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
 }
 #plan-log-table tr.row-joker td {
   background: rgba(250, 204, 21, 0.15);
