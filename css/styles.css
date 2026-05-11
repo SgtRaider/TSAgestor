@@ -615,6 +615,10 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
 .leaflet-tooltip.wp-label.rnav   { color: #334155; }
 .leaflet-tooltip.wp-label::before { display: none; }
 
+/* La visibilidad por zoom (ciudades / NAVAIDs / RNAVs) la gestiona
+   _applyZoomVisibility en mapView.js anyadiendo / quitando elementos
+   directamente del mapa o de sus grupos. No hace falta CSS. */
+
 /* Leyenda flotante de TSAs activas (toggle desde la pestana Mapa).
    Layout: panel mas ancho con cuerpo en grid 2 columnas y filas finas para
    poder ver todas las TSAs activas hoy+manyana sin scrollear. */

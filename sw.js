@@ -9,7 +9,7 @@
  * Para forzar invalidación al desplegar nueva versión, sube CACHE_VERSION.
  */
 
-const CACHE_VERSION = 'tsagestor-v83';
+const CACHE_VERSION = 'tsagestor-v87';
 const SHELL_CACHE   = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -62,24 +62,32 @@ self.addEventListener('install', (event) => {
     caches.open(SHELL_CACHE).then((cache) =>
       // addAll falla si una sola respuesta falla. Usamos add individual con catch
       // para que un CDN caído no bloquee la instalación del SW.
+      // cache:'reload' fuerza la descarga desde la red ignorando la cache HTTP
+      // del navegador, asi al subir CACHE_VERSION garantizamos assets frescos
+      // (sin esto, un styles.css con max-age largo se quedaria viejo).
       Promise.all(
-        SHELL_ASSETS.map((url) =>
-          cache.add(url).catch((err) => {
+        SHELL_ASSETS.map((url) => {
+          const req = new Request(url, { cache: 'reload' });
+          return cache.add(req).catch((err) => {
             console.warn('[SW] no se pudo cachear', url, err);
-          })
-        )
+          });
+        })
       )
     ).then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener('activate', (event) => {
+  console.info('[SW] activando', CACHE_VERSION);
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
         keys
           .filter((k) => !k.startsWith(CACHE_VERSION))
-          .map((k) => caches.delete(k))
+          .map((k) => {
+            console.info('[SW] borrando cache vieja', k);
+            return caches.delete(k);
+          })
       )
     ).then(() => self.clients.claim())
   );

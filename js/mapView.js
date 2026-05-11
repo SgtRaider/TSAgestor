@@ -2,6 +2,16 @@
 // (Iberia + islas + costas + ciudades + retícula lat/lon) en lugar de tiles
 // OSM. Los polígonos TSA se siguen pintando encima en render(tsas).
 
+console.warn('%c[mapView] v87 cargado — filtrado JS por zoom (tier-2≥6, tier-3≥8, NAVAID≥7, RNAV≥8). Llama window.TSAgestor_zoomDebug() para diagnostico.', 'background:#0ea5e9;color:#fff;padding:2px 6px;border-radius:3px;font-weight:bold');
+
+// Diagnostico global: imprime estado actual del filtrado por zoom.
+window.TSAgestor_zoomDebug = function () {
+  const mv = window.TSAgestor && window.TSAgestor.mapView;
+  if (!mv) { console.log('mapView no cargado'); return; }
+  if (typeof mv._debugZoom === 'function') return mv._debugZoom();
+  console.log('Funcion de debug no expuesta');
+};
+
 window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.mapView = (function () {
   'use strict';
@@ -48,6 +58,66 @@ window.TSAgestor.mapView = (function () {
   // pensado para ser la vista por defecto cuando no hay TSAs ni ruta.
   const DEFAULT_BOUNDS = [[35.5, -10], [44, 5]];
 
+  // Países colindantes con España (a efectos del mapa). Marruecos esta al
+  // otro lado del Estrecho pero comparte espacio aereo cercano (Gibraltar).
+  // Argelia se incluye por proximidad a Baleares aunque no sea fronterizo
+  // terrestre. Sus capitales se muestran siempre; el resto del mundo solo
+  // aparece al hacer zoom.
+  const BORDERING_COUNTRIES = new Set([
+    'Spain', 'Portugal', 'France', 'Andorra', 'Morocco',
+    'United Kingdom', // Gibraltar aparece bajo UK en el dataset.
+    'Algeria',
+  ]);
+
+  // Filtrado por zoom basado en JS (mas robusto que CSS: anyade/quita el
+  // marcador del mapa o de su grupo segun el zoom actual).
+  //
+  // _cityItems: [{marker, tooltip, tier}]  - tier 1=siempre, 2=zoom>=6, 3=zoom>=8
+  // _wpItems:   [{marker, tooltip, type, group}]
+  //               type='NAVAID' -> zoom>=7
+  //               type='RNAV'   -> zoom>=8
+  const _cityItems = [];
+  const _wpItems   = [];
+  const ZOOM_TIER_2_CITY = 6;
+  const ZOOM_TIER_3_CITY = 8;
+  const ZOOM_NAVAID      = 7;
+  const ZOOM_RNAV        = 8;
+
+  function _applyZoomVisibility() {
+    if (!map) return;
+    const z = map.getZoom();
+    // Ciudades: anyadir/quitar directamente del mapa.
+    for (const it of _cityItems) {
+      const thresh = it.tier === 1 ? 0
+                   : it.tier === 2 ? ZOOM_TIER_2_CITY
+                   : ZOOM_TIER_3_CITY;
+      const show = z >= thresh;
+      if (show) {
+        if (!map.hasLayer(it.marker))  it.marker.addTo(map);
+        if (!map.hasLayer(it.tooltip)) it.tooltip.addTo(map);
+      } else {
+        if (map.hasLayer(it.marker))  map.removeLayer(it.marker);
+        if (map.hasLayer(it.tooltip)) map.removeLayer(it.tooltip);
+      }
+    }
+    // Waypoints: anyadir/quitar del grupo (el grupo lo controla el toggle
+    // de capas. Si el grupo esta en el mapa, anyadir al grupo lo muestra).
+    for (const it of _wpItems) {
+      const thresh = it.type === 'NAVAID' ? ZOOM_NAVAID : ZOOM_RNAV;
+      const show = z >= thresh;
+      if (show) {
+        if (!it.group.hasLayer(it.marker))  it.group.addLayer(it.marker);
+        if (!it.group.hasLayer(it.tooltip)) it.group.addLayer(it.tooltip);
+      } else {
+        if (it.group.hasLayer(it.marker))  it.group.removeLayer(it.marker);
+        if (it.group.hasLayer(it.tooltip)) it.group.removeLayer(it.tooltip);
+      }
+    }
+    console.info('[mapView] zoom=' + z + ' visibles -> ciudades:'
+      + _cityItems.filter(i => map.hasLayer(i.marker)).length + '/' + _cityItems.length
+      + ' waypoints:' + _wpItems.filter(i => i.group.hasLayer(i.marker)).length + '/' + _wpItems.length);
+  }
+
   function init(elId) {
     if (map) return map;
     map = L.map(elId, {
@@ -75,6 +145,8 @@ window.TSAgestor.mapView = (function () {
     setupMeteoPane();
     addAirwayLayers();
     _initSettingsHook();
+    _applyZoomVisibility();
+    map.on('zoomend', _applyZoomVisibility);
     return map;
   }
 
@@ -754,12 +826,15 @@ window.TSAgestor.mapView = (function () {
         if (ev && ev.originalEvent) L.DomEvent.stopPropagation(ev.originalEvent);
         if (typeof waypointClickHandler === 'function') waypointClickHandler(wp.id);
       });
-      marker.addTo(group);
-      L.tooltip({
+      const tooltip = L.tooltip({
         permanent: true, direction: 'right', offset: [5, 0],
         className: 'wp-label ' + (isNav ? 'navaid' : 'rnav'),
         interactive: false,
-      }).setLatLng([wp.lat, wp.lon]).setContent(wp.id).addTo(group);
+      }).setLatLng([wp.lat, wp.lon]).setContent(wp.id);
+      // NO los anyadimos al grupo aqui. _applyZoomVisibility decide en
+      // funcion del zoom actual si entran al grupo (y por tanto al mapa
+      // cuando el grupo este activo).
+      _wpItems.push({ marker, tooltip, type: wp.type, group });
     }
     return group;
   }
@@ -804,7 +879,14 @@ window.TSAgestor.mapView = (function () {
     if (!geo || !geo.cities) return;
     for (const city of geo.cities) {
       const isCap = city.capital === true || city.type === 'capital';
-      L.circleMarker([city.lat, city.lon], {
+      // tier-1 = capital de pais limitrofe (siempre visible)
+      // tier-2 = capital de pais lejano (visible desde zoom 6)
+      // tier-3 = ciudad no capital, cualquier pais (visible desde zoom 8)
+      let tier;
+      if (!isCap) tier = 3;
+      else if (BORDERING_COUNTRIES.has(city.country)) tier = 1;
+      else tier = 2;
+      const marker = L.circleMarker([city.lat, city.lon], {
         radius: isCap ? 4 : 2.5,
         color: '#1f2937',
         fillColor: isCap ? '#dc2626' : '#374151',
@@ -812,14 +894,16 @@ window.TSAgestor.mapView = (function () {
         weight: 1,
         interactive: false,
         pane: 'markerPane',
-      }).addTo(map);
-      L.tooltip({
+      });
+      const tooltip = L.tooltip({
         permanent: true,
         direction: 'right',
         offset: [4, 0],
         className: 'city-label' + (isCap ? ' capital' : ''),
-      }).setLatLng([city.lat, city.lon]).setContent(city.name).addTo(map);
+      }).setLatLng([city.lat, city.lon]).setContent(city.name);
+      _cityItems.push({ marker, tooltip, tier });
     }
+    console.info('[mapView] drawCities: ' + _cityItems.length + ' ciudades registradas (filtrado por zoom).');
   }
 
   function addLegend() {
@@ -1306,5 +1390,27 @@ window.TSAgestor.mapView = (function () {
     setWaypointClickHandler,
     setLegendVisible, updateLegend, isLegendVisible,
     setLayersControlVisible, isLayersControlVisible,
+    _debugZoom: function () {
+      if (!map) { console.log('mapa no inicializado'); return; }
+      const z = map.getZoom();
+      const onMap = _cityItems.filter(i => map.hasLayer(i.marker));
+      const byTier = [1, 2, 3].map(t => ({
+        tier: t,
+        total: _cityItems.filter(i => i.tier === t).length,
+        visibles: _cityItems.filter(i => i.tier === t && map.hasLayer(i.marker)).length,
+      }));
+      const wpByType = ['NAVAID', 'RNAV'].map(t => ({
+        type: t,
+        total: _wpItems.filter(i => i.type === t).length,
+        enGrupo: _wpItems.filter(i => i.type === t && i.group.hasLayer(i.marker)).length,
+      }));
+      console.log('=== TSAgestor zoom debug ===');
+      console.log('Zoom actual:', z);
+      console.log('Ciudades por tier:', byTier);
+      console.log('Waypoints por tipo:', wpByType);
+      console.log('Total ciudades en mapa:', onMap.length, '/', _cityItems.length);
+      console.log('Umbrales: tier-2 ≥', ZOOM_TIER_2_CITY, '· tier-3 ≥', ZOOM_TIER_3_CITY,
+                  '· NAVAID ≥', ZOOM_NAVAID, '· RNAV ≥', ZOOM_RNAV);
+    },
   };
 })();
