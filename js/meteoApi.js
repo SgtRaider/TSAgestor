@@ -11,7 +11,7 @@ window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.meteoApi = (function () {
   'use strict';
 
-  const MODULE_BUILD = 'meteoApi v15 (vientos: 21 niveles ISA, brackets <=3500 ft)';
+  const MODULE_BUILD = 'meteoApi v16 (gramet usa cumTimeMin con holds + viento)';
   console.info('[TSAgestor]', MODULE_BUILD);
 
   // Detección de entorno: en deploy HTTPS no-local asumimos que tenemos
@@ -617,7 +617,19 @@ window.TSAgestor.meteoApi = (function () {
     const waypoints = buildWaypointsString(plan, strategy);
     if (!waypoints) return null;
     const departuretime = Math.floor(plan.departureUTC.getTime() / 1000);
-    const totalSec = Math.round((plan.timeMinutes || 0) * 60);
+    // Duracion TOTAL del vuelo en segundos. plan.timeMinutes es la
+    // estimacion ingenua (distance / TAS) calculada en flightPlan.plan()
+    // y NO incluye holds ni la correccion por viento. El log de vuelo
+    // (plan.fuel.rows[last].cumTimeMin) si los incluye, asi que lo
+    // preferimos cuando esta disponible -- de lo contrario el chart usa
+    // una duracion irreal y los waypoints intermedios caen en horas
+    // equivocadas del pronostico meteo.
+    let totalMin = Number(plan.timeMinutes) || 0;
+    if (plan.fuel && Array.isArray(plan.fuel.rows) && plan.fuel.rows.length) {
+      const lastCum = plan.fuel.rows[plan.fuel.rows.length - 1].cumTimeMin;
+      if (Number.isFinite(lastCum) && lastCum > 0) totalMin = lastCum;
+    }
+    const totalSec = Math.round(totalMin * 60);
     // Capamos a 6h: el chart muestra los primeros tramos (lo mas relevante
     // para la planificacion meteo de salida); rutas mas largas haran que
     // Autorouter responda 500.
