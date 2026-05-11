@@ -152,49 +152,59 @@
           <div class="feature">
             <div class="feature-title">Carga de NOTAM</div>
             <div class="feature-desc">Lectura de PDF/TXT del boletín ICARO XXI con
-              extracción automática de TSAs (vértices, cota vertical, ventanas
-              horarias agrupadas).</div>
+              extracción automática de TSAs (vértices, cota vertical y ventanas
+              horarias agrupadas). Tabla de activas <em>hoy y mañana</em> con
+              agrupación por nombre+FL y selección por grupo.</div>
           </div>
           <div class="feature">
             <div class="feature-title">Mapa offline</div>
             <div class="feature-desc">Cartografía Natural Earth integrada con
-              relieve detallado de Iberia, Baleares y Canarias. Capas activables
-              de aerovías, TMAs, CTRs y meteorología.</div>
+              relieve detallado de Iberia, Baleares y Canarias. Aerovías AIP
+              (low/high), TMAs, CTRs y meteo activables por capa. Filtrado por
+              zoom: ciudades, NAVAIDs y RNAVs aparecen al ampliar para mantener
+              el mapa limpio en vista regional.</div>
           </div>
           <div class="feature">
             <div class="feature-title">Plan de vuelo</div>
-            <div class="feature-desc">Cálculo de ruta por aerovías o trazado
-              manual punto a punto sobre el mapa. Detección de conflictos con
-              TSAs activas y ajuste automático de FL al cruzar.</div>
+            <div class="feature-desc">Ruta por aerovías o trazado manual sobre el
+              mapa (con botón <em>Vuelta</em> para circuitos). Sub-tramos
+              automáticos cada 5000 ft en ascenso y descenso, fijados dentro de
+              la TSA cuando se vuela en banda vertical. Esperas como filas
+              independientes en el log. Exportar / importar plan completo en
+              JSON.</div>
           </div>
           <div class="feature">
             <div class="feature-title">Log de combustible</div>
             <div class="feature-desc">Tabla por tramos con velocidad y consumo
-              editables. Marca los waypoints donde se cruza el JOKER y BINGO,
-              avisa de combustible insuficiente.</div>
+              editables. Viento en ruta interpolado vectorialmente entre 21
+              niveles ISA (de 1000 hPa a 100 hPa) según el FL real de cada
+              sub-tramo. Marca JOKER y BINGO y avisa de combustible insuficiente.</div>
           </div>
           <div class="feature">
             <div class="feature-title">Corte transversal</div>
-            <div class="feature-desc">Sección vertical de la ruta con TSAs
-              cruzadas en su posición exacta, perfil del FL por waypoint y
-              cobertura nubosa por capas (Open-Meteo).</div>
+            <div class="feature-desc">Sección vertical de la ruta con las TSAs
+              cruzadas en su posición real, perfil del FL por waypoint y
+              cobertura nubosa por capas (Open-Meteo). Solapes resueltos
+              clusterizando por contacto + reparto en X.</div>
           </div>
           <div class="feature">
             <div class="feature-title">Meteorología</div>
             <div class="feature-desc">METAR/TAF decodificados al español, capa
-              de Cloud Top Height MSG 0° (EUMETSAT) con leyenda en FL, y GRAMET
-              integrado vía Autorouter.</div>
+              Cloud Top Height MSG 0° (EUMETSAT) con leyenda en FL y RainViewer
+              IR. GRAMET vía Autorouter con waypoints próximos al corredor de
+              ruta y duración total real (incluye holds y viento).</div>
           </div>
           <div class="feature">
             <div class="feature-title">Informe PDF</div>
             <div class="feature-desc">Exportación con cabecera institucional EA,
-              plan de vuelo completo, log de combustible, METAR/TAF y corte
-              transversal en un único documento.</div>
+              plan de vuelo, log de combustible (con vientos y esperas), METAR/TAF
+              decodificados y corte transversal en un único documento.</div>
           </div>
           <div class="feature">
-            <div class="feature-title">Identidad EA</div>
-            <div class="feature-desc">Adaptado al manual de identidad corporativa
-              del Ejército del Aire y del Espacio (paleta institucional, Rokiski
+            <div class="feature-title">PWA + identidad EA</div>
+            <div class="feature-desc">App instalable, funciona offline tras la
+              primera carga (Service Worker). Adaptada al manual de identidad
+              corporativa del Ejército del Aire y del Espacio (paleta, Rokiski
               y tipografía Archivo).</div>
           </div>
         </div>
