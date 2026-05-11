@@ -1428,6 +1428,10 @@
       const flowCell = isFirst
         ? '<td>—</td>'
         : `<td><input type="number" class="leg-input leg-flow" data-leg="${r.index}" data-field="fuelFlow" value="${Math.round(r.legFuelFlow)}" min="0" step="10"></td>`;
+      // Espera (hold) en minutos: disponible en TODOS los waypoints, origen
+      // incluido (espera en plataforma antes de salir).
+      const holdVal = Number.isFinite(r.holdMin) && r.holdMin > 0 ? Math.round(r.holdMin) : 0;
+      const holdCell = `<td><input type="number" class="leg-input leg-hold" data-leg="${r.index}" data-field="holdMin" value="${holdVal}" min="0" max="999" step="1" title="Minutos de espera sobre este waypoint (consume al ritmo de la columna /h)"></td>`;
       const windText = isFirst || !r.wind
         ? '—'
         : `${String(Math.round(r.wind.dir)).padStart(3, '0')}/${Math.round(r.wind.speedKt)}` +
@@ -1440,6 +1444,12 @@
       const gsText = isFirst || r.legGS == null
         ? '—'
         : Math.round(r.legGS);
+      // legTimeMin ya incluye hold; mostramos "Xmin (+H espera)" para que
+      // el piloto vea la composicion del tiempo del tramo.
+      const legTimeText = isFirst && holdVal === 0
+        ? '—'
+        : (formatDuration(r.legTimeMin) +
+            (holdVal > 0 ? ` <span class="dim">(+${holdVal}m espera)</span>` : ''));
       tr.innerHTML = `
         <td>${r.index + 1}</td>
         <td><b>${escapeHTML(r.name)}</b></td>
@@ -1447,10 +1457,11 @@
         ${velCell}
         <td class="cell-wind ${windCls}"${windTooltip}>${windText}</td>
         <td class="cell-gs">${gsText}</td>
-        <td class="cell-leg-time">${isFirst ? '—' : formatDuration(r.legTimeMin)}</td>
+        ${holdCell}
+        <td class="cell-leg-time">${legTimeText}</td>
         <td class="cell-cum-time">${formatDuration(r.cumTimeMin)}</td>
         ${flowCell}
-        <td class="cell-leg-fuel">${isFirst ? '—' : fmtFuel(r.legFuel) + ' ' + escapeHTML(u)}</td>
+        <td class="cell-leg-fuel">${isFirst && holdVal === 0 ? '—' : fmtFuel(r.legFuel) + ' ' + escapeHTML(u)}</td>
         <td class="cell-remaining"><b>${fmtFuel(r.remaining)} ${escapeHTML(u)}</b></td>
         <td class="cell-status">${statusLabel(r.status)}</td>
       `;
@@ -1526,9 +1537,21 @@
       const tdStatus  = tr.querySelector('.cell-status');
       const tdWind    = tr.querySelector('.cell-wind');
       const tdGS      = tr.querySelector('.cell-gs');
-      if (tdLegTime) tdLegTime.textContent = isFirst ? '—' : formatDuration(r.legTimeMin);
+      const holdVal = Number.isFinite(r.holdMin) && r.holdMin > 0 ? Math.round(r.holdMin) : 0;
+      if (tdLegTime) {
+        const hasContent = !isFirst || holdVal > 0;
+        if (!hasContent) {
+          tdLegTime.textContent = '—';
+        } else {
+          tdLegTime.innerHTML = formatDuration(r.legTimeMin) +
+            (holdVal > 0 ? ` <span class="dim">(+${holdVal}m espera)</span>` : '');
+        }
+      }
       if (tdCumTime) tdCumTime.textContent = formatDuration(r.cumTimeMin);
-      if (tdLegFuel) tdLegFuel.textContent = isFirst ? '—' : fmtFuel(r.legFuel) + ' ' + u;
+      if (tdLegFuel) {
+        const hasContent = !isFirst || holdVal > 0;
+        tdLegFuel.textContent = hasContent ? fmtFuel(r.legFuel) + ' ' + u : '—';
+      }
       if (tdRem)     tdRem.innerHTML = `<b>${fmtFuel(r.remaining)} ${u ? escapeHTML(u) : ''}</b>`;
       if (tdStatus)  tdStatus.textContent = statusLabel(r.status);
       if (tdWind) {

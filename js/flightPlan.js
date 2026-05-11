@@ -816,25 +816,34 @@ window.TSAgestor.flightPlan = (function () {
 
     // Calcula el array de ETAs (epoch ms) integrando viento por sub-leg
     // cuando hay cambio de FL (climb/descent/TSA con FL adaptado).
+    // etas[i] representa el instante de SALIDA del waypoint i, es decir,
+    // tras (a) volar el tramo desde el waypoint anterior y (b) realizar
+    // la espera asignada a este waypoint via overrides[i].holdMin.
+    function holdMsAt(i) {
+      const ov = overrides[i] || {};
+      const m = Number(ov.holdMin);
+      return Number.isFinite(m) && m > 0 ? m * 60 * 1000 : 0;
+    }
     function computeEtas(prevEtas) {
-      const etas = [departureMs];
+      const etas = [departureMs + holdMsAt(0)];
       for (let i = 1; i < coords.length; i++) {
         const legNM = (coords[i].legDistKm || 0) / NM_KM;
+        let legMs;
         if (!windsHourly || !prevEtas) {
-          const legMs = (legNM / tasPerLeg[i]) * 3600 * 1000;
-          etas.push(etas[i - 1] + legMs);
-          continue;
+          legMs = (legNM / tasPerLeg[i]) * 3600 * 1000;
+        } else {
+          const track = geom.bearing(
+            [coords[i - 1].lat, coords[i - 1].lon],
+            [coords[i].lat,     coords[i].lon]);
+          const res = integrateLeg({
+            legNM, track, tas: tasPerLeg[i],
+            flA: flPerWp[i - 1], flB: flPerWp[i],
+            phA: windsHourly[i - 1], phB: windsHourly[i],
+            etaA: prevEtas[i - 1], etaBest: prevEtas[i],
+          });
+          legMs = res.hours * 3600 * 1000;
         }
-        const track = geom.bearing(
-          [coords[i - 1].lat, coords[i - 1].lon],
-          [coords[i].lat,     coords[i].lon]);
-        const res = integrateLeg({
-          legNM, track, tas: tasPerLeg[i],
-          flA: flPerWp[i - 1], flB: flPerWp[i],
-          phA: windsHourly[i - 1], phB: windsHourly[i],
-          etaA: prevEtas[i - 1], etaBest: prevEtas[i],
-        });
-        etas.push(etas[i - 1] + res.hours * 3600 * 1000);
+        etas.push(etas[i - 1] + legMs + holdMsAt(i));
       }
       return etas;
     }
@@ -891,8 +900,15 @@ window.TSAgestor.flightPlan = (function () {
       }
 
       const legHours = i === 0 ? 0 : (legHoursOverride != null ? legHoursOverride : legNM / gs);
-      const legTimeMin = legHours * 60;
-      const legFuel = legHours * segFlow;
+      const flyTimeMin = legHours * 60;
+      // Hold/espera SOBRE este waypoint: minutos a sumar al tramo y a
+      // consumir al ritmo de fuel flow del tramo. Util para simular
+      // patrones de espera, demoras ATC, briefing en plataforma, etc.
+      const holdMin = Number.isFinite(ov.holdMin) && ov.holdMin > 0 ? ov.holdMin : 0;
+      const holdHours = holdMin / 60;
+      const holdFuel = holdHours * segFlow;
+      const legTimeMin = flyTimeMin + holdMin;
+      const legFuel = legHours * segFlow + holdFuel;
       cumFuelUsed += legFuel;
       const remaining = initialFuel - cumFuelUsed;
 
@@ -917,13 +933,19 @@ window.TSAgestor.flightPlan = (function () {
         wind: windInfo,
         speedOverridden: Number.isFinite(ov.speedKt) && ov.speedKt !== speedKt,
         flowOverridden:  Number.isFinite(ov.fuelFlow) && ov.fuelFlow !== fuelFlow,
-        legTimeMin,
+        legTimeMin,                                // incluye flyTime + holdMin
+        flyTimeMin,                                // solo el vuelo
+        holdMin,                                   // espera asignada en este wp
+        holdFuel,                                  // combustible consumido durante la espera
         cumTimeMin: (etas[i] - departureMs) / 60000,
-        legFuel,
+        legFuel,                                   // legFuelFlow*flyHours + holdFuel
         cumFuelUsed,
         remaining,
         status,
-        etaUTC: new Date(etas[i]),
+        // etaUTC = arrival (antes de cualquier hold en este wp). Util para
+        // mostrar al piloto "a esta hora llego al fix". El cum time del log
+        // si incluye el hold posterior.
+        etaUTC: new Date(etas[i] - (holdMin * 60 * 1000)),
       });
     }
 
