@@ -647,6 +647,11 @@ window.TSAgestor.flightPlan = (function () {
       if (flA != null && flB != null && Math.abs(flB - flA) >= STEP_FL) {
         const nSubs = Math.ceil(Math.abs(flB - flA) / STEP_FL);
         const arrow = flB > flA ? '↑' : '↓';
+        // ETA de los extremos para interpolar ETA del sub-leg proporcio-
+        // nalmente. Si por algun motivo el ETA del extremo no es Date,
+        // caemos a now para no fallar.
+        const etaA = prev.etaUTC instanceof Date ? prev.etaUTC.getTime() : Date.now();
+        const etaB = cur.etaUTC  instanceof Date ? cur.etaUTC.getTime()  : etaA;
         for (let s = 1; s < nSubs; s++) {
           const t = s / nSubs;
           const lat = prev.lat + (cur.lat - prev.lat) * t;
@@ -672,19 +677,22 @@ window.TSAgestor.flightPlan = (function () {
             tsa: tsa || null,
             isClimbDescentSub: true,
             tsaClamped: clamped,
-            etaUTC: null, // se recomputa en buildFuelLog
+            etaUTC: new Date(etaA + (etaB - etaA) * t),
           });
         }
       }
       out.push(cur);
     }
-    // Recalcula cumDistKm/legDistKm sobre la lista expandida.
+    // Recalcula cumDistKm / cumDistNM / legDistKm sobre la lista expandida
+    // — el render del plan en la tabla y el log dependen de estos campos.
     out[0].cumDistKm = 0;
+    out[0].cumDistNM = 0;
     out[0].legDistKm = 0;
     for (let i = 1; i < out.length; i++) {
       const d = geom.greatCircleDistance([out[i - 1].lat, out[i - 1].lon], [out[i].lat, out[i].lon]);
       out[i].legDistKm = d;
       out[i].cumDistKm = out[i - 1].cumDistKm + d;
+      out[i].cumDistNM = out[i].cumDistKm / NM_KM;
     }
     return out;
   }
