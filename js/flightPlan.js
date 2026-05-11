@@ -610,7 +610,7 @@ window.TSAgestor.flightPlan = (function () {
       eta,
       route,
       narrative: buildNarrative(route, fl),
-      coords: expandClimbDescentLegs(buildCoords(route, depUTC, speedKt)),
+      coords: expandClimbDescentLegs(buildCoords(route, depUTC, speedKt), opts.tsas || []),
       distanceKM: route.totalDistKm,
       distanceNM: distNM,
       timeMinutes,
@@ -624,10 +624,19 @@ window.TSAgestor.flightPlan = (function () {
   // (ascensos, descensos, transiciones a TSA con FL adaptado). El nuevo
   // waypoint se posiciona linealmente en el leg, lleva la altitud redon-
   // deada al FL multiple de 50 (5000 ft) mas proximo, y nombre tipo
-  // "^FL100" / "vFL250" segun direccion. Despues recalculamos
-  // cumDistKm/legDistKm para que todo el flujo aguas abajo (log de
-  // combustible, mapView, exportador) los trate como waypoints normales.
-  function expandClimbDescentLegs(coords) {
+  // "^FL100" / "vFL250" segun direccion.
+  //
+  // Restriccion TSA: si el sub-leg cae geograficamente dentro de una TSA,
+  // su FL se acota al rango vertical de la TSA [lowerFt, upperFt] (en
+  // pasos de FL5 igual que adjustFLForTSA). Asi tanto el waypoint como
+  // la linea que lo une a sus vecinos quedan dentro de la banda permitida
+  // por la TSA atravesada. El nombre cambia a "=FLxxx" para indicar que
+  // ha sido recortado por una TSA.
+  //
+  // Despues recalculamos cumDistKm/legDistKm para que todo el flujo aguas
+  // abajo (log de combustible, mapView, exportador) los trate como
+  // waypoints normales.
+  function expandClimbDescentLegs(coords, tsas) {
     if (!coords || coords.length < 2) return coords;
     const STEP_FL = 50; // 5000 ft
     const out = [coords[0]];
@@ -644,13 +653,25 @@ window.TSAgestor.flightPlan = (function () {
           const lon = prev.lon + (cur.lon - prev.lon) * t;
           // FL redondeado al multiple de STEP_FL mas cercano (50 = FL050).
           const flRaw = flA + (flB - flA) * t;
-          const fl = Math.round(flRaw / STEP_FL) * STEP_FL;
+          let fl = Math.round(flRaw / STEP_FL) * STEP_FL;
+          // Si el sub-leg cae dentro de una TSA, acotar el FL a su banda
+          // vertical -- el avion no puede atravesar la TSA fuera de
+          // [lowerFt, upperFt]. adjustFLForTSA aplica un buffer de 500 ft
+          // y aproxima a FL5; lo reusamos para mantener consistencia con
+          // los waypoints originales.
+          const tsa = findTSAContaining([lat, lon], tsas);
+          let clamped = false, prefix = arrow;
+          if (tsa && tsa.vertical) {
+            const adj = adjustFLForTSA(fl, tsa);
+            if (adj !== fl) { fl = adj; clamped = true; prefix = '='; }
+          }
           out.push({
-            name: arrow + 'FL' + String(fl).padStart(3, '0'),
+            name: prefix + 'FL' + String(fl).padStart(3, '0'),
             lat, lon, fl,
             airway: cur.airway || '-',
-            tsa: null,
+            tsa: tsa || null,
             isClimbDescentSub: true,
+            tsaClamped: clamped,
             etaUTC: null, // se recomputa en buildFuelLog
           });
         }
