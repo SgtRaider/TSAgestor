@@ -462,16 +462,21 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   letter-spacing: 0.4px;
 }
 .btn-hold-add {
-  background: transparent;
-  border: 1px dashed #94a3b8;
-  color: #475569;
-  font-size: 10px;
-  padding: 1px 6px;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
   border-radius: 4px;
   cursor: pointer;
   white-space: nowrap;
 }
-.btn-hold-add:hover { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+.btn-hold-add:hover {
+  background: #fbbf24;
+  border-color: #d97706;
+  color: #78350f;
+}
 .btn-hold-del {
   background: transparent;
   border: 0;
