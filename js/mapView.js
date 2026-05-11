@@ -325,6 +325,8 @@ window.TSAgestor.mapView = (function () {
     // Agrupamiento visual por prefijo de nombre + misma banda vertical +
     // mismo schedule (TSA CORREDOR SUR 4/5/6 -> "TSA CORREDOR SUR 4-6").
     const groups = groupTSAsForLegend(filtered);
+    const groupCount = groups.length;
+    const tsaCount = filtered.length;
     const rows = groups.map(g => {
       const t = g.tsas[0]; // representante (misma vertical y schedule)
       const band = geom.altitudeBand(t.vertical.upperFt);
@@ -344,8 +346,11 @@ window.TSAgestor.mapView = (function () {
           </div>
         </div>`;
     }).join('');
+    const countTxt = (groupCount === tsaCount)
+      ? `${tsaCount}`
+      : `${tsaCount} TSAs · ${groupCount} grupos`;
     return `
-      <div class="tsa-legend-head">TSAs activas hoy &amp; mañana <span class="tsa-legend-count">${filtered.length}</span></div>
+      <div class="tsa-legend-head">TSAs activas hoy &amp; mañana <span class="tsa-legend-count">${countTxt}</span></div>
       <div class="tsa-legend-window-bar">${winLabel}</div>
       <div class="tsa-legend-body">${rows}</div>`;
   }
