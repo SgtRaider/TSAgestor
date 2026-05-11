@@ -70,6 +70,13 @@
   // ── Tabs ─────────────────────────────────────────────────────────────
 
   function switchTab(name) {
+    // Si dejamos la pestaña de mapa con el modo dibujo activo, lo
+    // cancelamos -- el banner se queda visible si no, y al volver
+    // cualquier clic en el mapa anyade un waypoint inesperado.
+    if (name !== 'map' && mapView && mapView.cancelDrawingRoute) {
+      mapView.cancelDrawingRoute();
+      hideDrawBanner();
+    }
     $$('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
     $$('.tab-content').forEach(s => s.classList.toggle('active', s.id === 'tab-' + name));
     if (name === 'map') {
