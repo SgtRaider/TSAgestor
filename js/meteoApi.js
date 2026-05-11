@@ -11,7 +11,7 @@ window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.meteoApi = (function () {
   'use strict';
 
-  const MODULE_BUILD = 'meteoApi v13 (CTH con TIME explicito + cache-bust 15min)';
+  const MODULE_BUILD = 'meteoApi v14 (vientos: todos los niveles ISA + interpolacion por FL)';
   console.info('[TSAgestor]', MODULE_BUILD);
 
   // Detección de entorno: en deploy HTTPS no-local asumimos que tenemos
@@ -265,18 +265,26 @@ window.TSAgestor.meteoApi = (function () {
       Math.abs(l.ft - ft) < Math.abs(best.ft - ft) ? l : best, ISA_LEVELS[0]);
   }
 
-  // Vientos en altura para cada punto al nivel ISA más cercano al FL pedido.
-  // Devuelve siempre los pronósticos HORARIOS completos por punto
-  // (past_days=2 + forecast_days=7) para que el caller pueda interpolar
-  // según la ETA de cada waypoint.
-  //   { level: {hPa, ft}, source: 'forecast',
-  //     pointsHourly: [{ times: [iso...], windSpeedKt: [...], windDir: [...] }, ...] }
-  async function fetchWindsAloft(points, fl) {
-    if (!points || !points.length) return { level: null, pointsHourly: [] };
-    const level = closestPressureLevel(fl);
+  // Vientos en altura para cada punto en TODOS los niveles ISA. Una sola
+  // llamada a Open-Meteo (lat,lon,lat,lon,... con N variables por nivel)
+  // devuelve todos los pronosticos horarios; lookupWindAt(ph, atMs, fl)
+  // luego interpola por altitud para cada waypoint segun su FL real.
+  //
+  //   { levels: [{hPa, ft}, ...],   // todos los niveles incluidos
+  //     source: 'forecast',
+  //     pointsHourly: [             // uno por punto
+  //       { times: [iso...],
+  //         byLevel: { '1000': {windSpeedKt:[...], windDir:[...]}, '925': {...}, ... }
+  //       },
+  //       ...
+  //     ] }
+  async function fetchWindsAloft(points /*, fl (ignored — fetchea todos) */) {
+    if (!points || !points.length) return { levels: [], pointsHourly: [] };
     const lats = points.map(p => p.lat.toFixed(4)).join(',');
     const lons = points.map(p => p.lon.toFixed(4)).join(',');
-    const vars = `wind_speed_${level.hPa}hPa,wind_direction_${level.hPa}hPa`;
+    const vars = ISA_LEVELS.flatMap(l => [
+      `wind_speed_${l.hPa}hPa`, `wind_direction_${l.hPa}hPa`,
+    ]).join(',');
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
                 `&hourly=${vars}&windspeed_unit=kn&past_days=2&forecast_days=7&timezone=UTC`;
     const res = await safeFetch(url, 'Open-Meteo (vientos pronóstico)');
@@ -285,32 +293,88 @@ window.TSAgestor.meteoApi = (function () {
     const arr = Array.isArray(data) ? data : [data];
 
     return {
-      level,
+      levels: ISA_LEVELS.slice(),
       source: 'forecast',
       pointsHourly: arr.map(d => {
         const times = (d.hourly && d.hourly.time) || [];
-        const ws    = (d.hourly && d.hourly[`wind_speed_${level.hPa}hPa`]) || [];
-        const wd    = (d.hourly && d.hourly[`wind_direction_${level.hPa}hPa`]) || [];
-        return { times, windSpeedKt: ws, windDir: wd };
+        const byLevel = {};
+        for (const lv of ISA_LEVELS) {
+          byLevel[String(lv.hPa)] = {
+            windSpeedKt: (d.hourly && d.hourly[`wind_speed_${lv.hPa}hPa`]) || [],
+            windDir:     (d.hourly && d.hourly[`wind_direction_${lv.hPa}hPa`]) || [],
+          };
+        }
+        return { times, byLevel };
       }),
     };
   }
 
-  // Devuelve {windSpeedKt, windDir, atTime} del pronóstico horario más cercano
-  // al timestamp atMs (en ms epoch). Útil para que un caller mire vientos por
-  // ETA distinta en cada waypoint.
-  function lookupWindAt(pointHourly, atMs) {
+  // Para retrocompat con codigo viejo: lookupWindAt sobre estructura nueva.
+  // Si se pasa fl, interpola entre los dos niveles ISA que lo encierran.
+  // Si no, devuelve el viento al nivel 700hPa (cruise tipico) como fallback.
+  function lookupWindAt(pointHourly, atMs, fl) {
     if (!pointHourly || !pointHourly.times || !pointHourly.times.length) return null;
+    // Estructura legacy (un solo nivel) -> usar tal cual.
+    if (pointHourly.windSpeedKt && !pointHourly.byLevel) {
+      let bestIdx = 0, bestDiff = Infinity;
+      for (let i = 0; i < pointHourly.times.length; i++) {
+        const t = new Date(pointHourly.times[i] + 'Z').getTime();
+        const diff = Math.abs(t - atMs);
+        if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+      }
+      return {
+        windSpeedKt: pointHourly.windSpeedKt[bestIdx],
+        windDir:     pointHourly.windDir[bestIdx],
+        atTime:      pointHourly.times[bestIdx] + 'Z',
+      };
+    }
+    // Tiempo mas cercano a atMs.
     let bestIdx = 0, bestDiff = Infinity;
     for (let i = 0; i < pointHourly.times.length; i++) {
       const t = new Date(pointHourly.times[i] + 'Z').getTime();
       const diff = Math.abs(t - atMs);
       if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
     }
+    const atTime = pointHourly.times[bestIdx] + 'Z';
+    // Niveles ISA ordenados de menor a mayor altitud.
+    const sorted = ISA_LEVELS.slice().sort((a, b) => a.ft - b.ft);
+    const ftWp = (Number.isFinite(fl) ? fl : 350) * 100;
+    // Bracket por altitud.
+    let lo = sorted[0], hi = sorted[sorted.length - 1];
+    if (ftWp <= sorted[0].ft) { lo = hi = sorted[0]; }
+    else if (ftWp >= sorted[sorted.length - 1].ft) { lo = hi = sorted[sorted.length - 1]; }
+    else {
+      for (let i = 0; i < sorted.length - 1; i++) {
+        if (ftWp >= sorted[i].ft && ftWp <= sorted[i + 1].ft) {
+          lo = sorted[i]; hi = sorted[i + 1]; break;
+        }
+      }
+    }
+    const dLo = pointHourly.byLevel[String(lo.hPa)];
+    const dHi = pointHourly.byLevel[String(hi.hPa)];
+    if (!dLo || !dHi) return null;
+    const wsLo = dLo.windSpeedKt[bestIdx], wdLo = dLo.windDir[bestIdx];
+    const wsHi = dHi.windSpeedKt[bestIdx], wdHi = dHi.windDir[bestIdx];
+    if (!Number.isFinite(wsLo) && !Number.isFinite(wsHi)) return null;
+    const t = lo.ft === hi.ft ? 0 : (ftWp - lo.ft) / (hi.ft - lo.ft);
+    // Interpolacion vectorial (u, v) para no romper en 359°/0°.
+    const toRad = d => d * Math.PI / 180;
+    const uLo = -wsLo * Math.sin(toRad(wdLo));
+    const vLo = -wsLo * Math.cos(toRad(wdLo));
+    const uHi = -wsHi * Math.sin(toRad(wdHi));
+    const vHi = -wsHi * Math.cos(toRad(wdHi));
+    const u = uLo + (uHi - uLo) * t;
+    const v = vLo + (vHi - vLo) * t;
+    const speed = Math.sqrt(u * u + v * v);
+    let dir = Math.atan2(-u, -v) * 180 / Math.PI;
+    if (dir < 0) dir += 360;
     return {
-      windSpeedKt: pointHourly.windSpeedKt[bestIdx],
-      windDir:     pointHourly.windDir[bestIdx],
-      atTime:      pointHourly.times[bestIdx] + 'Z',
+      windSpeedKt: speed,
+      windDir: dir,
+      atTime,
+      levelLo: lo,
+      levelHi: hi,
+      interpFactor: t,
     };
   }
 

@@ -652,16 +652,22 @@ window.TSAgestor.flightPlan = (function () {
       return Number.isFinite(ov.speedKt) && ov.speedKt > 0 ? ov.speedKt : speedKt;
     });
 
+    // FL efectivo por waypoint (cae al FL del plan si el waypoint no trae
+    // ninguno asignado). Origen/destino suelen ir a GND (fl=0), TSAs a su
+    // limite vertical, cruise al FL del formulario.
+    const cruiseFL = Number(opts.flightLevel) || (coords[0] && coords[0].fl) || 350;
+    const flPerWp = coords.map(c => Number.isFinite(c.fl) ? c.fl : cruiseFL);
+
     // Calcula el array de ETAs (epoch ms) usando, opcionalmente, los vientos
-    // mirados al ETA estimado anterior de cada waypoint.
+    // mirados al ETA estimado anterior de cada waypoint AL FL DE ESE WP.
     function computeEtas(prevEtas) {
       const etas = [departureMs];
       for (let i = 1; i < coords.length; i++) {
         const legNM = (coords[i].legDistKm || 0) / NM_KM;
         let gs = tasPerLeg[i];
         if (windsHourly && prevEtas) {
-          const wA = lookupAt(windsHourly[i - 1], prevEtas[i - 1]);
-          const wB = lookupAt(windsHourly[i],     prevEtas[i]);
+          const wA = lookupAt(windsHourly[i - 1], prevEtas[i - 1], flPerWp[i - 1]);
+          const wB = lookupAt(windsHourly[i],     prevEtas[i],     flPerWp[i]);
           const avgW = avgWindVec(wA, wB);
           if (avgW) {
             const track = geom.bearing(
@@ -700,8 +706,8 @@ window.TSAgestor.flightPlan = (function () {
       if (i > 0 && windsHourly) {
         const prev = coords[i - 1];
         track = geom.bearing([prev.lat, prev.lon], [c.lat, c.lon]);
-        const wA = lookupAt(windsHourly[i - 1], etas[i - 1]);
-        const wB = lookupAt(windsHourly[i],     etas[i]);
+        const wA = lookupAt(windsHourly[i - 1], etas[i - 1], flPerWp[i - 1]);
+        const wB = lookupAt(windsHourly[i],     etas[i],     flPerWp[i]);
         const avgW = avgWindVec(wA, wB);
         if (avgW) {
           const hw = -avgW.windSpeedKt * Math.cos((avgW.windDir - track) * Math.PI / 180);
@@ -777,9 +783,19 @@ window.TSAgestor.flightPlan = (function () {
     };
   }
 
-  // Look-up del viento a una hora (ms) en el array horario de un punto.
-  function lookupAt(ph, atMs) {
+  // Look-up del viento a una hora (ms) y un FL especifico en el array
+  // horario de un punto. Si ph trae byLevel (formato nuevo) interpola
+  // entre los dos niveles ISA que encierran el FL pedido; si trae
+  // windSpeedKt directos (formato legacy) lo devuelve tal cual.
+  // Delega en meteoApi.lookupWindAt si esta cargado para no duplicar
+  // logica de interpolacion vectorial.
+  function lookupAt(ph, atMs, fl) {
     if (!ph || !ph.times || !ph.times.length) return null;
+    const mApi = window.TSAgestor && window.TSAgestor.meteoApi;
+    if (mApi && typeof mApi.lookupWindAt === 'function') {
+      return mApi.lookupWindAt(ph, atMs, fl);
+    }
+    // Fallback minimo si meteoApi aun no esta cargado.
     let bestIdx = 0, bestDiff = Infinity;
     for (let i = 0; i < ph.times.length; i++) {
       const t = new Date(ph.times[i] + 'Z').getTime();
@@ -787,8 +803,8 @@ window.TSAgestor.flightPlan = (function () {
       if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
     }
     return {
-      windSpeedKt: ph.windSpeedKt[bestIdx],
-      windDir:     ph.windDir[bestIdx],
+      windSpeedKt: ph.windSpeedKt ? ph.windSpeedKt[bestIdx] : null,
+      windDir:     ph.windDir ? ph.windDir[bestIdx] : null,
       atTime:      ph.times[bestIdx] + 'Z',
     };
   }

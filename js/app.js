@@ -953,12 +953,13 @@
       initialFuel:  $('#plan-fuel-initial').value,
       fuelFlow:     $('#plan-fuel-flow').value,
       speedKt,
+      flightLevel:  fl,                                          // fallback para waypoints sin fl asignado
       jokerFuel:    $('#plan-joker').value,
       bingoFuel:    $('#plan-bingo').value,
       unit:         $('#plan-fuel-unit').value.trim() || 'kg',
       legOverrides: [],
       windsHourly:  null,
-      windLevel:    null,
+      windLevels:   null,                                        // niveles ISA disponibles tras fetch
       windSource:   null,
       departureUTC: result.departureUTC,
     };
@@ -1421,23 +1422,23 @@
     btn.textContent = 'Cargando…';
     try {
       const pts = state.lastPlan.coords.map(c => ({ lat: c.lat, lon: c.lon }));
-      const fl = state.lastPlan.flightLevel;
-      const result = await meteoApi.fetchWindsAloft(pts, fl);
+      const result = await meteoApi.fetchWindsAloft(pts);
       if (!result.pointsHourly || !result.pointsHourly.length) {
         alert('Open-Meteo no devolvió datos de viento.');
         return;
       }
-      // Guardamos los pronósticos horarios completos: el cálculo del log
-      // hace look-up por la ETA real de cada waypoint, no por la hora de
-      // salida.
+      // Guardamos pronosticos en TODOS los niveles ISA: el cálculo del log
+      // interpola por FL Y por ETA en cada waypoint, asi origen/destino
+      // (GND) usan viento de superficie y los wp cruise el viento a su FL.
       state.lastPlan.fuelOpts.windsHourly = result.pointsHourly;
-      state.lastPlan.fuelOpts.windLevel   = result.level;
+      state.lastPlan.fuelOpts.windLevels  = result.levels;
       state.lastPlan.fuelOpts.windSource  = result.source;
       state.lastPlan.fuel = flightPlan.buildFuelLog(state.lastPlan.coords, state.lastPlan.fuelOpts);
       renderFuelLog(state.lastPlan.fuel);
-      const flLabel = result.level ? `FL${Math.round(result.level.ft / 100)}` : '?';
-      const hpa = result.level ? result.level.hPa : '?';
-      console.log(`[meteo] Vientos ${result.source} cargados al nivel ${hpa} hPa (≈ ${flLabel}). Look-up por ETA en cada waypoint.`);
+      const flsCovered = result.levels && result.levels.length
+        ? `${result.levels.length} niveles ISA (FL${Math.round(result.levels[0].ft/100)}–FL${Math.round(result.levels[result.levels.length-1].ft/100)})`
+        : '—';
+      console.log(`[meteo] Vientos ${result.source} cargados: ${flsCovered}. Interpolacion por ETA y FL en cada waypoint.`);
     } catch (err) {
       console.error('[winds]', err);
       alert('No se pudieron cargar los vientos: ' + err.message);
