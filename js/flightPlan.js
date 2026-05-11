@@ -718,6 +718,12 @@ window.TSAgestor.flightPlan = (function () {
             headwind: hw,
             track,
             atTime: wB && wB.atTime,           // hora de paso usada para este leg
+            flFrom: flPerWp[i - 1],            // FL en el extremo anterior
+            flTo:   flPerWp[i],                // FL en el extremo actual
+            // Niveles ISA usados para interpolar el FL del extremo posterior
+            // (los del extremo anterior suelen ser los mismos en cruise).
+            interpLo: wB && wB.levelLo ? wB.levelLo.hPa : null,
+            interpHi: wB && wB.levelHi ? wB.levelHi.hPa : null,
           };
         }
       }

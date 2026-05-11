@@ -1170,6 +1170,25 @@
     });
   }
 
+  // Formatea el FL para mostrarlo junto al viento en la celda Wind del log.
+  // Si flFrom == flTo, muestra " @FL250"; si difieren, " @FL080→FL250"
+  // (waypoints en climb/descent o entrando a un sector TSA con FL adaptado).
+  function formatWindFL(w) {
+    if (!w || (w.flFrom == null && w.flTo == null)) return '';
+    const fmt = fl => 'FL' + String(Math.round(fl)).padStart(3, '0');
+    if (Number.isFinite(w.flFrom) && Number.isFinite(w.flTo) && w.flFrom !== w.flTo) {
+      return ` @${fmt(w.flFrom)}→${fmt(w.flTo)}`;
+    }
+    const fl = Number.isFinite(w.flTo) ? w.flTo : w.flFrom;
+    return ' @' + fmt(fl);
+  }
+  // Anyadido al tooltip: niveles ISA usados para interpolar el viento.
+  function windInterpHint(w) {
+    if (!w || (!w.interpLo && !w.interpHi)) return '';
+    if (w.interpLo === w.interpHi) return ` · viento ${w.interpLo} hPa`;
+    return ` · viento interp ${w.interpLo}↔${w.interpHi} hPa`;
+  }
+
   function renderFuelLog(fuel) {
     if (!fuel) return;
     renderFuelSummary(fuel);
@@ -1190,11 +1209,12 @@
         : `<td><input type="number" class="leg-input leg-flow" data-leg="${r.index}" data-field="fuelFlow" value="${Math.round(r.legFuelFlow)}" min="0" step="10"></td>`;
       const windText = isFirst || !r.wind
         ? '—'
-        : `${String(Math.round(r.wind.dir)).padStart(3, '0')}/${Math.round(r.wind.speedKt)}`;
+        : `${String(Math.round(r.wind.dir)).padStart(3, '0')}/${Math.round(r.wind.speedKt)}` +
+          formatWindFL(r.wind);
       const windCls = r.wind && r.wind.headwind > 5 ? 'wind-tail'
                     : r.wind && r.wind.headwind < -5 ? 'wind-head' : '';
       const windTooltip = r.wind && r.wind.atTime
-        ? ` title="Pronóstico válido ${escapeHTML(r.wind.atTime)} · headwind ${r.wind.headwind > 0 ? '+' : ''}${Math.round(r.wind.headwind)} kt"`
+        ? ` title="Pronóstico válido ${escapeHTML(r.wind.atTime)} · headwind ${r.wind.headwind > 0 ? '+' : ''}${Math.round(r.wind.headwind)} kt${windInterpHint(r.wind)}"`
         : '';
       const gsText = isFirst || r.legGS == null
         ? '—'
@@ -1292,7 +1312,8 @@
       if (tdStatus)  tdStatus.textContent = statusLabel(r.status);
       if (tdWind) {
         tdWind.textContent = (isFirst || !r.wind) ? '—'
-          : `${String(Math.round(r.wind.dir)).padStart(3, '0')}/${Math.round(r.wind.speedKt)}`;
+          : `${String(Math.round(r.wind.dir)).padStart(3, '0')}/${Math.round(r.wind.speedKt)}` +
+            formatWindFL(r.wind);
         tdWind.className = 'cell-wind ' + (
           r.wind && r.wind.headwind > 5 ? 'wind-tail'
           : r.wind && r.wind.headwind < -5 ? 'wind-head' : '');
