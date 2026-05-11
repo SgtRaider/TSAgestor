@@ -362,17 +362,21 @@ window.TSAgestor.mapView = (function () {
       let prefix, suffix;
       if (ls < 0 || ls === t.name.length - 1) { prefix = t.name; suffix = null; }
       else { prefix = t.name.slice(0, ls); suffix = t.name.slice(ls + 1); }
+      // Solo agrupamos si el prefijo tiene >=2 tokens (al menos "TSA NOMBRE").
+      // Asi evitamos agrupar TSAs sin relacion que solo comparten "TSA".
+      const prefixTokens = prefix.split(/\s+/).filter(Boolean);
+      const canGroup = suffix != null && prefixTokens.length >= 2;
       const schedSig = (t.schedules || []).map(s =>
         (s.startUTC && s.startUTC.getTime ? s.startUTC.getTime() : 0) + '-' +
         (s.endUTC   && s.endUTC.getTime   ? s.endUTC.getTime()   : 0)
       ).join(',');
-      const key = (suffix == null)
+      const key = !canGroup
         ? '__single__|' + (t.id || t.name)
         : prefix + '||' + (t.vertical.lowerLabel || '') + '||' + (t.vertical.upperLabel || '') + '||' + schedSig;
       if (!buckets.has(key)) { buckets.set(key, { prefix, suffixes: [], tsas: [] }); order.push(key); }
       const g = buckets.get(key);
       g.tsas.push(t);
-      if (suffix != null) g.suffixes.push(suffix);
+      if (canGroup) g.suffixes.push(suffix);
     }
     return order.map(k => buckets.get(k));
   }

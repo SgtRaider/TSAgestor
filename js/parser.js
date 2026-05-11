@@ -473,13 +473,18 @@ window.TSAgestor.parser = (function () {
   function parseAIP(rawText, defaultYear) {
     const text = rawText.replace(/\r\n?/g, '\n');
 
-    // Posiciones de las cabeceras TSA. Admite indentación (la versión inglesa
-    // del boletín lleva varios espacios antes de "TSA …").
-    const tsaRe = /(?:^|\n)([ \t]*)(TSA\b[^\n]*)/g;
+    // Posiciones de las cabeceras TSA. Detectamos "TSA <NOMBRE>" seguido
+    // (mediante lookahead) de "LIMITES LATERALES" o "LATERAL LIMITS"
+    // (los dos formatos publicados). Eso permite separar TSAs aunque el
+    // PDF haya colapsado el bloque entero en una sola linea (caso tipico
+    // del boletin de ENAIRE: la extraccion via PDF.js junta todo el
+    // contenido de cada pagina sin saltos de linea internos).
+    const tsaRe = /\bTSA\s+([A-Z][A-Z0-9 \-/]*?)(?=\s+(?:L[ÍI]MITES\s+LATERALES|LATERAL\s+LIMITS|L[ÍI]MITES\s+VERTICALES|VERTICAL\s+LIMITS)\b)/g;
     const positions = [];
     let tm;
     while ((tm = tsaRe.exec(text)) !== null) {
-      positions.push({ start: tm.index + tm[0].length - tm[2].length, end: 0 });
+      const name = ('TSA ' + tm[1]).replace(/\s+/g, ' ').trim();
+      positions.push({ start: tm.index, end: 0, name });
     }
     for (let i = 0; i < positions.length; i++) {
       positions[i].end = i + 1 < positions.length ? positions[i+1].start : text.length;
@@ -557,8 +562,10 @@ window.TSAgestor.parser = (function () {
     const tsas = [];
     for (let i = 0; i < positions.length; i++) {
       const block = text.slice(positions[i].start, positions[i].end);
-      const firstLine = block.split('\n', 1)[0].trim();
-      const name = firstLine.replace(/\s+/g, ' ');
+      // El nombre lo capturamos con la regex anterior (grupo 1 + prefijo
+      // "TSA"). Es robusto tanto al formato con saltos de linea como al
+      // formato colapsado donde firstLine seria el bloque entero.
+      const name = positions[i].name;
 
       const section = (from, to) => {
         const re = new RegExp(from + '\\s*:([\\s\\S]*?)(?=' + to + '|$)', 'i');

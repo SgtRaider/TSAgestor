@@ -175,12 +175,18 @@
         prefix = t.name.slice(0, lastSpace);
         suffix = t.name.slice(lastSpace + 1);
       }
+      // Solo agrupamos si el prefijo tiene >=2 tokens. "TSA" solo no
+      // identifica nada -- agruparia TSAs sin relacion (ANDEVALO, GOLFO,
+      // TRUJILLO...). El prefijo debe llevar al menos un nombre propio
+      // ademas de "TSA".
+      const prefixTokens = prefix.split(/\s+/).filter(Boolean);
+      const canGroup = suffix != null && prefixTokens.length >= 2;
       const schedSig = (t.schedules || []).map(s => {
         const sa = s.startUTC instanceof Date ? s.startUTC.getTime() : Date.parse(s.startUTC);
         const sb = s.endUTC   instanceof Date ? s.endUTC.getTime()   : Date.parse(s.endUTC);
         return sa + '-' + sb;
       }).join(',');
-      const key = (suffix == null)
+      const key = !canGroup
         ? '__single__|' + t.id
         : prefix + '||' + (t.vertical.lowerLabel || '') + '||' + (t.vertical.upperLabel || '') + '||' + schedSig;
       if (!buckets.has(key)) {
@@ -189,7 +195,7 @@
       }
       const g = buckets.get(key);
       g.tsas.push(t);
-      if (suffix != null) g.suffixes.push(suffix);
+      if (canGroup) g.suffixes.push(suffix);
     }
     return order.map(k => buckets.get(k));
   }
