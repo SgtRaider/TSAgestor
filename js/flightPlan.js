@@ -658,27 +658,106 @@ window.TSAgestor.flightPlan = (function () {
     const cruiseFL = Number(opts.flightLevel) || (coords[0] && coords[0].fl) || 350;
     const flPerWp = coords.map(c => Number.isFinite(c.fl) ? c.fl : cruiseFL);
 
-    // Calcula el array de ETAs (epoch ms) usando, opcionalmente, los vientos
-    // mirados al ETA estimado anterior de cada waypoint AL FL DE ESE WP.
+    // Para tramos donde el FL cambia >= 5000 ft (ascensos / descensos /
+    // cruces de TSA con FL adaptado), subdividimos el leg en sub-legs de
+    // <= 5000 ft cada uno y aplicamos el viento al FL medio del sub-leg.
+    // El resultado se integra (sum de horas) y se devuelve un viento medio
+    // representativo para mostrar en la celda del log.
+    //   integrateLeg({legNM, track, tas, flA, flB, phA, phB, etaA, etaBest})
+    //     -> { hours, avgGs, avgWind:{speedKt,dir,headwind}|null,
+    //          nSubs, flMid_min, flMid_max }
+    function integrateLeg(o) {
+      const dFL = Math.abs((o.flB || 0) - (o.flA || 0));
+      const nSubs = Math.max(1, Math.ceil(dFL / 50)); // 50 FL = 5000 ft
+      const subNM = o.legNM / nSubs;
+      const dur = (o.etaBest - o.etaA);
+      let totalHrs = 0, totalGs = 0;
+      let sumU = 0, sumV = 0, sumHw = 0, cnt = 0;
+      let flMin = Infinity, flMax = -Infinity;
+      for (let s = 0; s < nSubs; s++) {
+        const tMid = (s + 0.5) / nSubs;
+        const flMid = o.flA + (o.flB - o.flA) * tMid;
+        flMin = Math.min(flMin, flMid); flMax = Math.max(flMax, flMid);
+        const etaMid = o.etaA + dur * tMid;
+        // Viento en el extremo previo y posterior, ambos al FL del sub-leg;
+        // luego mezcla ponderada por la posicion del sub-leg.
+        const wA = o.phA ? lookupAt(o.phA, etaMid, flMid) : null;
+        const wB = o.phB ? lookupAt(o.phB, etaMid, flMid) : null;
+        const wSub = blendByPosition(wA, wB, tMid);
+        let gs = o.tas;
+        let hw = 0;
+        if (wSub) {
+          hw = -wSub.windSpeedKt * Math.cos((wSub.windDir - o.track) * Math.PI / 180);
+          gs = Math.max(30, o.tas + hw);
+          const r = wSub.windDir * Math.PI / 180;
+          sumU += -wSub.windSpeedKt * Math.sin(r);
+          sumV += -wSub.windSpeedKt * Math.cos(r);
+          sumHw += hw;
+          cnt++;
+        }
+        totalHrs += subNM / gs;
+        totalGs += gs;
+      }
+      let avgWind = null;
+      if (cnt > 0) {
+        const u = sumU / cnt, v = sumV / cnt;
+        const speed = Math.sqrt(u * u + v * v);
+        let dir = Math.atan2(-u, -v) * 180 / Math.PI;
+        if (dir < 0) dir += 360;
+        avgWind = { speedKt: speed, dir, headwind: sumHw / cnt };
+      }
+      return {
+        hours: totalHrs,
+        avgGs: totalGs / nSubs,
+        avgWind,
+        nSubs,
+        flMin: flMin === Infinity ? null : flMin,
+        flMax: flMax === -Infinity ? null : flMax,
+      };
+    }
+
+    // Mezcla dos vientos (wA, wB) ponderando por tMid (0 = todo A, 1 = todo B).
+    // Usa coordenadas u,v para evitar la discontinuidad en 359°/0°.
+    function blendByPosition(wA, wB, tMid) {
+      const validA = wA && Number.isFinite(wA.windSpeedKt) && Number.isFinite(wA.windDir);
+      const validB = wB && Number.isFinite(wB.windSpeedKt) && Number.isFinite(wB.windDir);
+      if (!validA && !validB) return null;
+      if (!validA) return { windSpeedKt: wB.windSpeedKt, windDir: wB.windDir };
+      if (!validB) return { windSpeedKt: wA.windSpeedKt, windDir: wA.windDir };
+      const wAweight = 1 - tMid;
+      const wBweight = tMid;
+      const toRad = d => d * Math.PI / 180;
+      const u = (-wA.windSpeedKt * Math.sin(toRad(wA.windDir))) * wAweight +
+                (-wB.windSpeedKt * Math.sin(toRad(wB.windDir))) * wBweight;
+      const v = (-wA.windSpeedKt * Math.cos(toRad(wA.windDir))) * wAweight +
+                (-wB.windSpeedKt * Math.cos(toRad(wB.windDir))) * wBweight;
+      const speed = Math.sqrt(u * u + v * v);
+      let dir = Math.atan2(-u, -v) * 180 / Math.PI;
+      if (dir < 0) dir += 360;
+      return { windSpeedKt: speed, windDir: dir };
+    }
+
+    // Calcula el array de ETAs (epoch ms) integrando viento por sub-leg
+    // cuando hay cambio de FL (climb/descent/TSA con FL adaptado).
     function computeEtas(prevEtas) {
       const etas = [departureMs];
       for (let i = 1; i < coords.length; i++) {
         const legNM = (coords[i].legDistKm || 0) / NM_KM;
-        let gs = tasPerLeg[i];
-        if (windsHourly && prevEtas) {
-          const wA = lookupAt(windsHourly[i - 1], prevEtas[i - 1], flPerWp[i - 1]);
-          const wB = lookupAt(windsHourly[i],     prevEtas[i],     flPerWp[i]);
-          const avgW = avgWindVec(wA, wB);
-          if (avgW) {
-            const track = geom.bearing(
-              [coords[i - 1].lat, coords[i - 1].lon],
-              [coords[i].lat,     coords[i].lon]);
-            const hw = -avgW.windSpeedKt * Math.cos((avgW.windDir - track) * Math.PI / 180);
-            gs = Math.max(30, tasPerLeg[i] + hw);
-          }
+        if (!windsHourly || !prevEtas) {
+          const legMs = (legNM / tasPerLeg[i]) * 3600 * 1000;
+          etas.push(etas[i - 1] + legMs);
+          continue;
         }
-        const legMs = (legNM / gs) * 3600 * 1000;
-        etas.push(etas[i - 1] + legMs);
+        const track = geom.bearing(
+          [coords[i - 1].lat, coords[i - 1].lon],
+          [coords[i].lat,     coords[i].lon]);
+        const res = integrateLeg({
+          legNM, track, tas: tasPerLeg[i],
+          flA: flPerWp[i - 1], flB: flPerWp[i],
+          phA: windsHourly[i - 1], phB: windsHourly[i],
+          etaA: prevEtas[i - 1], etaBest: prevEtas[i],
+        });
+        etas.push(etas[i - 1] + res.hours * 3600 * 1000);
       }
       return etas;
     }
@@ -703,32 +782,38 @@ window.TSAgestor.flightPlan = (function () {
       const legNM = i === 0 ? 0 : c.legDistKm / NM_KM;
 
       let track = null, windInfo = null, gs = tasPerLeg[i];
+      let legHoursOverride = null;
       if (i > 0 && windsHourly) {
         const prev = coords[i - 1];
         track = geom.bearing([prev.lat, prev.lon], [c.lat, c.lon]);
-        const wA = lookupAt(windsHourly[i - 1], etas[i - 1], flPerWp[i - 1]);
-        const wB = lookupAt(windsHourly[i],     etas[i],     flPerWp[i]);
-        const avgW = avgWindVec(wA, wB);
-        if (avgW) {
-          const hw = -avgW.windSpeedKt * Math.cos((avgW.windDir - track) * Math.PI / 180);
-          gs = Math.max(30, tasPerLeg[i] + hw);
+        const res = integrateLeg({
+          legNM, track, tas: tasPerLeg[i],
+          flA: flPerWp[i - 1], flB: flPerWp[i],
+          phA: windsHourly[i - 1], phB: windsHourly[i],
+          etaA: etas[i - 1], etaBest: etas[i],
+        });
+        if (res.avgWind) {
+          gs = res.avgGs;
+          legHoursOverride = res.hours;
+          // Para el tooltip y la interpolacion mostrada usamos el viento del
+          // extremo posterior (la referencia "mas reciente" del leg).
+          const wB = lookupAt(windsHourly[i], etas[i], flPerWp[i]);
           windInfo = {
-            speedKt: avgW.windSpeedKt,
-            dir: avgW.windDir,
-            headwind: hw,
+            speedKt: res.avgWind.speedKt,
+            dir: res.avgWind.dir,
+            headwind: res.avgWind.headwind,
             track,
-            atTime: wB && wB.atTime,           // hora de paso usada para este leg
-            flFrom: flPerWp[i - 1],            // FL en el extremo anterior
-            flTo:   flPerWp[i],                // FL en el extremo actual
-            // Niveles ISA usados para interpolar el FL del extremo posterior
-            // (los del extremo anterior suelen ser los mismos en cruise).
+            atTime: wB && wB.atTime,
+            flFrom: flPerWp[i - 1],
+            flTo:   flPerWp[i],
             interpLo: wB && wB.levelLo ? wB.levelLo.hPa : null,
             interpHi: wB && wB.levelHi ? wB.levelHi.hPa : null,
+            nSubs:   res.nSubs,                 // numero de sub-legs integrados
           };
         }
       }
 
-      const legHours = i === 0 ? 0 : legNM / gs;
+      const legHours = i === 0 ? 0 : (legHoursOverride != null ? legHoursOverride : legNM / gs);
       const legTimeMin = legHours * 60;
       const legFuel = legHours * segFlow;
       cumFuelUsed += legFuel;

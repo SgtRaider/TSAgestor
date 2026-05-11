@@ -1182,11 +1182,20 @@
     const fl = Number.isFinite(w.flTo) ? w.flTo : w.flFrom;
     return ' @' + fmt(fl);
   }
-  // Anyadido al tooltip: niveles ISA usados para interpolar el viento.
+  // Anyadido al tooltip: niveles ISA usados para interpolar el viento
+  // y numero de sub-legs si el tramo cambia de FL >= 5000 ft.
   function windInterpHint(w) {
-    if (!w || (!w.interpLo && !w.interpHi)) return '';
-    if (w.interpLo === w.interpHi) return ` · viento ${w.interpLo} hPa`;
-    return ` · viento interp ${w.interpLo}↔${w.interpHi} hPa`;
+    if (!w) return '';
+    let s = '';
+    if (w.interpLo && w.interpHi) {
+      s += w.interpLo === w.interpHi
+        ? ` · viento ${w.interpLo} hPa`
+        : ` · viento interp ${w.interpLo}↔${w.interpHi} hPa`;
+    }
+    if (w.nSubs && w.nSubs > 1) {
+      s += ` · integrado en ${w.nSubs} sub-legs cada ≤5000 ft`;
+    }
+    return s;
   }
 
   function renderFuelLog(fuel) {
