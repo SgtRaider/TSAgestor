@@ -40,6 +40,7 @@
     drawnVia: null,                                            // ruta dibujada como [{name,lat,lon}], si la hay
     crossClouds: null,                                         // nubes Open-Meteo muestreadas en los waypoints del plan
     legendOpen: false,                                         // toggle de la leyenda flotante de TSAs en el mapa
+    layersControlOpen: true,                                   // toggle del selector de capas Leaflet (visible por defecto)
   };
 
   // ── Utilidades DOM ───────────────────────────────────────────────────
@@ -356,6 +357,19 @@
     btn.classList.toggle('is-active', state.legendOpen);
     if (mapView.setLegendVisible) {
       mapView.setLegendVisible(state.legendOpen, getVisible());
+    }
+  }
+
+  // Toggle del selector de capas Leaflet (TMA/CTR/aerovias/meteo) que vive
+  // en la esquina superior izquierda del mapa. Visible por defecto.
+  function toggleMapLayersControl() {
+    ensureMap();
+    state.layersControlOpen = !state.layersControlOpen;
+    const btn = $('#btn-map-layers');
+    btn.setAttribute('aria-pressed', String(state.layersControlOpen));
+    btn.classList.toggle('is-active', state.layersControlOpen);
+    if (mapView.setLayersControlVisible) {
+      mapView.setLayersControlVisible(state.layersControlOpen);
     }
   }
 
@@ -1660,6 +1674,7 @@
   function wireActions() {
     $('#btn-fit-bounds').addEventListener('click', () => mapView.fitBounds());
     $('#btn-map-legend').addEventListener('click', toggleMapLegend);
+    $('#btn-map-layers').addEventListener('click', toggleMapLayersControl);
     $('#btn-download-cross').addEventListener('click', downloadCrossPNG);
     $('#btn-export-pdf').addEventListener('click', exportPDF);
     $('#btn-plan-calc').addEventListener('click', calcPlan);

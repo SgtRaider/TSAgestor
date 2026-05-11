@@ -22,6 +22,7 @@ window.TSAgestor.mapView = (function () {
   let layerGroup = null;
   let routeLayer = null;
   let grametLayer = null;
+  let _layersControl = null;
   let legend = null;
   let drawState = null;
   let countryLayer = null;
@@ -139,7 +140,22 @@ window.TSAgestor.mapView = (function () {
     // Por defecto NO activamos ninguna zona: el mapa queda limpio. El
     // planificador interpreta "ninguna zona activa" como "usa toda la red"
     // (ver getAirwayLayerState abajo) para no romper el routing.
-    L.control.layers(null, overlays, { position: 'topleft', collapsed: false }).addTo(map);
+    _layersControl = L.control.layers(null, overlays, { position: 'topleft', collapsed: false }).addTo(map);
+  }
+
+  // Toggle del control de capas (boton "Capas" en la toolbar del mapa).
+  // Al ocultar, conserva el control con sus checkboxes para no perder el
+  // estado seleccionado por el usuario.
+  function setLayersControlVisible(visible) {
+    if (!_layersControl || !_layersControl.getContainer) return;
+    const el = _layersControl.getContainer();
+    if (!el) return;
+    el.style.display = visible ? '' : 'none';
+  }
+  function isLayersControlVisible() {
+    if (!_layersControl || !_layersControl.getContainer) return false;
+    const el = _layersControl.getContainer();
+    return !!el && el.style.display !== 'none';
   }
 
   // ── Capas meteorológicas ───────────────────────────────────────────
@@ -1212,5 +1228,6 @@ window.TSAgestor.mapView = (function () {
     getAirwayLayerState,
     setWaypointClickHandler,
     setLegendVisible, updateLegend, isLegendVisible,
+    setLayersControlVisible, isLayersControlVisible,
   };
 })();
