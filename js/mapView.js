@@ -322,17 +322,23 @@ window.TSAgestor.mapView = (function () {
         <div class="tsa-legend-empty"><i>Ninguna TSA activa hoy o mañana</i><br><span class="tsa-legend-window">${winLabel}</span></div>`;
     }
     const fmt = window.TSAgestor.scheduleFmt;
-    const rows = filtered.map(t => {
+    // Agrupamiento visual por prefijo de nombre + misma banda vertical +
+    // mismo schedule (TSA CORREDOR SUR 4/5/6 -> "TSA CORREDOR SUR 4-6").
+    const groups = groupTSAsForLegend(filtered);
+    const rows = groups.map(g => {
+      const t = g.tsas[0]; // representante (misma vertical y schedule)
       const band = geom.altitudeBand(t.vertical.upperFt);
       const color = BAND_COLORS[band];
-      // Compactamos los grupos horarios en una sola linea separados por
-      // " · " para que la fila sea fina y entren mas TSAs visibles a la vez.
       const schedTxt = fmt ? fmt.listText(t.schedules).join(' · ') : '';
+      const name = formatGroupNameLocal(g);
+      const countBadge = g.tsas.length > 1
+        ? `<span class="tsa-legend-group-count" title="${g.tsas.length} TSAs agrupadas">${g.tsas.length}</span>`
+        : '';
       return `
         <div class="tsa-legend-row">
           <span class="tsa-legend-swatch" style="background:${color}"></span>
           <div class="tsa-legend-text">
-            <div class="tsa-legend-name">${escapeHTMLLocal(t.name)}</div>
+            <div class="tsa-legend-name">${escapeHTMLLocal(name)} ${countBadge}</div>
             <div class="tsa-legend-alt">${escapeHTMLLocal(t.vertical.lowerLabel)} – ${escapeHTMLLocal(t.vertical.upperLabel)}</div>
             <div class="tsa-legend-sched">${escapeHTMLLocal(schedTxt)}</div>
           </div>
@@ -342,6 +348,52 @@ window.TSAgestor.mapView = (function () {
       <div class="tsa-legend-head">TSAs activas hoy &amp; mañana <span class="tsa-legend-count">${filtered.length}</span></div>
       <div class="tsa-legend-window-bar">${winLabel}</div>
       <div class="tsa-legend-body">${rows}</div>`;
+  }
+
+  // Helpers de agrupamiento local (mismos criterios que app.js):
+  //   - mismo prefijo de nombre (sin el ultimo token)
+  //   - misma banda vertical (lower/upper labels)
+  //   - mismo schedule
+  function groupTSAsForLegend(tsas) {
+    const buckets = new Map();
+    const order = [];
+    for (const t of tsas) {
+      const ls = t.name.lastIndexOf(' ');
+      let prefix, suffix;
+      if (ls < 0 || ls === t.name.length - 1) { prefix = t.name; suffix = null; }
+      else { prefix = t.name.slice(0, ls); suffix = t.name.slice(ls + 1); }
+      const schedSig = (t.schedules || []).map(s =>
+        (s.startUTC && s.startUTC.getTime ? s.startUTC.getTime() : 0) + '-' +
+        (s.endUTC   && s.endUTC.getTime   ? s.endUTC.getTime()   : 0)
+      ).join(',');
+      const key = (suffix == null)
+        ? '__single__|' + (t.id || t.name)
+        : prefix + '||' + (t.vertical.lowerLabel || '') + '||' + (t.vertical.upperLabel || '') + '||' + schedSig;
+      if (!buckets.has(key)) { buckets.set(key, { prefix, suffixes: [], tsas: [] }); order.push(key); }
+      const g = buckets.get(key);
+      g.tsas.push(t);
+      if (suffix != null) g.suffixes.push(suffix);
+    }
+    return order.map(k => buckets.get(k));
+  }
+  function formatGroupNameLocal(g) {
+    if (g.tsas.length === 1) return g.tsas[0].name;
+    if (!g.suffixes.length) return g.prefix;
+    const sorted = g.suffixes.slice().sort((a, b) => {
+      const na = Number(a), nb = Number(b);
+      if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+      return a.localeCompare(b);
+    });
+    const allNum = sorted.every(s => /^\d+$/.test(s));
+    const allLet = sorted.every(s => /^[A-Z]$/.test(s));
+    let consecutive = false;
+    if (allNum && sorted.length >= 2) {
+      consecutive = sorted.every((s, i) => i === 0 || Number(s) === Number(sorted[i - 1]) + 1);
+    } else if (allLet && sorted.length >= 2) {
+      consecutive = sorted.every((s, i) => i === 0 || s.charCodeAt(0) === sorted[i - 1].charCodeAt(0) + 1);
+    }
+    if (consecutive) return `${g.prefix} ${sorted[0]}–${sorted[sorted.length - 1]}`;
+    return `${g.prefix} ${sorted.join(', ')}`;
   }
 
   // Ajusta dinamicamente max-height del panel a la PORCION VISIBLE del

@@ -446,6 +446,46 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 .gramet-wp-tip:before { display: none; }
+
+/* Agrupamiento de TSAs en la tabla de Cargar */
+.tsa-row-group { background: rgba(56, 189, 248, 0.06); }
+.tsa-row-group b { color: #0369a1; }
+.tsa-group-toggle {
+  display: inline-block;
+  width: 18px;
+  border: 0;
+  background: transparent;
+  color: #0369a1;
+  font-weight: 700;
+  cursor: pointer;
+  margin-right: 4px;
+  padding: 0;
+}
+.tsa-group-count {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #38bdf8;
+  color: #0c4a6e;
+  border-radius: 8px;
+}
+.tsa-row-member .tsa-name-indent { padding-left: 28px; }
+.tsa-row-member { background: rgba(255,255,255,0.02); }
+
+/* Badge de grupo en la leyenda del mapa */
+.tsa-legend-group-count {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 5px;
+  background: #38bdf8;
+  color: #0c4a6e;
+  border-radius: 7px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
 .tsa-popup-head {
   position: sticky; top: 0;
   background: #f8fafc;

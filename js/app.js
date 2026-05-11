@@ -155,41 +155,168 @@
     });
   }
 
+  // ── Agrupamiento visual de TSAs por nombre similar ──────────────────
+  // Agrupa TSAs con mismo prefijo de nombre (todo antes del ultimo token),
+  // misma banda vertical (lower/upper labels iguales) y mismo schedule.
+  // Asi TSA CORREDOR SUR 4, 5, 6 -> "TSA CORREDOR SUR 4-6" cuando los
+  // sufijos son consecutivos, o "TSA CORREDOR SUR 4, 6, 8" cuando no lo
+  // son. Solo afecta a la VISUALIZACION en la lista de Cargar y la
+  // leyenda del mapa -- el state.tsas y la seleccion siguen siendo por
+  // TSA individual.
+  function groupTSAsByName(tsas) {
+    const buckets = new Map();
+    const order = [];
+    for (const t of tsas) {
+      const lastSpace = t.name.lastIndexOf(' ');
+      let prefix, suffix;
+      if (lastSpace < 0 || lastSpace === t.name.length - 1) {
+        prefix = t.name; suffix = null;
+      } else {
+        prefix = t.name.slice(0, lastSpace);
+        suffix = t.name.slice(lastSpace + 1);
+      }
+      const schedSig = (t.schedules || []).map(s => {
+        const sa = s.startUTC instanceof Date ? s.startUTC.getTime() : Date.parse(s.startUTC);
+        const sb = s.endUTC   instanceof Date ? s.endUTC.getTime()   : Date.parse(s.endUTC);
+        return sa + '-' + sb;
+      }).join(',');
+      const key = (suffix == null)
+        ? '__single__|' + t.id
+        : prefix + '||' + (t.vertical.lowerLabel || '') + '||' + (t.vertical.upperLabel || '') + '||' + schedSig;
+      if (!buckets.has(key)) {
+        buckets.set(key, { prefix, suffixes: [], tsas: [] });
+        order.push(key);
+      }
+      const g = buckets.get(key);
+      g.tsas.push(t);
+      if (suffix != null) g.suffixes.push(suffix);
+    }
+    return order.map(k => buckets.get(k));
+  }
+
+  // Formatea el nombre del grupo: "TSA CORREDOR SUR 4-6" si los sufijos
+  // son consecutivos (numeros o letras), "TSA MILIS A, C, E" si no.
+  function formatGroupName(g) {
+    if (g.tsas.length === 1) return g.tsas[0].name;
+    if (!g.suffixes.length) return g.prefix;
+    // Ordena suffixes numericamente si son numeros, alfabeticamente si letras.
+    const sorted = g.suffixes.slice().sort((a, b) => {
+      const na = Number(a), nb = Number(b);
+      if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+      return a.localeCompare(b);
+    });
+    const allNumeric = sorted.every(s => /^\d+$/.test(s));
+    const allLetters = sorted.every(s => /^[A-Z]$/.test(s));
+    let consecutive = false;
+    if (allNumeric && sorted.length >= 2) {
+      consecutive = sorted.every((s, i) => i === 0 || Number(s) === Number(sorted[i - 1]) + 1);
+    } else if (allLetters && sorted.length >= 2) {
+      consecutive = sorted.every((s, i) => i === 0 || s.charCodeAt(0) === sorted[i - 1].charCodeAt(0) + 1);
+    }
+    if (consecutive) return `${g.prefix} ${sorted[0]}–${sorted[sorted.length - 1]}`;
+    return `${g.prefix} ${sorted.join(', ')}`;
+  }
+
   // ── Tabla de TSAs ────────────────────────────────────────────────────
 
   function renderTable() {
     const tbody = $('#tsa-table tbody');
     tbody.innerHTML = '';
 
-    for (const t of state.tsas) {
-      const inFilter  = filters.matches(t, state.filter);
-      const isSelected = state.selected.has(t.id);
+    const groups = groupTSAsByName(state.tsas);
+    for (const g of groups) {
+      if (g.tsas.length === 1) {
+        // Singleton: fila normal sin decoracion de grupo.
+        tbody.appendChild(buildTsaRow(g.tsas[0], { isGroupMember: false }));
+        continue;
+      }
+      // Grupo: cabecera con checkbox maestro + boton expand + miembros
+      // ocultos por defecto.
+      const groupId = 'grp-' + g.tsas.map(t => t.id).join('_');
+      const memberIds = g.tsas.map(t => t.id);
+      const nSel = memberIds.filter(id => state.selected.has(id)).length;
+      const allInFilter = g.tsas.every(t => filters.matches(t, state.filter));
+      const someInFilter = g.tsas.some(t => filters.matches(t, state.filter));
+      const masterState = nSel === memberIds.length ? 'checked'
+                        : nSel === 0 ? '' : 'indeterminate';
+      const trHead = document.createElement('tr');
+      trHead.className = 'tsa-row tsa-row-group' +
+        (allInFilter ? '' : (someInFilter ? '' : ' out-of-filter')) +
+        (nSel === memberIds.length ? ' selected' : '');
+      trHead.dataset.groupId = groupId;
+      trHead.dataset.memberIds = memberIds.join(',');
+      // Schedule comun -> resumen unico.
+      const tref = g.tsas[0];
       const schedHTML = `
         <details class="sched-details">
-          <summary>${escapeHTML(scheduleFmt.summary(t.schedules))}</summary>
-          <div class="sched-list">${scheduleFmt.listHTML(t.schedules)}</div>
+          <summary>${escapeHTML(scheduleFmt.summary(tref.schedules))}</summary>
+          <div class="sched-list">${scheduleFmt.listHTML(tref.schedules)}</div>
         </details>`;
-
-      const tr = document.createElement('tr');
-      tr.className = 'tsa-row' + (inFilter ? '' : ' out-of-filter') + (isSelected ? ' selected' : '');
-      tr.dataset.id = t.id;
-      tr.innerHTML = `
+      trHead.innerHTML = `
         <td class="col-check">
-          <input type="checkbox" class="tsa-check" data-id="${escapeHTML(t.id)}"${isSelected ? ' checked' : ''}>
+          <input type="checkbox" class="tsa-group-check" data-group-id="${escapeHTML(groupId)}"${masterState === 'checked' ? ' checked' : ''}>
         </td>
-        <td><b>${escapeHTML(t.name)}</b></td>
-        <td>${t.format}</td>
-        <td>${escapeHTML(t.vertical.lowerLabel)}</td>
-        <td>${escapeHTML(t.vertical.upperLabel)}</td>
-        <td>${t.polygon.length}</td>
+        <td>
+          <button type="button" class="tsa-group-toggle" aria-expanded="false" title="Ver/ocultar TSAs del grupo">▸</button>
+          <b>${escapeHTML(formatGroupName(g))}</b>
+          <span class="tsa-group-count">${g.tsas.length}</span>
+        </td>
+        <td>${tref.format}</td>
+        <td>${escapeHTML(tref.vertical.lowerLabel)}</td>
+        <td>${escapeHTML(tref.vertical.upperLabel)}</td>
+        <td><span class="dim">${g.tsas.length} TSAs</span></td>
         <td>${schedHTML}</td>
       `;
-      tbody.appendChild(tr);
+      tbody.appendChild(trHead);
+      // Set indeterminate manualmente (no se puede via atributo HTML).
+      const cb = trHead.querySelector('.tsa-group-check');
+      if (cb) cb.indeterminate = (masterState === 'indeterminate');
+
+      // Miembros (ocultos por defecto, se desvelan al pulsar el toggle).
+      for (const t of g.tsas) {
+        const tr = buildTsaRow(t, { isGroupMember: true, groupId });
+        tr.classList.add('hidden');
+        tbody.appendChild(tr);
+      }
     }
 
     $('#tsa-count').textContent = state.tsas.length;
     $('#tsa-table-wrap').classList.toggle('hidden', state.tsas.length === 0);
     refreshSelectionUI();
+  }
+
+  function buildTsaRow(t, opts) {
+    opts = opts || {};
+    const inFilter  = filters.matches(t, state.filter);
+    const isSelected = state.selected.has(t.id);
+    const schedHTML = `
+      <details class="sched-details">
+        <summary>${escapeHTML(scheduleFmt.summary(t.schedules))}</summary>
+        <div class="sched-list">${scheduleFmt.listHTML(t.schedules)}</div>
+      </details>`;
+    const tr = document.createElement('tr');
+    tr.className = 'tsa-row' + (inFilter ? '' : ' out-of-filter') +
+      (isSelected ? ' selected' : '') +
+      (opts.isGroupMember ? ' tsa-row-member' : '');
+    tr.dataset.id = t.id;
+    if (opts.groupId) tr.dataset.groupId = opts.groupId;
+    // Si es miembro de grupo, sangramos el nombre y omitimos el prefijo
+    // duplicado (el prefijo ya esta en la cabecera del grupo).
+    const displayName = opts.isGroupMember
+      ? escapeHTML(t.name)
+      : `<b>${escapeHTML(t.name)}</b>`;
+    tr.innerHTML = `
+      <td class="col-check">
+        <input type="checkbox" class="tsa-check" data-id="${escapeHTML(t.id)}"${isSelected ? ' checked' : ''}>
+      </td>
+      <td${opts.isGroupMember ? ' class="tsa-name-indent"' : ''}>${displayName}</td>
+      <td>${t.format}</td>
+      <td>${escapeHTML(t.vertical.lowerLabel)}</td>
+      <td>${escapeHTML(t.vertical.upperLabel)}</td>
+      <td>${t.polygon.length}</td>
+      <td>${schedHTML}</td>
+    `;
+    return tr;
   }
 
   function refreshSelectionUI() {
@@ -269,8 +396,31 @@
   // ── Selección ────────────────────────────────────────────────────────
 
   function wireSelection() {
-    // Delegación para los checkboxes de fila.
+    // Delegación para los checkboxes de fila (incluye master de grupo).
     $('#tsa-table tbody').addEventListener('change', e => {
+      const groupCb = e.target.closest('.tsa-group-check');
+      if (groupCb) {
+        // Master de grupo: marca/desmarca todos los miembros.
+        const headRow = groupCb.closest('tr');
+        const memberIds = (headRow.dataset.memberIds || '').split(',').filter(Boolean);
+        const newState = groupCb.checked;
+        for (const id of memberIds) {
+          if (newState) state.selected.add(id);
+          else state.selected.delete(id);
+          // Refleja en los checkboxes hijos si estan en DOM.
+          const child = $('#tsa-table tbody').querySelector(`.tsa-check[data-id="${cssEsc(id)}"]`);
+          if (child) {
+            child.checked = newState;
+            const row = child.closest('tr');
+            if (row) row.classList.toggle('selected', newState);
+          }
+        }
+        headRow.classList.toggle('selected', newState);
+        groupCb.indeterminate = false;
+        refreshSelectionUI();
+        renderViews();
+        return;
+      }
       const cb = e.target.closest('.tsa-check');
       if (!cb) return;
       const id = cb.dataset.id;
@@ -278,8 +428,26 @@
       else state.selected.delete(id);
       const row = cb.closest('tr');
       if (row) row.classList.toggle('selected', cb.checked);
+      // Si pertenece a un grupo, actualizar el master del grupo (check /
+      // indeterminate / unchecked) sin disparar otro change.
+      const groupId = row && row.dataset.groupId;
+      if (groupId) syncGroupMasterCheckbox(groupId);
       refreshSelectionUI();
       renderViews();
+    });
+
+    // Boton expand/collapse de un grupo: muestra u oculta sus miembros.
+    $('#tsa-table tbody').addEventListener('click', e => {
+      const btn = e.target.closest('.tsa-group-toggle');
+      if (!btn) return;
+      const headRow = btn.closest('tr');
+      if (!headRow) return;
+      const expanded = btn.getAttribute('aria-expanded') === 'true';
+      btn.setAttribute('aria-expanded', String(!expanded));
+      btn.textContent = expanded ? '▸' : '▾';
+      const groupId = headRow.dataset.groupId;
+      const memberRows = $$('#tsa-table tbody .tsa-row-member[data-group-id="' + cssEsc(groupId) + '"]');
+      for (const r of memberRows) r.classList.toggle('hidden', expanded);
     });
 
     $('#tsa-select-all-cb').addEventListener('change', e => {
@@ -290,6 +458,23 @@
     $('#btn-select-all').addEventListener('click', selectAll);
     $('#btn-select-none').addEventListener('click', selectNone);
   }
+
+  // Sincroniza el estado checked/indeterminate del master de un grupo
+  // segun el numero de miembros seleccionados.
+  function syncGroupMasterCheckbox(groupId) {
+    const headRow = $('#tsa-table tbody').querySelector(`tr.tsa-row-group[data-group-id="${cssEsc(groupId)}"]`);
+    if (!headRow) return;
+    const memberIds = (headRow.dataset.memberIds || '').split(',').filter(Boolean);
+    const nSel = memberIds.filter(id => state.selected.has(id)).length;
+    const cb = headRow.querySelector('.tsa-group-check');
+    if (!cb) return;
+    cb.checked = (nSel === memberIds.length);
+    cb.indeterminate = (nSel > 0 && nSel < memberIds.length);
+    headRow.classList.toggle('selected', cb.checked);
+  }
+
+  // Escapa un valor para usar dentro de selector CSS [attr="..."].
+  function cssEsc(s) { return String(s || '').replace(/(["\\])/g, '\\$1'); }
 
   function selectAll() {
     state.selected = new Set(state.tsas.map(t => t.id));
