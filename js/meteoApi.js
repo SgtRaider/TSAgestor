@@ -11,7 +11,7 @@ window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.meteoApi = (function () {
   'use strict';
 
-  const MODULE_BUILD = 'meteoApi v14 (vientos: todos los niveles ISA + interpolacion por FL)';
+  const MODULE_BUILD = 'meteoApi v15 (vientos: 21 niveles ISA, brackets <=3500 ft)';
   console.info('[TSAgestor]', MODULE_BUILD);
 
   // Detección de entorno: en deploy HTTPS no-local asumimos que tenemos
@@ -242,19 +242,34 @@ window.TSAgestor.meteoApi = (function () {
     };
   }
 
-  // Niveles ISA estándar disponibles en Open-Meteo (subset usado).
-  // ft = altitud aproximada en atmósfera estándar.
+  // Niveles ISA disponibles en Open-Meteo (forecast pressure_level vars).
+  // ft = altitud aproximada en atmosfera estandar. Incluye intermedios
+  // (950, 800, 750, 650, 550, 450, 350, 225, 175 hPa) para que la
+  // interpolacion del viento por FL no quede atrapada en brackets
+  // demasiado anchos. Antes el salto 400(FL236)→300(FL301) era ~6500
+  // ft; ahora 350 bisecta a FL266 (gap 3000 ft). Igual con 250(FL340)→
+  // 200(FL387): 225 lo bisecta a FL362.
+  // Niveles 275, 125 no estan en el catalogo de Open-Meteo y se omiten.
   const ISA_LEVELS = [
     { hPa: 1000, ft:   364 },
+    { hPa:  950, ft:  1660 },
     { hPa:  925, ft:  2553 },
     { hPa:  850, ft:  4781 },
+    { hPa:  800, ft:  6394 },
+    { hPa:  750, ft:  8049 },
     { hPa:  700, ft:  9882 },
+    { hPa:  650, ft: 11778 },
     { hPa:  600, ft: 13801 },
+    { hPa:  550, ft: 15945 },
     { hPa:  500, ft: 18289 },
+    { hPa:  450, ft: 20813 },
     { hPa:  400, ft: 23574 },
+    { hPa:  350, ft: 26631 },
     { hPa:  300, ft: 30065 },
     { hPa:  250, ft: 33999 },
+    { hPa:  225, ft: 36165 },
     { hPa:  200, ft: 38662 },
+    { hPa:  175, ft: 41258 },
     { hPa:  150, ft: 44647 },
     { hPa:  100, ft: 53083 },
   ];
