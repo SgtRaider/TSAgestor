@@ -891,6 +891,28 @@
 
   // ── Planes guardados ────────────────────────────────────────────────
 
+  // Extrae las esperas (filas isHold) del plan actual como una lista
+  // {afterIdx, afterName, holdMin}. afterIdx referencia el indice del
+  // waypoint padre en la lista expandida; afterName se guarda como
+  // fallback por si los indices se mueven al reconstruir el plan.
+  function capturePlanHolds() {
+    const holds = [];
+    if (!state.lastPlan || !state.lastPlan.coords) return holds;
+    const coords = state.lastPlan.coords;
+    const overrides = (state.lastPlan.fuelOpts && state.lastPlan.fuelOpts.legOverrides) || [];
+    for (let i = 1; i < coords.length; i++) {
+      if (coords[i].isHold) {
+        const ov = overrides[i] || {};
+        holds.push({
+          afterIdx: i - 1,
+          afterName: coords[i - 1] ? coords[i - 1].name : null,
+          holdMin: Number(ov.holdMin) || 0,
+        });
+      }
+    }
+    return holds;
+  }
+
   function capturePlanFormState() {
     // Snapshot de TSAs SELECCIONADAS para que el plan sea autocontenido:
     // al volver a cargarlo (mismo navegador o tras importar) se restauran
@@ -911,7 +933,57 @@
       bingo:        Number($('#plan-bingo').value) || 0,
       tsas:         sel.length ? sel : null,
       filter:       Object.assign({}, state.filter),
+      holds:        capturePlanHolds(),
     };
+  }
+
+  // Re-inserta las esperas guardadas tras un calcPlan. Se ejecuta cuando
+  // se carga (o importa) un plan que tenia holds: la lista se recibe
+  // como `holds = [{afterIdx, afterName, holdMin}, ...]`. Procesamos en
+  // orden inverso por afterIdx para que insertar uno no desplace los
+  // siguientes en la cola.
+  function applyPendingHolds(holds) {
+    if (!holds || !holds.length) return;
+    const plan = state.lastPlan;
+    if (!plan || !plan.coords) return;
+    const sorted = holds.slice().sort((a, b) =>
+      (Number(b.afterIdx) || 0) - (Number(a.afterIdx) || 0));
+    plan.fuelOpts.legOverrides = plan.fuelOpts.legOverrides || [];
+    for (const h of sorted) {
+      // Prefiere afterIdx si el nombre coincide (caso normal: misma
+      // estructura tras calcPlan). Si no, cae al primer waypoint que
+      // matche por nombre.
+      let target = -1;
+      if (Number.isFinite(h.afterIdx) && h.afterIdx >= 0 && h.afterIdx < plan.coords.length) {
+        const c = plan.coords[h.afterIdx];
+        if (c && !c.isHold && (!h.afterName || c.name === h.afterName)) {
+          target = h.afterIdx;
+        }
+      }
+      if (target < 0 && h.afterName) {
+        target = plan.coords.findIndex(c => !c.isHold && c.name === h.afterName);
+      }
+      if (target < 0 || target >= plan.coords.length) continue;
+      const ref = plan.coords[target];
+      const holdCoord = {
+        name: 'ESPERA en ' + (ref.name || ''),
+        lat: ref.lat,
+        lon: ref.lon,
+        fl: ref.fl,
+        airway: 'HOLD',
+        tsa: null,
+        isHold: true,
+        cumDistKm: ref.cumDistKm,
+        cumDistNM: ref.cumDistNM,
+        legDistKm: 0,
+        etaUTC: ref.etaUTC,
+      };
+      plan.coords.splice(target + 1, 0, holdCoord);
+      plan.fuelOpts.legOverrides.splice(target + 1, 0, { holdMin: h.holdMin || 0 });
+    }
+    plan.fuel = flightPlan.buildFuelLog(plan.coords, plan.fuelOpts);
+    renderFuelLog(plan.fuel);
+    if (state.mapReady) mapView.renderFlightPlan(plan);
   }
 
   // Tras un roundtrip JSON.stringify/parse las fechas vienen como strings.
@@ -1031,7 +1103,15 @@
     if (!p) return;
     applyPlanFormState(p);
     // Recalcula con los TSAs/meteo actuales para reconstruir resultado.
-    setTimeout(() => calcPlan(), 50);
+    // Tras calcPlan, re-inyectamos las esperas guardadas en el plan (si
+    // hay) -- calcPlan crea coords fresca sin holds, asi que se anyaden
+    // a posteriori como cuando el usuario los introduce manualmente.
+    setTimeout(() => {
+      calcPlan();
+      if (Array.isArray(p.holds) && p.holds.length) {
+        setTimeout(() => applyPendingHolds(p.holds), 80);
+      }
+    }, 50);
   }
 
   function deletePlanByName(name) {
