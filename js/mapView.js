@@ -545,20 +545,26 @@ window.TSAgestor.mapView = (function () {
     }
     _sigmetState.layers = [];
   }
+  // _sigmetEntries: array de { layer, sig, geom, cls } que mantenemos
+  // para resolver hit-tests poligono-poligono al hacer click y mostrar
+  // todos los SIGMETs que contienen el punto en un popup combinado.
+  let _sigmetEntries = [];
+
   async function loadSigmets(grp) {
     const mapi = window.TSAgestor.meteoApi;
     if (!mapi || !mapi.fetchSigmets) return;
     const list = await mapi.fetchSigmets();
     clearSigmetLayers(grp);
+    _sigmetEntries = [];
     if (!Array.isArray(list) || !list.length) {
       _sigmetState.fetched = Date.now();
       return;
     }
     let kept = 0, skipped = 0;
     for (const sig of list) {
-      const geom = mapi.parseSigmetGeometry(sig);
-      if (!geom) { skipped++; continue; }
-      if (!sigmetNearRegion(geom)) { skipped++; continue; }
+      const sigGeom = mapi.parseSigmetGeometry(sig);
+      if (!sigGeom) { skipped++; continue; }
+      if (!sigmetNearRegion(sigGeom)) { skipped++; continue; }
       kept++;
       const cls = sigmetClassKey(sig.hazard || sig.qualifier);
       const color = SIGMET_COLORS[cls];
@@ -569,14 +575,29 @@ window.TSAgestor.mapView = (function () {
         pane: 'tsaPane',
       };
       let layer;
-      if (geom.kind === 'poly') {
-        layer = L.polygon(geom.latlngs, style);
-      } else if (geom.kind === 'circle') {
-        layer = L.circle(geom.center, Object.assign({ radius: geom.radiusM }, style));
+      if (sigGeom.kind === 'poly') {
+        layer = L.polygon(sigGeom.latlngs, style);
+      } else if (sigGeom.kind === 'circle') {
+        layer = L.circle(sigGeom.center, Object.assign({ radius: sigGeom.radiusM }, style));
       } else {
         continue;
       }
-      bindSigmetPopup(layer, sig, cls);
+      const entry = { layer, sig, geom: sigGeom, cls };
+      _sigmetEntries.push(entry);
+      // Click: recolectamos TODOS los SIGMETs cuya geometria contiene el
+      // punto y abrimos un popup combinado (igual que TSAs). Si solo
+      // uno match-ea, el popup combinado tiene una sola tarjeta.
+      layer.on('click', (e) => {
+        const matches = _sigmetEntries.filter(en => sigmetGeomContains(en.geom, en.layer, e.latlng));
+        // Si el hit-test no detecta el propio layer clicado (por
+        // imprecisiones de punto-en-poligono cerca del borde), lo
+        // anyadimos al frente para no perder el target del click.
+        if (!matches.includes(entry)) matches.unshift(entry);
+        L.popup({ maxWidth: 460, minWidth: 320, autoPan: true, className: 'sigmet-leaflet-popup' })
+          .setLatLng(e.latlng)
+          .setContent(buildCombinedSigmetPopup(matches))
+          .openOn(map);
+      });
       layer.addTo(grp);
       _sigmetState.layers.push(layer);
     }
@@ -584,7 +605,19 @@ window.TSAgestor.mapView = (function () {
     _sigmetState.fetched = Date.now();
   }
 
-  function bindSigmetPopup(layer, sig, cls) {
+  // Test point-in-geometry para SIGMETs (poligono o circulo).
+  function sigmetGeomContains(geom, layer, latlng) {
+    if (!geom) return false;
+    if (geom.kind === 'poly') {
+      return pointInPoly([latlng.lat, latlng.lng], geom.latlngs);
+    }
+    if (geom.kind === 'circle' && layer && typeof layer.getLatLng === 'function') {
+      return layer.getLatLng().distanceTo(latlng) <= (layer.getRadius() || 0);
+    }
+    return false;
+  }
+
+  function buildSigmetCard(sig, cls) {
     const mapi = window.TSAgestor.meteoApi;
     const dec = mapi && mapi.decodeSigmet ? mapi.decodeSigmet(sig) : null;
     const fir = sig.firId || sig.firName || '';
@@ -593,7 +626,6 @@ window.TSAgestor.mapView = (function () {
       : (escapeHTMLLocal(fir));
     const rows = [];
     if (dec) {
-      rows.push(`<div class="sigmet-row"><span class="sigmet-k">Fenómeno</span><span class="sigmet-v"><b>${escapeHTMLLocal(dec.phenomenon)}</b></span></div>`);
       if (firLine)     rows.push(`<div class="sigmet-row"><span class="sigmet-k">FIR</span><span class="sigmet-v">${firLine}</span></div>`);
       if (dec.levels && dec.levels !== '—')
         rows.push(`<div class="sigmet-row"><span class="sigmet-k">Niveles</span><span class="sigmet-v">${escapeHTMLLocal(dec.levels)}</span></div>`);
@@ -605,13 +637,31 @@ window.TSAgestor.mapView = (function () {
     const raw = sig.rawSigmet
       ? `<details class="sigmet-raw"><summary>Texto crudo</summary><pre>${escapeHTMLLocal(sig.rawSigmet)}</pre></details>`
       : '';
-    const html = `
-      <div class="sigmet-popup">
+    return `
+      <div class="sigmet-card">
         <div class="sigmet-haz ${cls.toLowerCase()}">${escapeHTMLLocal(dec ? dec.phenomenon : (sig.hazard || cls))}</div>
         <div class="sigmet-grid">${rows.join('')}</div>
         ${raw}
       </div>`;
-    layer.bindPopup(html, { maxWidth: 380, className: 'sigmet-leaflet-popup' });
+  }
+
+  function buildCombinedSigmetPopup(entries) {
+    if (!entries.length) return '';
+    if (entries.length === 1) {
+      return `<div class="sigmet-popup">${buildSigmetCard(entries[0].sig, entries[0].cls)}</div>`;
+    }
+    // Orden: por FIR luego por hazard alfabetico.
+    const sorted = entries.slice().sort((a, b) => {
+      const af = a.sig.firId || a.sig.firName || '';
+      const bf = b.sig.firId || b.sig.firName || '';
+      if (af !== bf) return af.localeCompare(bf);
+      return String(a.sig.hazard || '').localeCompare(String(b.sig.hazard || ''));
+    });
+    const head = `<div class="sigmet-popup-head"><b>${entries.length} SIGMETs en este punto</b></div>`;
+    const cards = sorted.map(e => buildSigmetCard(e.sig, e.cls)).join(
+      '<hr class="sigmet-divider">'
+    );
+    return `<div class="sigmet-popup sigmet-popup-multi">${head}${cards}</div>`;
   }
 
   // ── Leyenda flotante de TSAs activas ───────────────────────────────
