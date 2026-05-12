@@ -9,7 +9,7 @@
  * Para forzar invalidación al desplegar nueva versión, sube CACHE_VERSION.
  */
 
-const CACHE_VERSION = 'tsagestor-v100';
+const CACHE_VERSION = 'tsagestor-v101';
 const SHELL_CACHE   = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -116,6 +116,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Si nada en cache ni en red puede satisfacer la peticion, devolvemos
+  // una Response opaca (Network Error 504) en lugar de undefined. Esto
+  // evita el "Failed to convert value to 'Response'" que rompia el SW.
+  const networkErrorResponse = () => new Response('', {
+    status: 504,
+    statusText: 'SW network error fallback',
+  });
+
   // APIs y tiles meteo: network-first.
   if (isNetworkFirst(url)) {
     event.respondWith(
@@ -128,7 +136,7 @@ self.addEventListener('fetch', (event) => {
           }
           return res;
         })
-        .catch(() => caches.match(req))
+        .catch(() => caches.match(req).then((c) => c || networkErrorResponse()))
     );
     return;
   }
@@ -143,7 +151,7 @@ self.addEventListener('fetch', (event) => {
           caches.open(RUNTIME_CACHE).then((c) => c.put(req, copy)).catch(() => {});
         }
         return res;
-      }).catch(() => cached);
+      }).catch(() => cached || networkErrorResponse());
     })
   );
 });

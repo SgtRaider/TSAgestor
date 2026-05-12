@@ -41,15 +41,25 @@ window.TSAgestor.meteoApi = (function () {
   // EUMETVIEW — LI Accumulated Flash Area (MTG, 0°). Mosaico de actividad
   // electrica acumulada por el Lightning Imager. Refresco ~15 min.
   // Doc: https://data.eumetsat.int/product/EO:EUM:DAT:0687
-  const EUMET_LI_WMS   = 'https://view.eumetsat.int/geoserver/mtg_fd/li_afa/ows';
-  const EUMET_LI_LAYER = 'li_afa';
+  //
+  // CTH usa el endpoint especifico /geoserver/msg_fes/cth/ows porque
+  // EUMETSAT lo publica asi. Pero LI AFA y RGB Convection solo se sirven
+  // desde el endpoint GLOBAL /geoserver/ows con el nombre de capa
+  // prefijado por workspace (mtg_fd:li_afa, msg_fes:rgb_convection),
+  // tal como aparece en los GetCapabilities oficiales que el usuario
+  // adjunto. Las rutas /geoserver/<workspace>/<layer>/ows devuelven 404
+  // para estos productos. Por eso ese 404 causaba el "tileerror" del SW.
+  const EUMET_GLOBAL_WMS = 'https://view.eumetsat.int/geoserver/ows';
+
+  const EUMET_LI_WMS   = EUMET_GLOBAL_WMS;
+  const EUMET_LI_LAYER = 'mtg_fd:li_afa';
   const EUMET_LI_TITLE = 'Tormentas eléctricas (MTG · LI AFA)';
 
   // EUMETVIEW — RGB Convection (MSG / SEVIRI, 0°). Composite RGB que
   // resalta tormentas convectivas severas (top frio + sobreimpulsos). 15 min.
   // Doc: https://data.eumetsat.int/product/EO:EUM:DAT:MSG:CON
-  const EUMET_CON_WMS   = 'https://view.eumetsat.int/geoserver/msg_fes/rgb_convection/ows';
-  const EUMET_CON_LAYER = 'rgb_convection';
+  const EUMET_CON_WMS   = EUMET_GLOBAL_WMS;
+  const EUMET_CON_LAYER = 'msg_fes:rgb_convection';
   const EUMET_CON_TITLE = 'RGB Convección (MSG · SEVIRI)';
 
   // Proxy CORS público, sólo se usa en local cuando el navegador bloquea
