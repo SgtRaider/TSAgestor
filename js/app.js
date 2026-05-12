@@ -913,6 +913,34 @@
     return holds;
   }
 
+  // Captura los overrides editados a mano (velocidad y consumo por tramo)
+  // de filas que NO sean holds. Los holds tienen su propio captureHolds.
+  // Indexamos por posicion en coords sin holds, asi al recargar (tras
+  // calcPlan que no tiene holds) podemos reaplicar directamente por idx.
+  // El nombre del waypoint se guarda como verificacion: si la topologia
+  // cambio (otras aerovias), saltamos el override.
+  function capturePlanLegOverrides() {
+    const out = [];
+    if (!state.lastPlan || !state.lastPlan.coords) return out;
+    const coords = state.lastPlan.coords;
+    const ovs = (state.lastPlan.fuelOpts && state.lastPlan.fuelOpts.legOverrides) || [];
+    let idxNoHold = -1;
+    for (let i = 0; i < coords.length; i++) {
+      if (coords[i].isHold) continue;
+      idxNoHold++;
+      const ov = ovs[i];
+      if (!ov) continue;
+      const clean = {};
+      if (Number.isFinite(ov.speedKt))  clean.speedKt  = ov.speedKt;
+      if (Number.isFinite(ov.fuelFlow)) clean.fuelFlow = ov.fuelFlow;
+      if (Object.keys(clean).length === 0) continue;
+      clean.idxNoHold = idxNoHold;
+      clean.name      = coords[i].name;
+      out.push(clean);
+    }
+    return out;
+  }
+
   function capturePlanFormState() {
     // Snapshot de TSAs SELECCIONADAS para que el plan sea autocontenido:
     // al volver a cargarlo (mismo navegador o tras importar) se restauran
@@ -934,7 +962,27 @@
       tsas:         sel.length ? sel : null,
       filter:       Object.assign({}, state.filter),
       holds:        capturePlanHolds(),
+      legOverrides: capturePlanLegOverrides(),
     };
+  }
+
+  // Re-aplica los overrides de velocidad / consumo capturados por tramo
+  // tras un calcPlan. Como aun no hay holds, los indices van directos.
+  // Si la topologia cambio (otra aerovia, FL distinto que cambia sub-legs)
+  // y el nombre no coincide, saltamos ese override.
+  function applyPendingLegOverrides(list) {
+    if (!list || !list.length) return;
+    const plan = state.lastPlan;
+    if (!plan || !plan.coords) return;
+    plan.fuelOpts.legOverrides = plan.fuelOpts.legOverrides || [];
+    for (const ov of list) {
+      const i = Number(ov.idxNoHold);
+      if (!Number.isFinite(i) || i < 0 || i >= plan.coords.length) continue;
+      if (ov.name && plan.coords[i].name !== ov.name) continue;
+      plan.fuelOpts.legOverrides[i] = plan.fuelOpts.legOverrides[i] || {};
+      if (Number.isFinite(ov.speedKt))  plan.fuelOpts.legOverrides[i].speedKt  = ov.speedKt;
+      if (Number.isFinite(ov.fuelFlow)) plan.fuelOpts.legOverrides[i].fuelFlow = ov.fuelFlow;
+    }
   }
 
   // Re-inserta las esperas guardadas tras un calcPlan. Se ejecuta cuando
@@ -983,6 +1031,7 @@
     }
     plan.fuel = flightPlan.buildFuelLog(plan.coords, plan.fuelOpts);
     renderFuelLog(plan.fuel);
+    syncEtaUTCToCoords(plan);
     if (state.mapReady) mapView.renderFlightPlan(plan);
   }
 
@@ -1102,15 +1151,30 @@
     const p = savedPlans.get(name);
     if (!p) return;
     applyPlanFormState(p);
-    // Recalcula con los TSAs/meteo actuales para reconstruir resultado.
-    // Tras calcPlan, re-inyectamos las esperas guardadas en el plan (si
-    // hay) -- calcPlan crea coords fresca sin holds, asi que se anyaden
-    // a posteriori como cuando el usuario los introduce manualmente.
+    // Recalcula con los TSAs/meteo actuales. Despues, orden:
+    //   1) reaplicar overrides de velocidad/consumo (idx en coords sin holds)
+    //   2) reinyectar holds (que pueden anyadir entradas adicionales a
+    //      legOverrides para los holdMin)
+    //   3) reconstruir fuel log con todo aplicado.
     setTimeout(() => {
       calcPlan();
-      if (Array.isArray(p.holds) && p.holds.length) {
-        setTimeout(() => applyPendingHolds(p.holds), 80);
-      }
+      const hasOverrides = Array.isArray(p.legOverrides) && p.legOverrides.length > 0;
+      const hasHolds     = Array.isArray(p.holds) && p.holds.length > 0;
+      if (!hasOverrides && !hasHolds) return;
+      setTimeout(() => {
+        if (hasOverrides) applyPendingLegOverrides(p.legOverrides);
+        if (hasHolds) {
+          applyPendingHolds(p.holds);   // ya hace buildFuelLog + renderFuelLog
+        } else if (hasOverrides) {
+          // Sin holds, rebuild para que los overrides se reflejen.
+          const plan = state.lastPlan;
+          if (plan && plan.coords) {
+            plan.fuel = flightPlan.buildFuelLog(plan.coords, plan.fuelOpts);
+            renderFuelLog(plan.fuel);
+            syncEtaUTCToCoords(plan);
+          }
+        }
+      }, 80);
     }, 50);
   }
 
@@ -1615,6 +1679,28 @@
     plan.fuelOpts.legOverrides[idx][field] = val;
     plan.fuel = flightPlan.buildFuelLog(plan.coords, plan.fuelOpts);
     updateFuelLogInPlace(plan.fuel);
+    syncEtaUTCToCoords(plan);
+  }
+
+  // Tras rebuild del fuel log, las ETAs cambian (cambio de velocidad /
+  // hold / consumo afecta al tiempo de tramo). La tabla de waypoints
+  // (#plan-coords-table) lee c.etaUTC, asi que hay que copiarlas desde
+  // las filas recien construidas y refrescar las celdas en sitio para
+  // no perder el foco del input que el usuario esta editando.
+  function syncEtaUTCToCoords(plan) {
+    if (!plan || !plan.fuel || !plan.coords) return;
+    plan.fuel.rows.forEach((r, i) => {
+      const c = plan.coords[i];
+      if (c && r && r.etaUTC) c.etaUTC = r.etaUTC;
+    });
+    const wpBody = $('#plan-coords-table tbody');
+    if (!wpBody) return;
+    let row = 0;
+    plan.coords.forEach((c) => {
+      if (c.isHold) return;
+      const tr = wpBody.rows[row++];
+      if (tr && tr.cells && tr.cells[8]) tr.cells[8].textContent = formatUTC(c.etaUTC);
+    });
   }
 
   // Inserta una fila de espera tras el waypoint `afterIdx`. La fila
@@ -1646,6 +1732,7 @@
     // Re-render completo: hay que recrear filas e indices, no basta in-place.
     plan.fuel = flightPlan.buildFuelLog(plan.coords, plan.fuelOpts);
     renderFuelLog(plan.fuel);
+    syncEtaUTCToCoords(plan);
     // Refrescar el mapa (la polilinea/lista de waypoints no cambia, pero
     // recalculamos por consistencia con el resto del flujo).
     if (state.mapReady) mapView.renderFlightPlan(plan);
@@ -1658,6 +1745,7 @@
     if (plan.fuelOpts.legOverrides) plan.fuelOpts.legOverrides.splice(idx, 1);
     plan.fuel = flightPlan.buildFuelLog(plan.coords, plan.fuelOpts);
     renderFuelLog(plan.fuel);
+    syncEtaUTCToCoords(plan);
     if (state.mapReady) mapView.renderFlightPlan(plan);
   }
 
