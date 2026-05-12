@@ -296,14 +296,20 @@ window.TSAgestor.notamView = (function () {
       html += `<tr><td class="wx-icao">${escapeHTML(icao)}</td>`;
       for (const h of hours) {
         const cell = evaluateAt(icao, h, limits);
-        const tooltip = buildCellTooltip(icao, h, cell);
-        html += `<td class="wx-cell wx-${cell.status}" data-icao="${escapeHTML(icao)}" data-ms="${h}" title="${escapeHTML(tooltip)}">` +
+        // Guardamos el contenido del popup en un data-* y lo renderizamos
+        // bajo demanda en _wxPopover. Asi no usamos el title= nativo (feo
+        // y sin HTML) y mantenemos el HTML escapado fuera del DOM hasta
+        // que el usuario hace hover.
+        const popupHTML = buildCellPopupHTML(icao, h, cell);
+        const dataAttr = encodeURIComponent(popupHTML);
+        html += `<td class="wx-cell wx-${cell.status}" data-icao="${escapeHTML(icao)}" data-ms="${h}" data-popup="${dataAttr}">` +
                 `<span class="wx-cell-text">${cell.label || ''}</span></td>`;
       }
       html += '</tr>';
     }
     html += '</tbody></table>';
     root.innerHTML = html;
+    _wirePopover(root);
   }
 
   // Decide METAR vs TAF para una celda y devuelve estado + texto fuente.
@@ -355,21 +361,109 @@ window.TSAgestor.notamView = (function () {
     };
   }
 
-  function buildCellTooltip(icao, hourMs, cell) {
-    const lines = [];
-    lines.push(`${icao}  ${fmtZ(hourMs)} / ${fmtLocal(hourMs)}`);
-    lines.push(`Fuente: ${cell.sourceLabel || '—'}`);
-    if (cell.wx) {
-      const w = cell.wx;
-      lines.push(
-        `Techo ${w.ceilingFt != null ? w.ceilingFt + ' ft' : (w.cavok ? 'CAVOK' : (w.nsc ? 'NSC' : '—'))}` +
-        `  ·  Vis ${w.visM != null ? w.visM + ' m' : (w.cavok ? '≥10km' : '—')}` +
-        `  ·  Viento ${w.windKt != null ? w.windKt + (w.gustKt ? 'G' + w.gustKt : '') + ' kt' : '—'}`
-      );
+  function buildCellPopupHTML(icao, hourMs, cell) {
+    const md = window.TSAgestor && window.TSAgestor.metarDecode;
+    const isTaf = (cell.sourceLabel || '').startsWith('TAF');
+    const decoded = (md && cell.source)
+      ? (isTaf ? md.decodeTAF(cell.source) : md.decodeMETAR(cell.source))
+      : [];
+
+    // Resumen rapido de minima (chips de color)
+    const w = cell.wx || {};
+    const chips = [];
+    if (w.cavok) chips.push(`<span class="wx-chip wx-chip-ok">CAVOK</span>`);
+    else if (w.nsc) chips.push(`<span class="wx-chip wx-chip-ok">NSC</span>`);
+    if (w.ceilingFt != null)
+      chips.push(`<span class="wx-chip">Techo ${w.ceilingFt} ft</span>`);
+    if (w.visM != null)
+      chips.push(`<span class="wx-chip">Vis ${w.visM >= 10000 ? '≥10 km' : w.visM + ' m'}</span>`);
+    if (w.windKt != null) {
+      const g = w.gustKt ? `G${w.gustKt}` : '';
+      chips.push(`<span class="wx-chip">Viento ${w.windKt}${g} kt</span>`);
     }
-    if (cell.reasons && cell.reasons.length) lines.push('Motivo: ' + cell.reasons.join(' · '));
-    if (cell.source) lines.push('', cell.source);
-    return lines.join('\n');
+
+    const reasons = (cell.reasons && cell.reasons.length)
+      ? `<div class="wx-pop-reasons wx-pop-reasons-${cell.status}">${cell.reasons.map(escapeHTML).join(' · ')}</div>`
+      : '';
+
+    const rawBlock = cell.source
+      ? `<details class="wx-pop-raw"><summary>Texto crudo</summary><pre>${escapeHTML(cell.source)}</pre></details>`
+      : '';
+
+    const decodedHTML = (md && decoded.length)
+      ? md.toHtmlList(decoded)
+      : '<i class="dim">— sin decodificacion disponible —</i>';
+
+    return `
+      <div class="wx-pop-head">
+        <span class="wx-pop-icao">${escapeHTML(icao)}</span>
+        <span class="wx-pop-time">${escapeHTML(fmtLocal(hourMs))} · ${escapeHTML(fmtZ(hourMs))}</span>
+        <span class="wx-pop-source ${cell.status}">${escapeHTML(cell.sourceLabel || '—')}</span>
+      </div>
+      ${chips.length ? `<div class="wx-pop-chips">${chips.join('')}</div>` : ''}
+      ${reasons}
+      <div class="wx-pop-decoded">${decodedHTML}</div>
+      ${rawBlock}
+    `;
+  }
+
+  // ── Popover compartido para todas las celdas WX ────────────────────
+  // Un solo elemento DOM en body, posicionado dinamicamente al hover de
+  // una celda. Mas elegante y portable que el title= nativo, y permite
+  // HTML rico (chips, listas, details).
+  let _popoverEl = null;
+  function _getPopover() {
+    if (_popoverEl) return _popoverEl;
+    _popoverEl = document.createElement('div');
+    _popoverEl.className = 'wx-popover';
+    _popoverEl.style.display = 'none';
+    document.body.appendChild(_popoverEl);
+    return _popoverEl;
+  }
+  function _showPopover(cell, target) {
+    const pop = _getPopover();
+    const html = cell.getAttribute('data-popup');
+    if (!html) return;
+    pop.innerHTML = decodeURIComponent(html);
+    pop.style.display = 'block';
+    // Posicion: bajo la celda, alineada por la izquierda. Si se sale por
+    // la derecha, lo desplazamos.
+    const r = cell.getBoundingClientRect();
+    const popW = pop.offsetWidth;
+    const popH = pop.offsetHeight;
+    let left = window.scrollX + r.left;
+    let top  = window.scrollY + r.bottom + 6;
+    // Reposicionar si se sale del viewport.
+    if (left + popW > window.scrollX + window.innerWidth - 8) {
+      left = window.scrollX + window.innerWidth - popW - 8;
+    }
+    if (left < 8) left = 8;
+    if (top + popH > window.scrollY + window.innerHeight - 8 && r.top > popH + 8) {
+      top = window.scrollY + r.top - popH - 6;     // por encima
+    }
+    pop.style.left = left + 'px';
+    pop.style.top  = top + 'px';
+  }
+  function _hidePopover() {
+    if (_popoverEl) _popoverEl.style.display = 'none';
+  }
+  function _wirePopover(root) {
+    // Eventos delegados sobre la tabla; un solo set de listeners por render.
+    root.addEventListener('mouseover', (e) => {
+      const cell = e.target.closest && e.target.closest('.wx-cell');
+      if (cell) _showPopover(cell);
+    });
+    root.addEventListener('mouseout', (e) => {
+      const cell = e.target.closest && e.target.closest('.wx-cell');
+      if (cell && !cell.contains(e.relatedTarget)) _hidePopover();
+    });
+    root.addEventListener('mousemove', (e) => {
+      // Reposicionar si el cursor se mueve entre celdas adyacentes muy rapido.
+      const cell = e.target.closest && e.target.closest('.wx-cell');
+      if (cell && _popoverEl && _popoverEl.style.display === 'block') {
+        // No-op: dejamos el popover donde esta para no parpadear.
+      }
+    });
   }
 
   // ── Render NOTAMs (lista plana, todos los del aerodromo) ───────────
