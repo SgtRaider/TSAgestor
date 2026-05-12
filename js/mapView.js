@@ -422,15 +422,18 @@ window.TSAgestor.mapView = (function () {
       const div = L.DomUtil.create('div', 'cloud-legend cloud-legend-generic');
       let body;
       if (key === 'lightning') {
-        // Gradiente "pocos -> muchos rayos" con texto descriptivo. Los
-        // colores aproximan la paleta clasica MTG LI AFA (oscuro frio ->
-        // amarillo -> rojo intenso).
+        // Paleta real EUMETSAT LI AFA: crema (1 flash) -> amarillo (3) ->
+        // naranja (10) -> rojo (20+). Ticks alineados con la imagen
+        // oficial del GetLegendGraphic.
         body = `
+          <div class="li-legend-label">Count / 5 min</div>
           <div class="li-legend-bar"></div>
           <div class="li-legend-ticks">
-            <span>0</span><span>baja</span><span>media</span><span>alta</span><span>extrema</span>
+            <span style="left:0%">1</span>
+            <span style="left:50%">10</span>
+            <span style="left:100%">20+</span>
           </div>
-          <div class="li-legend-help">densidad de rayos acumulada · MTG Lightning Imager</div>`;
+          <div class="li-legend-help">accumulated flash area · MTG Lightning Imager</div>`;
       } else {
         body = cfg.legendUrl
           ? `<img class="cloud-legend-image" src="${cfg.legendUrl}" alt="Escala"
