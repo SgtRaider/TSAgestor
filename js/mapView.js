@@ -1017,7 +1017,7 @@ window.TSAgestor.mapView = (function () {
 
   function addLegend() {
     if (legend) return;
-    legend = L.control({ position: 'bottomright' });
+    legend = L.control({ position: 'bottomleft' });
     legend.onAdd = function () {
       const div = L.DomUtil.create('div', 'map-legend');
       div.innerHTML =
