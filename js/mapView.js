@@ -218,7 +218,7 @@ window.TSAgestor.mapView = (function () {
           buildEumetWmsToggle(mapi.getEumetConvectionWMS, 'convection');
       }
       if (mapi.fetchSigmets) {
-        overlays['SIGMETs (AWC global)'] = buildSigmetLayer();
+        overlays['SIGMETs (Iberia + Europa O. + N-África)'] = buildSigmetLayer();
       }
       overlays['METAR / TAF'] = buildMetarLayer();
     }
@@ -468,6 +468,14 @@ window.TSAgestor.mapView = (function () {
   // generaba poligonos simplificados (no fieles) — por eso parseamos aqui.
   let _sigmetState = { fetched: 0, layers: [], timer: null };
   const SIGMET_REFRESH_MS = 10 * 60 * 1000;
+  // Solo cargamos SIGMETs cuya geometria intersecta este bbox (Iberia +
+  // Baleares + Canarias + N-Africa + Europa occidental). Asi evitamos
+  // pintar el de Tokio o el de Honolulu, que no aportan al usuario EA.
+  // Ajusta los limites aqui si quieres mas/menos cobertura.
+  const SIGMET_REGION = {
+    minLat: 20, maxLat: 60,
+    minLng: -30, maxLng: 30,
+  };
   const SIGMET_COLORS = {
     TS:   '#dc2626',  // tormenta convectiva
     TURB: '#f97316',  // turbulencia
@@ -476,6 +484,36 @@ window.TSAgestor.mapView = (function () {
     VA:   '#7c3aed',  // ceniza volcanica
     OTHER:'#475569',
   };
+
+  // Comprueba si el bounding box de una geometria SIGMET (poly o circle)
+  // intersecta con la region operativa. Bbox-bbox es suficiente para el
+  // filtro: si no se solapan los rectangulos contenedores, los poligonos
+  // tampoco. Y nos ahorra el coste de un test poligono-poligono real.
+  function sigmetNearRegion(geom) {
+    if (!geom) return false;
+    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    if (geom.kind === 'poly') {
+      for (const [lat, lng] of geom.latlngs) {
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+        if (lng < minLng) minLng = lng;
+        if (lng > maxLng) maxLng = lng;
+      }
+    } else if (geom.kind === 'circle') {
+      const [lat, lng] = geom.center;
+      // radio en metros -> grados (aprox 111 km/deg lat, escalado lng por cos).
+      const radDegLat = geom.radiusM / 111000;
+      const cosLat    = Math.max(0.01, Math.cos(lat * Math.PI / 180));
+      const radDegLng = radDegLat / cosLat;
+      minLat = lat - radDegLat; maxLat = lat + radDegLat;
+      minLng = lng - radDegLng; maxLng = lng + radDegLng;
+    } else {
+      return false;
+    }
+    // Bbox overlap (axis-aligned).
+    return !(maxLat < SIGMET_REGION.minLat || minLat > SIGMET_REGION.maxLat ||
+             maxLng < SIGMET_REGION.minLng || minLng > SIGMET_REGION.maxLng);
+  }
   function sigmetClassKey(hz) {
     const h = String(hz || '').toUpperCase();
     if (h.includes('TS')   || h.includes('CONVECTIVE')) return 'TS';
@@ -516,9 +554,12 @@ window.TSAgestor.mapView = (function () {
       _sigmetState.fetched = Date.now();
       return;
     }
+    let kept = 0, skipped = 0;
     for (const sig of list) {
       const geom = mapi.parseSigmetGeometry(sig);
-      if (!geom) continue;
+      if (!geom) { skipped++; continue; }
+      if (!sigmetNearRegion(geom)) { skipped++; continue; }
+      kept++;
       const cls = sigmetClassKey(sig.hazard || sig.qualifier);
       const color = SIGMET_COLORS[cls];
       const style = {
@@ -539,6 +580,7 @@ window.TSAgestor.mapView = (function () {
       layer.addTo(grp);
       _sigmetState.layers.push(layer);
     }
+    console.info(`[sigmet] ${list.length} totales · ${kept} en area operativa · ${skipped} fuera de zona`);
     _sigmetState.fetched = Date.now();
   }
 
