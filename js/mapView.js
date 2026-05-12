@@ -2,7 +2,23 @@
 // (Iberia + islas + costas + ciudades + retícula lat/lon) en lugar de tiles
 // OSM. Los polígonos TSA se siguen pintando encima en render(tsas).
 
-console.warn('%c[mapView] v87 cargado — filtrado JS por zoom (tier-2≥6, tier-3≥8, NAVAID≥7, RNAV≥8). Llama window.TSAgestor_zoomDebug() para diagnostico.', 'background:#0ea5e9;color:#fff;padding:2px 6px;border-radius:3px;font-weight:bold');
+// Banner se mantiene actualizado leyendo el ?v=NN del propio script tag
+// para que el numero coincida con el CACHE_VERSION del SW sin tener que
+// editarlo a mano cada vez.
+(function () {
+  let v = '';
+  const scripts = document.getElementsByTagName('script');
+  for (const s of scripts) {
+    if (s.src && /mapView\.js\?v=/.test(s.src)) {
+      v = (s.src.match(/[?&]v=(\d+)/) || [])[1] || '';
+      break;
+    }
+  }
+  console.warn(
+    `%c[mapView] v${v || '?'} cargado — filtrado JS por zoom (tier-2≥6, tier-3≥8, NAVAID≥7, RNAV≥8). Llama window.TSAgestor_zoomDebug() para diagnostico.`,
+    'background:#0ea5e9;color:#fff;padding:2px 6px;border-radius:3px;font-weight:bold'
+  );
+})();
 
 // Diagnostico global: imprime estado actual del filtrado por zoom.
 window.TSAgestor_zoomDebug = function () {
