@@ -217,6 +217,9 @@ window.TSAgestor.mapView = (function () {
         overlays[(conCfg && conCfg.title) || 'RGB Convección (MSG)'] =
           buildEumetWmsToggle(mapi.getEumetConvectionWMS, 'convection');
       }
+      if (mapi.fetchSigmets) {
+        overlays['SIGMETs (AWC global)'] = buildSigmetLayer();
+      }
       overlays['METAR / TAF'] = buildMetarLayer();
     }
     _vectorLayerGroups.tmas = overlays['TMAs (demo)'] || null;
@@ -456,6 +459,95 @@ window.TSAgestor.mapView = (function () {
       slot.legendCtl.remove();
       slot.legendCtl = null;
     }
+  }
+
+  // ── SIGMETs internacionales (AWC) ──────────────────────────────────
+  // Fetch GeoJSON de aviationweather.gov, pinta cada poligono con color
+  // segun el hazardType (TS, TURB, ICE, MTW, VA). Refresca cada 10 min.
+  let _sigmetState = { fetched: 0, geojsonLayer: null, timer: null };
+  const SIGMET_REFRESH_MS = 10 * 60 * 1000;
+  const SIGMET_COLORS = {
+    TS:   '#dc2626',  // tormenta convectiva
+    TURB: '#f97316',  // turbulencia
+    ICE:  '#0ea5e9',  // engelamiento
+    MTW:  '#92400e',  // ondas de montanya
+    VA:   '#7c3aed',  // ceniza volcanica
+    OTHER:'#475569',
+  };
+  function sigmetClassKey(hz) {
+    const h = String(hz || '').toUpperCase();
+    if (h.includes('TS')   || h.includes('CONVECTIVE')) return 'TS';
+    if (h.includes('TURB'))                              return 'TURB';
+    if (h.includes('ICE'))                               return 'ICE';
+    if (h.includes('MTW')  || h.includes('MOUNTAIN'))    return 'MTW';
+    if (h.includes('VA')   || h.includes('VOLCANIC'))    return 'VA';
+    return 'OTHER';
+  }
+  function buildSigmetLayer() {
+    const grp = L.layerGroup();
+    grp.on('add', async function () {
+      try { await loadSigmets(grp); } catch (e) {
+        console.warn('[sigmet]', e);
+      }
+      // Auto-refresco cada 10 min mientras la capa esta activa.
+      if (_sigmetState.timer) clearInterval(_sigmetState.timer);
+      _sigmetState.timer = setInterval(() => loadSigmets(grp), SIGMET_REFRESH_MS);
+    });
+    grp.on('remove', function () {
+      if (_sigmetState.timer) { clearInterval(_sigmetState.timer); _sigmetState.timer = null; }
+      if (_sigmetState.geojsonLayer) {
+        grp.removeLayer(_sigmetState.geojsonLayer);
+        _sigmetState.geojsonLayer = null;
+      }
+    });
+    return grp;
+  }
+  async function loadSigmets(grp) {
+    const mapi = window.TSAgestor.meteoApi;
+    if (!mapi || !mapi.fetchSigmets) return;
+    const fc = await mapi.fetchSigmets();
+    if (_sigmetState.geojsonLayer) {
+      grp.removeLayer(_sigmetState.geojsonLayer);
+      _sigmetState.geojsonLayer = null;
+    }
+    if (!fc || !fc.features || !fc.features.length) {
+      _sigmetState.fetched = Date.now();
+      return;
+    }
+    _sigmetState.geojsonLayer = L.geoJSON(fc, {
+      pane: 'tsaPane',
+      style: function (feat) {
+        const p = feat && feat.properties || {};
+        const cls = sigmetClassKey(p.hazard || p.hazardType || p.label);
+        const color = SIGMET_COLORS[cls];
+        return {
+          color, weight: 2, opacity: 0.9,
+          fillColor: color, fillOpacity: 0.18,
+          dashArray: '6 3',
+        };
+      },
+      onEachFeature: function (feat, layer) {
+        const p = feat && feat.properties || {};
+        const cls = sigmetClassKey(p.hazard || p.hazardType || p.label);
+        const fl  = (p.base != null || p.top != null)
+          ? `FL${p.base != null ? String(p.base).padStart(3,'0') : '---'} – FL${p.top != null ? String(p.top).padStart(3,'0') : '---'}`
+          : '';
+        const valid = (p.validTimeFrom && p.validTimeTo)
+          ? `${new Date(p.validTimeFrom).toUTCString().slice(5, 22)} → ${new Date(p.validTimeTo).toUTCString().slice(5, 22)}`
+          : '';
+        const html = `
+          <div class="sigmet-popup">
+            <div class="sigmet-haz ${cls.toLowerCase()}">${escapeHTMLLocal(p.hazard || p.hazardType || cls)} ${p.severity ? '· '+escapeHTMLLocal(p.severity) : ''}</div>
+            ${p.firId ? `<div><b>FIR:</b> ${escapeHTMLLocal(p.firId)}</div>` : ''}
+            ${fl ? `<div><b>Niveles:</b> ${fl}</div>` : ''}
+            ${valid ? `<div><b>Válido:</b> ${valid}</div>` : ''}
+            ${p.rawSigmet ? `<pre style="white-space:pre-wrap;font-size:11px;margin:4px 0 0;max-height:160px;overflow:auto">${escapeHTMLLocal(p.rawSigmet)}</pre>` : ''}
+          </div>`;
+        layer.bindPopup(html, { maxWidth: 360 });
+      },
+    });
+    _sigmetState.geojsonLayer.addTo(grp);
+    _sigmetState.fetched = Date.now();
   }
 
   // ── Leyenda flotante de TSAs activas ───────────────────────────────

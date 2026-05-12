@@ -106,6 +106,7 @@
       <button class="tab-btn" data-tab="map">Mapa</button>
       <button class="tab-btn" data-tab="cross">Corte transversal</button>
       <button class="tab-btn" data-tab="plan">Plan de vuelo</button>
+      <button class="tab-btn" data-tab="notams">NOTAMs</button>
       <button class="tab-btn" data-tab="export">Exportar</button>
       <button class="tab-btn" data-tab="settings">Ajustes</button>
     </nav>
@@ -191,9 +192,18 @@
           <div class="feature">
             <div class="feature-title">Meteorología</div>
             <div class="feature-desc">METAR/TAF decodificados al español, capa
-              Cloud Top Height MSG 0° (EUMETSAT) con leyenda en FL y RainViewer
-              IR. GRAMET vía Autorouter con waypoints próximos al corredor de
-              ruta y duración total real (incluye holds y viento).</div>
+              Cloud Top Height (MSG 0°), tormentas eléctricas (MTG LI AFA), RGB
+              Convección (MSG SEVIRI), RainViewer IR y SIGMETs internacionales
+              (AWC) sobre el mapa. GRAMET vía Autorouter con duración real del
+              vuelo (holds + viento).</div>
+          </div>
+          <div class="feature">
+            <div class="feature-title">NOTAMs</div>
+            <div class="feature-desc">Consulta de NOTAMs por aeródromo (origen
+              y destino del plan o ICAOs manuales) vía Autorouter. Detección
+              automática de <b>showstoppers</b> (aeródromo cerrado, pista
+              cerrada) y avisos (ILS, fuel, TWY, plataforma) leyendo el Q-code
+              y patrones del texto.</div>
           </div>
           <div class="feature">
             <div class="feature-title">Informe PDF</div>
@@ -472,6 +482,23 @@
       </div>
     </section>
 
+    <!-- NOTAMs -->
+    <section id="tab-notams" class="tab-content">
+      <div class="notam-toolbar">
+        <div class="notam-toolbar-left">
+          <label class="notam-input-label">Aeródromos (ICAO, separados por espacio)
+            <input type="text" id="notam-icaos" placeholder="LEMD LEBL" autocomplete="off" spellcheck="false">
+          </label>
+          <button id="btn-notam-load" class="btn btn-primary" type="button">Consultar NOTAMs</button>
+          <button id="btn-notam-from-plan" class="btn" type="button" title="Usa origen y destino del plan de vuelo actual">Origen + destino del plan</button>
+        </div>
+        <div id="notam-status" class="status"></div>
+      </div>
+      <p class="dim notam-hint">Detección automática de <b>showstoppers</b> (aeródromo cerrado, pista cerrada) y avisos
+      (TWY, ILS, fuel, etc.) leyendo el <em>Q-code</em> y patrones del texto. Fuente: Autorouter.aero.</p>
+      <div id="notam-results"></div>
+    </section>
+
     <!-- EXPORTAR -->
     <section id="tab-export" class="tab-content">
       <div class="export-card">
@@ -601,7 +628,8 @@
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
 <script src="js/filters.js"></script>
-<script src="js/mapView.js?v=93"></script>
+<script src="js/notamView.js?v=94"></script>
+<script src="js/mapView.js?v=94"></script>
 <script src="js/crossSection.js"></script>
 <script src="js/flightPlan.js"></script>
 <script src="js/pdfExport.js"></script>

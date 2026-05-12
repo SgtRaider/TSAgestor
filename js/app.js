@@ -102,6 +102,11 @@
     }
     if (name === 'cross') renderCross();
     if (name === 'plan') initPlanTab();
+    if (name === 'notams') {
+      if (window.TSAgestor.notamView && window.TSAgestor.notamView.onTabOpen) {
+        window.TSAgestor.notamView.onTabOpen();
+      }
+    }
     if (name === 'export') refreshExportUI();
     if (name === 'settings') initSettingsTab();
   }

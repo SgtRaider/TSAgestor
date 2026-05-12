@@ -650,6 +650,65 @@ window.TSAgestor.meteoApi = (function () {
     };
   }
 
+  // NOTAMs por aerodromo via Autorouter. Devuelve array bruto de NOTAMs
+  // segun /v1.0/notam?aerodromes=. Acepta uno o varios ICAOs separados
+  // por coma. La autenticacion sigue el mismo patron que GRAMET (server-
+  // auth via Pages Function o Bearer client-side).
+  // Doc: https://www.autorouter.aero/wiki/api/#notams
+  async function fetchNotamsForAerodromes(icaoList) {
+    if (!icaoList) return [];
+    const list = (Array.isArray(icaoList) ? icaoList : [icaoList])
+      .map(s => String(s || '').trim().toUpperCase())
+      .filter(s => /^[A-Z]{4}$/.test(s));
+    if (!list.length) return [];
+    const serverAuth = await checkServerAuth();
+    const reqInit = {};
+    if (!serverAuth) {
+      const token = await getArToken();
+      reqInit.headers = { 'Authorization': 'Bearer ' + token };
+    }
+    const params = new URLSearchParams({
+      aerodromes: list.join(','),
+      offset: '0',
+      limit: '300',
+    });
+    const url = `${AR_BASE}/notam?${params.toString()}`;
+    const res = await _arFetch(url, reqInit);
+    if (res.status === 401) {
+      if (!serverAuth) sessionStorage.removeItem(AR_TOKEN_KEY);
+      let reason = null;
+      try {
+        const data = await res.clone().json();
+        reason = data && data.reason;
+      } catch (_) {}
+      if (reason === 'no_credentials' || reason === 'server_auth_failed') {
+        const e = new Error('SERVER_NO_CREDS');
+        e.detail = reason;
+        throw e;
+      }
+      throw new Error('TOKEN_REJECTED');
+    }
+    if (!res.ok) throw new Error('NOTAM HTTP ' + res.status);
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data;
+  }
+
+  // SIGMETs internacionales (AWC iSIGMET). GeoJSON con poligonos de hazard
+  // activos: tormentas convectivas (TS), turbulencia (TURB), engelamiento
+  // (ICE), ondas de montanya (MTW), ceniza volcanica (VA).
+  // Doc: https://aviationweather.gov/data/api/
+  async function fetchSigmets() {
+    const url = AWC_BASE + '/isigmet?format=geojson';
+    const res = await _arFetch(url, {});
+    if (!res.ok) throw new Error('SIGMET HTTP ' + res.status);
+    const data = await res.json();
+    if (data && data.type === 'FeatureCollection') return data;
+    // Algunas respuestas devuelven array de features sin envelope.
+    if (Array.isArray(data)) return { type: 'FeatureCollection', features: data };
+    return { type: 'FeatureCollection', features: [] };
+  }
+
   // Estrategias de construccion de la cadena de waypoints para GRAMET:
   //   'full'    -> ruta completa filtrando solo nombres tipo ICAO/navaid.
   //   'nearby'  -> sustituye cada fix RNAV no reconocido por el aeropuerto
@@ -974,6 +1033,7 @@ window.TSAgestor.meteoApi = (function () {
     getEumetLightningWMS, getEumetConvectionWMS,
     fetchCloudsForPoints, fetchWindsAloft, lookupWindAt,
     getGrametUrl, fetchGramet,
+    fetchNotamsForAerodromes, fetchSigmets,
     hasArCreds, setStoredArCreds, clearStoredArAuth, checkServerAuth,
     // alias retro-compatible para código que aún usa el nombre antiguo
     getGibsCloudWMS: getEumetCthWMS,
