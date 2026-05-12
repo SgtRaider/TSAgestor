@@ -1362,8 +1362,41 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
    apilan en la esquina inferior-izquierda cuando hay varias activas: cada
    addTo(map) en el mismo position se renderiza como una "fila" mas en el
    bottomleft sin solaparse (Leaflet lo gestiona automaticamente). */
-.cloud-legend-generic { width: 220px; margin-top: 6px; }
+.cloud-legend-generic { width: 240px; margin-top: 6px; }
 .cloud-legend-generic .cloud-legend-image { display: block; width: 100%; height: auto; }
+
+/* Leyenda Lightning Imager (LI AFA): barra de gradiente representando
+   densidad de rayos. Negro/azul oscuro = pocos rayos, rojo/blanco = muchos.
+   Aproxima la paleta tipica MTG LI Accumulated Flash Area. */
+.cloud-legend-generic .li-legend-bar {
+  height: 12px;
+  background: linear-gradient(to right,
+    #0b1e3a 0%,
+    #1e3a8a 15%,
+    #2563eb 30%,
+    #06b6d4 45%,
+    #fde047 60%,
+    #f97316 75%,
+    #dc2626 90%,
+    #fef3c7 100%);
+  border: 1px solid #475569;
+  border-radius: 2px;
+  margin: 4px 0 2px;
+}
+.cloud-legend-generic .li-legend-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #1f2937;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.cloud-legend-generic .li-legend-help {
+  font-size: 10px;
+  color: #475569;
+  font-style: italic;
+  line-height: 1.2;
+}
 .cloud-legend img {
   display: block;
   width: 100%;

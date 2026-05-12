@@ -407,20 +407,39 @@ window.TSAgestor.mapView = (function () {
 
   // Leyenda flotante simple (sin overlay de FL) — para los productos que no
   // miden altitud. Una por capa para que coexistan sin tapar la CTH.
+  // Por capa:
+  //   - convection -> SIN leyenda (la imagen GetLegendGraphic del RGB no
+  //     aporta nada util visualmente)
+  //   - lightning  -> leyenda custom con gradiente densidad de rayos
+  //   - resto      -> imagen GetLegendGraphic estandar
   function showGenericCloudLegend(cfg, key) {
     if (!map) return;
+    if (key === 'convection') return;       // sin leyenda por decision UX
     const slot = _eumetWmsLayers[key] || (_eumetWmsLayers[key] = { tile: null, legendCtl: null });
     if (slot.legendCtl) return;
     slot.legendCtl = L.control({ position: 'bottomleft' });
     slot.legendCtl.onAdd = function () {
       const div = L.DomUtil.create('div', 'cloud-legend cloud-legend-generic');
-      const legendImg = cfg.legendUrl
-        ? `<img class="cloud-legend-image" src="${cfg.legendUrl}" alt="Escala"
-                onerror="this.style.display='none'">`
-        : '';
+      let body;
+      if (key === 'lightning') {
+        // Gradiente "pocos -> muchos rayos" con texto descriptivo. Los
+        // colores aproximan la paleta clasica MTG LI AFA (oscuro frio ->
+        // amarillo -> rojo intenso).
+        body = `
+          <div class="li-legend-bar"></div>
+          <div class="li-legend-ticks">
+            <span>0</span><span>baja</span><span>media</span><span>alta</span><span>extrema</span>
+          </div>
+          <div class="li-legend-help">densidad de rayos acumulada · MTG Lightning Imager</div>`;
+      } else {
+        body = cfg.legendUrl
+          ? `<img class="cloud-legend-image" src="${cfg.legendUrl}" alt="Escala"
+                  onerror="this.style.display='none'">`
+          : '';
+      }
       div.innerHTML = `
         <div class="cloud-legend-title">${cfg.title || ''}</div>
-        ${legendImg}
+        ${body}
         <div class="cloud-legend-attr">${(cfg.options && cfg.options.attribution) || '© EUMETSAT'}</div>
       `;
       L.DomEvent.disableClickPropagation(div);
