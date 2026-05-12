@@ -694,19 +694,198 @@ window.TSAgestor.meteoApi = (function () {
     return data;
   }
 
-  // SIGMETs internacionales (AWC iSIGMET). GeoJSON con poligonos de hazard
-  // activos: tormentas convectivas (TS), turbulencia (TURB), engelamiento
-  // (ICE), ondas de montanya (MTW), ceniza volcanica (VA).
+  // SIGMETs internacionales (AWC iSIGMET).
+  // Usamos format=json (NO geojson) porque el geojson de AWC simplifica
+  // los poligonos: nos devuelve el campo `coords` como string "lat lng,
+  // lat lng, ..." que parseamos manualmente para tener la geometria
+  // exacta. Tambien soportamos geom=CIRCLE leyendo del raw el centro y
+  // el radio en NM.
   // Doc: https://aviationweather.gov/data/api/
   async function fetchSigmets() {
-    const url = AWC_BASE + '/isigmet?format=geojson';
+    const url = AWC_BASE + '/isigmet?format=json';
     const res = await _arFetch(url, {});
     if (!res.ok) throw new Error('SIGMET HTTP ' + res.status);
     const data = await res.json();
-    if (data && data.type === 'FeatureCollection') return data;
-    // Algunas respuestas devuelven array de features sin envelope.
-    if (Array.isArray(data)) return { type: 'FeatureCollection', features: data };
-    return { type: 'FeatureCollection', features: [] };
+    if (!Array.isArray(data)) return [];
+    return data;
+  }
+
+  // ── Decodificador SIGMET ───────────────────────────────────────────
+  // Convierte un SIGMET crudo en campos legibles en espanyol.
+
+  function decodePhenomenon(hazard, qualifier) {
+    const HAZ = {
+      TS: 'Tormenta',
+      TURB: 'Turbulencia',
+      ICE: 'Engelamiento',
+      MTW: 'Ondas de montaña',
+      VA: 'Ceniza volcánica',
+      DS: 'Tormenta de polvo',
+      SS: 'Tormenta de arena',
+      TC: 'Ciclón tropical',
+      RDOACT: 'Nube radiactiva',
+    };
+    const QUAL = {
+      OBSC: 'oscurecida',
+      EMBD: 'embebida',
+      FRQ:  'frecuente',
+      SQL:  'línea de turbonada',
+      ISOL: 'aislada',
+      OCNL: 'ocasional',
+      SEV:  'severo/a',
+      MOD:  'moderado/a',
+      HVY:  'fuerte',
+    };
+    const base = HAZ[String(hazard || '').toUpperCase()] || (hazard || '—');
+    const q = QUAL[String(qualifier || '').toUpperCase()];
+    return q ? `${base} ${q}` : base;
+  }
+
+  function decodeLevels(base, top, raw) {
+    if (base != null && top != null) return `FL${pad3(base)} – FL${pad3(top)}`;
+    if (top  != null) return `Hasta FL${pad3(top)}`;
+    if (base != null) return `Desde FL${pad3(base)}`;
+    // Fallback al raw: TOP FL400, BLW FL100, FL200/350
+    if (!raw) return '—';
+    let m = raw.match(/\bFL(\d{2,3})\s*\/\s*FL?(\d{2,3})\b/);
+    if (m) return `FL${pad3(m[1])} – FL${pad3(m[2])}`;
+    m = raw.match(/\bTOP\s+FL(\d{2,3})\b/);
+    if (m) return `Hasta FL${pad3(m[1])}`;
+    m = raw.match(/\bBLW\s+FL(\d{2,3})\b/);
+    if (m) return `Por debajo de FL${pad3(m[1])}`;
+    m = raw.match(/\bABV\s+FL(\d{2,3})\b/);
+    if (m) return `Por encima de FL${pad3(m[1])}`;
+    return '—';
+  }
+  function pad3(n) { return String(n).padStart(3, '0'); }
+
+  function decodeMotion(dir, spd, chng) {
+    const DIR = {
+      N: 'norte', NE: 'noreste', E: 'este', SE: 'sureste',
+      S: 'sur',   SW: 'suroeste', W: 'oeste', NW: 'noroeste',
+    };
+    const CHNG = { NC: 'sin cambio', INTSF: 'intensificándose', WKN: 'debilitándose' };
+    const parts = [];
+    if (!dir && !spd) parts.push('Estacionario');
+    else if (dir && spd) parts.push(`Moviéndose hacia ${DIR[String(dir).toUpperCase()] || dir} a ${spd} kt`);
+    else if (spd) parts.push(`Movimiento ${spd} kt`);
+    else parts.push(`Movimiento hacia ${DIR[String(dir).toUpperCase()] || dir}`);
+    if (chng && CHNG[String(chng).toUpperCase()]) {
+      parts.push(CHNG[String(chng).toUpperCase()]);
+    }
+    return parts.join(' · ');
+  }
+
+  function decodeValidity(from, to) {
+    if (!from && !to) return '—';
+    const fmt = iso => {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return String(iso || '');
+      const pad = n => String(n).padStart(2, '0');
+      return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}Z`;
+    };
+    return `${fmt(from)} → ${fmt(to)}`;
+  }
+
+  function decodeSigmet(sig) {
+    return {
+      phenomenon: decodePhenomenon(sig.hazard, sig.qualifier),
+      levels:     decodeLevels(sig.base, sig.top, sig.rawSigmet),
+      validity:   decodeValidity(sig.validTimeFrom, sig.validTimeTo),
+      motion:     decodeMotion(sig.dir, sig.spd, sig.chng),
+      firId:      sig.firId   || '',
+      firName:    sig.firName || '',
+      issuer:     sig.icaoId  || '',
+      seriesId:   sig.seriesId|| '',
+    };
+  }
+
+  // ── Geometria del SIGMET ───────────────────────────────────────────
+  // AWC entrega el poligono en `coords` como "lat lng,lat lng,..." (sin
+  // cierre del anillo). Para CIRCLE, leemos centro + radio del raw.
+
+  function parseSigmetGeometry(sig) {
+    // Caso poligono: cadena "lat lon, lat lon, ..."
+    if (sig.coords && typeof sig.coords === 'string') {
+      const pts = parseCoordPairs(sig.coords);
+      if (pts.length >= 3) {
+        // Cerramos el anillo si no esta cerrado.
+        const closed = (pts[0][0] === pts[pts.length - 1][0] &&
+                        pts[0][1] === pts[pts.length - 1][1]) ? pts : pts.concat([pts[0]]);
+        return { kind: 'poly', latlngs: closed };
+      }
+    }
+    // Caso poligono via array de objetos.
+    if (Array.isArray(sig.coords) && sig.coords.length >= 3) {
+      const pts = sig.coords
+        .map(c => c && (Array.isArray(c) ? c : [c.lat, c.lon || c.lng]))
+        .filter(p => p && Number.isFinite(p[0]) && Number.isFinite(p[1]));
+      if (pts.length >= 3) {
+        const closed = (pts[0][0] === pts[pts.length - 1][0] &&
+                        pts[0][1] === pts[pts.length - 1][1]) ? pts : pts.concat([pts[0]]);
+        return { kind: 'poly', latlngs: closed };
+      }
+    }
+    // Caso CIRCLE: parsear del raw "WI CIRCLE 100NM CENTRE N4040 E00310"
+    const raw = String(sig.rawSigmet || '');
+    const mCircle = raw.match(/\bCIRCLE\s+(\d+)\s*NM\s+(?:CENTR?E\s+)?([NS])(\d{2,4})\s*([EW])(\d{3,5})\b/i);
+    if (mCircle) {
+      const radiusNM = Number(mCircle[1]);
+      const lat = ddm(mCircle[2], mCircle[3]);
+      const lng = ddm(mCircle[4], mCircle[5]);
+      if (Number.isFinite(lat) && Number.isFinite(lng) && Number.isFinite(radiusNM)) {
+        return { kind: 'circle', center: [lat, lng], radiusM: radiusNM * 1852 };
+      }
+    }
+    // Caso poligono en raw "WI N4040 E00310 - N4205 E00420 - ..."
+    const mPoly = raw.match(/\bWI(?:THIN)?\s+((?:[NS]\d{2,4}\s*[EW]\d{3,5}\s*-?\s*)+)/i);
+    if (mPoly) {
+      const pts = [...mPoly[1].matchAll(/([NS])(\d{2,4})\s*([EW])(\d{3,5})/g)].map(m => {
+        const lat = ddm(m[1], m[2]);
+        const lng = ddm(m[3], m[4]);
+        return [lat, lng];
+      }).filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+      if (pts.length >= 3) {
+        const closed = (pts[0][0] === pts[pts.length - 1][0] &&
+                        pts[0][1] === pts[pts.length - 1][1]) ? pts : pts.concat([pts[0]]);
+        return { kind: 'poly', latlngs: closed };
+      }
+    }
+    return null;
+  }
+
+  // Parsea "lat lng,lat lng,..." (formato AWC). Soporta lat lng separados
+  // por espacio o coma, separados entre pares por coma.
+  function parseCoordPairs(s) {
+    if (!s) return [];
+    return s.split(/[,;]+/).map(pair => {
+      const m = pair.trim().match(/(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/);
+      if (!m) return null;
+      return [Number(m[1]), Number(m[2])];
+    }).filter(p => p && Number.isFinite(p[0]) && Number.isFinite(p[1]));
+  }
+
+  // Convierte un identificador ICAO de coordenada (N4040 = 40°40') a
+  // grados decimales. Acepta NDDMM, NDDMMMM (4-5 digitos lat) y EDDDMM,
+  // EDDDMMMM (5-6 digitos lng).
+  function ddm(hemi, digits) {
+    const d = String(digits);
+    let deg, min;
+    if (d.length === 4 || d.length === 5) {
+      const cut = d.length - 2;
+      deg = Number(d.slice(0, cut));
+      min = Number(d.slice(cut));
+    } else if (d.length === 6 || d.length === 7) {
+      // segundos incluidos (raro en SIGMET, pero por si acaso)
+      const cut = d.length - 4;
+      deg = Number(d.slice(0, cut));
+      min = Number(d.slice(cut, cut + 2)) + Number(d.slice(cut + 2)) / 100;
+    } else {
+      return NaN;
+    }
+    let v = deg + min / 60;
+    if (hemi === 'S' || hemi === 'W') v = -v;
+    return v;
   }
 
   // Estrategias de construccion de la cadena de waypoints para GRAMET:
@@ -1033,7 +1212,8 @@ window.TSAgestor.meteoApi = (function () {
     getEumetLightningWMS, getEumetConvectionWMS,
     fetchCloudsForPoints, fetchWindsAloft, lookupWindAt,
     getGrametUrl, fetchGramet,
-    fetchNotamsForAerodromes, fetchSigmets,
+    fetchNotamsForAerodromes,
+    fetchSigmets, decodeSigmet, parseSigmetGeometry,
     hasArCreds, setStoredArCreds, clearStoredArAuth, checkServerAuth,
     // alias retro-compatible para código que aún usa el nombre antiguo
     getGibsCloudWMS: getEumetCthWMS,

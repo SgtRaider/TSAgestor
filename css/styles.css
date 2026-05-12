@@ -2250,16 +2250,65 @@ body.welcome-open { overflow: hidden; }
 }
 
 /* ── SIGMETs en el mapa ───────────────────────────── */
+.sigmet-popup {
+  font-family: 'Archivo', Arial, sans-serif;
+  font-size: 12px;
+  color: #1f2937;
+  min-width: 280px;
+}
 .sigmet-popup .sigmet-haz {
   font-weight: 700;
-  font-size: 13px;
-  margin-bottom: 4px;
+  font-size: 14px;
+  margin: 0 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 2px solid currentColor;
 }
 .sigmet-popup .sigmet-haz.ts   { color: #dc2626; }
-.sigmet-popup .sigmet-haz.turb { color: #f97316; }
-.sigmet-popup .sigmet-haz.ice  { color: #0ea5e9; }
-.sigmet-popup .sigmet-haz.mtw  { color: #92400e; }
-.sigmet-popup .sigmet-haz.va   { color: #7c3aed; }
+.sigmet-popup .sigmet-haz.turb { color: #c2410c; }
+.sigmet-popup .sigmet-haz.ice  { color: #0369a1; }
+.sigmet-popup .sigmet-haz.mtw  { color: #78350f; }
+.sigmet-popup .sigmet-haz.va   { color: #6d28d9; }
+.sigmet-popup .sigmet-haz.other { color: #334155; }
+.sigmet-popup .sigmet-grid {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 4px 10px;
+  margin-bottom: 6px;
+}
+.sigmet-popup .sigmet-row {
+  display: contents;
+}
+.sigmet-popup .sigmet-k {
+  color: #64748b;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.sigmet-popup .sigmet-v { color: #0f172a; }
+.sigmet-popup .sigmet-raw {
+  margin-top: 4px;
+  border-top: 1px solid #cbd5e1;
+  padding-top: 4px;
+}
+.sigmet-popup .sigmet-raw summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 600;
+}
+.sigmet-popup .sigmet-raw pre {
+  white-space: pre-wrap;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 10.5px;
+  margin: 4px 0 0;
+  max-height: 180px;
+  overflow: auto;
+  background: #f1f5f9;
+  padding: 4px 6px;
+  border-radius: 3px;
+  color: #1e293b;
+}
 
 /* ── Utility ──────────────────────────────────────── */
 .hidden { display: none !important; }

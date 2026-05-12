@@ -462,9 +462,11 @@ window.TSAgestor.mapView = (function () {
   }
 
   // ── SIGMETs internacionales (AWC) ──────────────────────────────────
-  // Fetch GeoJSON de aviationweather.gov, pinta cada poligono con color
-  // segun el hazardType (TS, TURB, ICE, MTW, VA). Refresca cada 10 min.
-  let _sigmetState = { fetched: 0, geojsonLayer: null, timer: null };
+  // Fetch JSON crudo de aviationweather.gov y construimos cada poligono
+  // a mano desde el campo `coords` (formato AWC: "lat lng, lat lng, ...")
+  // o desde el raw text para SIGMETs tipo CIRCLE. Con format=geojson AWC
+  // generaba poligonos simplificados (no fieles) — por eso parseamos aqui.
+  let _sigmetState = { fetched: 0, layers: [], timer: null };
   const SIGMET_REFRESH_MS = 10 * 60 * 1000;
   const SIGMET_COLORS = {
     TS:   '#dc2626',  // tormenta convectiva
@@ -495,59 +497,79 @@ window.TSAgestor.mapView = (function () {
     });
     grp.on('remove', function () {
       if (_sigmetState.timer) { clearInterval(_sigmetState.timer); _sigmetState.timer = null; }
-      if (_sigmetState.geojsonLayer) {
-        grp.removeLayer(_sigmetState.geojsonLayer);
-        _sigmetState.geojsonLayer = null;
-      }
+      clearSigmetLayers(grp);
     });
     return grp;
+  }
+  function clearSigmetLayers(grp) {
+    for (const l of _sigmetState.layers) {
+      try { grp.removeLayer(l); } catch (_) {}
+    }
+    _sigmetState.layers = [];
   }
   async function loadSigmets(grp) {
     const mapi = window.TSAgestor.meteoApi;
     if (!mapi || !mapi.fetchSigmets) return;
-    const fc = await mapi.fetchSigmets();
-    if (_sigmetState.geojsonLayer) {
-      grp.removeLayer(_sigmetState.geojsonLayer);
-      _sigmetState.geojsonLayer = null;
-    }
-    if (!fc || !fc.features || !fc.features.length) {
+    const list = await mapi.fetchSigmets();
+    clearSigmetLayers(grp);
+    if (!Array.isArray(list) || !list.length) {
       _sigmetState.fetched = Date.now();
       return;
     }
-    _sigmetState.geojsonLayer = L.geoJSON(fc, {
-      pane: 'tsaPane',
-      style: function (feat) {
-        const p = feat && feat.properties || {};
-        const cls = sigmetClassKey(p.hazard || p.hazardType || p.label);
-        const color = SIGMET_COLORS[cls];
-        return {
-          color, weight: 2, opacity: 0.9,
-          fillColor: color, fillOpacity: 0.18,
-          dashArray: '6 3',
-        };
-      },
-      onEachFeature: function (feat, layer) {
-        const p = feat && feat.properties || {};
-        const cls = sigmetClassKey(p.hazard || p.hazardType || p.label);
-        const fl  = (p.base != null || p.top != null)
-          ? `FL${p.base != null ? String(p.base).padStart(3,'0') : '---'} – FL${p.top != null ? String(p.top).padStart(3,'0') : '---'}`
-          : '';
-        const valid = (p.validTimeFrom && p.validTimeTo)
-          ? `${new Date(p.validTimeFrom).toUTCString().slice(5, 22)} → ${new Date(p.validTimeTo).toUTCString().slice(5, 22)}`
-          : '';
-        const html = `
-          <div class="sigmet-popup">
-            <div class="sigmet-haz ${cls.toLowerCase()}">${escapeHTMLLocal(p.hazard || p.hazardType || cls)} ${p.severity ? '· '+escapeHTMLLocal(p.severity) : ''}</div>
-            ${p.firId ? `<div><b>FIR:</b> ${escapeHTMLLocal(p.firId)}</div>` : ''}
-            ${fl ? `<div><b>Niveles:</b> ${fl}</div>` : ''}
-            ${valid ? `<div><b>Válido:</b> ${valid}</div>` : ''}
-            ${p.rawSigmet ? `<pre style="white-space:pre-wrap;font-size:11px;margin:4px 0 0;max-height:160px;overflow:auto">${escapeHTMLLocal(p.rawSigmet)}</pre>` : ''}
-          </div>`;
-        layer.bindPopup(html, { maxWidth: 360 });
-      },
-    });
-    _sigmetState.geojsonLayer.addTo(grp);
+    for (const sig of list) {
+      const geom = mapi.parseSigmetGeometry(sig);
+      if (!geom) continue;
+      const cls = sigmetClassKey(sig.hazard || sig.qualifier);
+      const color = SIGMET_COLORS[cls];
+      const style = {
+        color, weight: 2, opacity: 0.9,
+        fillColor: color, fillOpacity: 0.18,
+        dashArray: '6 3',
+        pane: 'tsaPane',
+      };
+      let layer;
+      if (geom.kind === 'poly') {
+        layer = L.polygon(geom.latlngs, style);
+      } else if (geom.kind === 'circle') {
+        layer = L.circle(geom.center, Object.assign({ radius: geom.radiusM }, style));
+      } else {
+        continue;
+      }
+      bindSigmetPopup(layer, sig, cls);
+      layer.addTo(grp);
+      _sigmetState.layers.push(layer);
+    }
     _sigmetState.fetched = Date.now();
+  }
+
+  function bindSigmetPopup(layer, sig, cls) {
+    const mapi = window.TSAgestor.meteoApi;
+    const dec = mapi && mapi.decodeSigmet ? mapi.decodeSigmet(sig) : null;
+    const fir = sig.firId || sig.firName || '';
+    const firLine = (sig.firName && sig.firId)
+      ? `${escapeHTMLLocal(sig.firId)} · ${escapeHTMLLocal(sig.firName)}`
+      : (escapeHTMLLocal(fir));
+    const rows = [];
+    if (dec) {
+      rows.push(`<div class="sigmet-row"><span class="sigmet-k">Fenómeno</span><span class="sigmet-v"><b>${escapeHTMLLocal(dec.phenomenon)}</b></span></div>`);
+      if (firLine)     rows.push(`<div class="sigmet-row"><span class="sigmet-k">FIR</span><span class="sigmet-v">${firLine}</span></div>`);
+      if (dec.levels && dec.levels !== '—')
+        rows.push(`<div class="sigmet-row"><span class="sigmet-k">Niveles</span><span class="sigmet-v">${escapeHTMLLocal(dec.levels)}</span></div>`);
+      if (dec.motion)  rows.push(`<div class="sigmet-row"><span class="sigmet-k">Movimiento</span><span class="sigmet-v">${escapeHTMLLocal(dec.motion)}</span></div>`);
+      if (dec.validity && dec.validity !== '—')
+        rows.push(`<div class="sigmet-row"><span class="sigmet-k">Válido</span><span class="sigmet-v">${escapeHTMLLocal(dec.validity)}</span></div>`);
+      if (dec.issuer)  rows.push(`<div class="sigmet-row"><span class="sigmet-k">MWO</span><span class="sigmet-v">${escapeHTMLLocal(dec.issuer)}${dec.seriesId ? ' · '+escapeHTMLLocal(dec.seriesId) : ''}</span></div>`);
+    }
+    const raw = sig.rawSigmet
+      ? `<details class="sigmet-raw"><summary>Texto crudo</summary><pre>${escapeHTMLLocal(sig.rawSigmet)}</pre></details>`
+      : '';
+    const html = `
+      <div class="sigmet-popup">
+        <div class="sigmet-haz ${cls.toLowerCase()}">${escapeHTMLLocal(dec ? dec.phenomenon : (sig.hazard || cls))}</div>
+        <div class="sigmet-grid">${rows.join('')}</div>
+        ${raw}
+      </div>`;
+    layer.bindPopup(html, { maxWidth: 380, className: 'sigmet-leaflet-popup' });
   }
 
   // ── Leyenda flotante de TSAs activas ───────────────────────────────
