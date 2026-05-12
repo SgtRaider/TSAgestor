@@ -489,13 +489,19 @@
           <label class="notam-input-label">Aeródromos (ICAO, separados por espacio)
             <input type="text" id="notam-icaos" placeholder="LEMD LEBL" autocomplete="off" spellcheck="false">
           </label>
-          <button id="btn-notam-load" class="btn btn-primary" type="button">Consultar NOTAMs</button>
+          <button id="btn-notam-load" class="btn btn-primary" type="button">Consultar</button>
           <button id="btn-notam-from-plan" class="btn" type="button" title="Usa origen y destino del plan de vuelo actual">Origen + destino del plan</button>
         </div>
         <div id="notam-status" class="status"></div>
       </div>
-      <p class="dim notam-hint">Detección automática de <b>showstoppers</b> (aeródromo cerrado, pista cerrada) y avisos
-      (TWY, ILS, fuel, etc.) leyendo el <em>Q-code</em> y patrones del texto. Fuente: Autorouter.aero.</p>
+
+      <h2 class="notam-section-title">Weather Hold <span class="dim">(METAR · TAF vs mínimos de Ajustes)</span></h2>
+      <p class="dim notam-hint">Verde = sin limitaciones · Amarillo = próximo a marginal · Rojo = no es posible despegar.
+        Pasa el cursor por cada celda para ver el METAR/TAF fuente. Configura los mínimos en <b>Ajustes → Mínimos meteorológicos</b>.</p>
+      <div id="notam-wx-board"></div>
+
+      <h2 class="notam-section-title">NOTAMs del aeródromo</h2>
+      <p class="dim notam-hint">Lista completa de NOTAMs activos. Los <span class="notam-tag-inline">CIERRE</span> de aeródromo / pista se destacan al inicio. Fuente: Autorouter.aero.</p>
       <div id="notam-results"></div>
     </section>
 
@@ -595,6 +601,32 @@
       </div>
 
       <div class="settings-card">
+        <h3>Mínimos meteorológicos (Weather Hold)</h3>
+        <p class="hint">Umbrales que la pestaña NOTAMs usa para clasificar METAR/TAF del aeródromo en verde / amarillo / rojo.
+          <b>Hard</b> = límite absoluto (rojo, no-go). <b>Marginal</b> = a partir de aquí amarillo.</p>
+        <div class="settings-fields">
+          <label>Techo HARD (ft AGL)
+            <input type="number" data-setting="wxLimits.ceilingHardFt" min="0" step="100">
+          </label>
+          <label>Techo MARGINAL (ft AGL)
+            <input type="number" data-setting="wxLimits.ceilingMarginalFt" min="0" step="100">
+          </label>
+          <label>Visibilidad HARD (m)
+            <input type="number" data-setting="wxLimits.visibilityHardM" min="0" step="100">
+          </label>
+          <label>Visibilidad MARGINAL (m)
+            <input type="number" data-setting="wxLimits.visibilityMarginalM" min="0" step="100">
+          </label>
+          <label>Viento HARD (kt)
+            <input type="number" data-setting="wxLimits.windHardKt" min="0" step="1">
+          </label>
+          <label>Viento MARGINAL (kt)
+            <input type="number" data-setting="wxLimits.windMarginalKt" min="0" step="1">
+          </label>
+        </div>
+      </div>
+
+      <div class="settings-card">
         <h3>Otros</h3>
         <div class="settings-actions">
           <button id="btn-settings-show-welcome" class="btn" type="button">Mostrar el aviso de seguridad la próxima vez</button>
@@ -628,8 +660,8 @@
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
 <script src="js/filters.js"></script>
-<script src="js/notamView.js?v=96"></script>
-<script src="js/mapView.js?v=96"></script>
+<script src="js/notamView.js?v=97"></script>
+<script src="js/mapView.js?v=97"></script>
 <script src="js/crossSection.js"></script>
 <script src="js/flightPlan.js"></script>
 <script src="js/pdfExport.js"></script>

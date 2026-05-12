@@ -39,6 +39,16 @@ window.TSAgestor.settings = (function () {
       joker:         1500,
       bingo:         400,
     },
+    // Minimos meteorologicos para Weather Hold en la pestanya NOTAMs.
+    // hard = limite absoluto (rojo, no-go). marginal = umbral amarillo.
+    wxLimits: {
+      ceilingHardFt:      500,
+      ceilingMarginalFt:  1000,
+      visibilityHardM:    1500,
+      visibilityMarginalM:3000,
+      windHardKt:         30,
+      windMarginalKt:     20,
+    },
   };
 
   let data = null;
