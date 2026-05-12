@@ -1358,6 +1358,12 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   width: 320px;
   max-width: 90vw;
 }
+/* Las leyendas genericas (LI AFA, RGB Convection) son mas estrechas y se
+   apilan en la esquina inferior-izquierda cuando hay varias activas: cada
+   addTo(map) en el mismo position se renderiza como una "fila" mas en el
+   bottomleft sin solaparse (Leaflet lo gestiona automaticamente). */
+.cloud-legend-generic { width: 220px; margin-top: 6px; }
+.cloud-legend-generic .cloud-legend-image { display: block; width: 100%; height: auto; }
 .cloud-legend img {
   display: block;
   width: 100%;

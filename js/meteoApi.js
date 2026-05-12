@@ -38,6 +38,20 @@ window.TSAgestor.meteoApi = (function () {
   const EUMET_LAYER = 'cth';
   const EUMET_TITLE = 'Cloud Top Height (MSG 0° · EUMETSAT)';
 
+  // EUMETVIEW — LI Accumulated Flash Area (MTG, 0°). Mosaico de actividad
+  // electrica acumulada por el Lightning Imager. Refresco ~15 min.
+  // Doc: https://data.eumetsat.int/product/EO:EUM:DAT:0687
+  const EUMET_LI_WMS   = 'https://view.eumetsat.int/geoserver/mtg_fd/li_afa/ows';
+  const EUMET_LI_LAYER = 'li_afa';
+  const EUMET_LI_TITLE = 'Tormentas eléctricas (MTG · LI AFA)';
+
+  // EUMETVIEW — RGB Convection (MSG / SEVIRI, 0°). Composite RGB que
+  // resalta tormentas convectivas severas (top frio + sobreimpulsos). 15 min.
+  // Doc: https://data.eumetsat.int/product/EO:EUM:DAT:MSG:CON
+  const EUMET_CON_WMS   = 'https://view.eumetsat.int/geoserver/msg_fes/rgb_convection/ows';
+  const EUMET_CON_LAYER = 'rgb_convection';
+  const EUMET_CON_TITLE = 'RGB Convección (MSG · SEVIRI)';
+
   // Proxy CORS público, sólo se usa en local cuando el navegador bloquea
   // (en producción usamos las Cloudflare Pages Functions del mismo origen,
   // ver AWC_BASE / AR_BASE arriba). corsproxy.io ha empezado a devolver 403
@@ -240,6 +254,44 @@ window.TSAgestor.meteoApi = (function () {
         time,
       },
     };
+  }
+
+  // Genera la config WMS para los otros dos productos EUMETVIEW (LI AFA y
+  // RGB Convection). Misma mecanica que getEumetCthWMS: TIME explicito al
+  // slot de 15 min anterior para cache-bust + access_token requerido.
+  function buildEumetWmsCfg({ url, layer, title, attribution, format, transparent }) {
+    const time = latestCthTimeISO();
+    const legendUrl = `${url}?service=WMS&version=1.3.0` +
+      `&request=GetLegendGraphic&format=image/png&width=400&height=200` +
+      `&layer=${layer}&access_token=${EUMET_TOKEN}`;
+    return {
+      url, title, legendUrl, time,
+      options: {
+        layers: layer,
+        format: format || 'image/png',
+        transparent: transparent !== false,
+        version: '1.3.0',
+        attribution,
+        access_token: EUMET_TOKEN,
+        time,
+      },
+    };
+  }
+
+  function getEumetLightningWMS() {
+    return buildEumetWmsCfg({
+      url: EUMET_LI_WMS, layer: EUMET_LI_LAYER, title: EUMET_LI_TITLE,
+      attribution: '© EUMETSAT · MTG LI Accumulated Flash Area',
+    });
+  }
+
+  function getEumetConvectionWMS() {
+    // RGB Convection es un composite raster (no transparente).
+    return buildEumetWmsCfg({
+      url: EUMET_CON_WMS, layer: EUMET_CON_LAYER, title: EUMET_CON_TITLE,
+      attribution: '© EUMETSAT · MSG/SEVIRI RGB Convection',
+      format: 'image/png', transparent: true,
+    });
   }
 
   // Niveles ISA disponibles en Open-Meteo (forecast pressure_level vars).
@@ -919,6 +971,7 @@ window.TSAgestor.meteoApi = (function () {
   return {
     fetchMETAR, fetchTAF, fetchWeatherForAirports,
     getRainviewerCloudUrl, getEumetCthWMS,
+    getEumetLightningWMS, getEumetConvectionWMS,
     fetchCloudsForPoints, fetchWindsAloft, lookupWindAt,
     getGrametUrl, fetchGramet,
     hasArCreds, setStoredArCreds, clearStoredArAuth, checkServerAuth,

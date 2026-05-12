@@ -201,9 +201,22 @@ window.TSAgestor.mapView = (function () {
     const mapi = window.TSAgestor.meteoApi;
     if (mapi) {
       overlays['Nubosidad (RainViewer IR)'] = buildRainviewerLayer();
+      // Orden de los toggles EUMETSAT en la lista: CTH, luego LI (rayos),
+      // luego RGB Convección. Tres productos via.eumetsat.int con el mismo
+      // patron WMS + access_token.
       const cthCfg = mapi.getEumetCthWMS && mapi.getEumetCthWMS();
       const cthTitle = cthCfg && cthCfg.title ? cthCfg.title : 'Cloud Top Height';
       overlays[cthTitle] = buildCthLayer();
+      if (mapi.getEumetLightningWMS) {
+        const liCfg = mapi.getEumetLightningWMS();
+        overlays[(liCfg && liCfg.title) || 'Tormentas eléctricas (MTG · LI)'] =
+          buildEumetWmsToggle(mapi.getEumetLightningWMS, 'lightning');
+      }
+      if (mapi.getEumetConvectionWMS) {
+        const conCfg = mapi.getEumetConvectionWMS();
+        overlays[(conCfg && conCfg.title) || 'RGB Convección (MSG)'] =
+          buildEumetWmsToggle(mapi.getEumetConvectionWMS, 'convection');
+      }
       overlays['METAR / TAF'] = buildMetarLayer();
     }
     _vectorLayerGroups.tmas = overlays['TMAs (demo)'] || null;
@@ -346,6 +359,80 @@ window.TSAgestor.mapView = (function () {
     if (cloudLegendCtl) {
       cloudLegendCtl.remove();
       cloudLegendCtl = null;
+    }
+  }
+
+  // Construye un toggle generico para los otros productos EUMETSAT (LI AFA
+  // y RGB Convection). Mismo patron que buildCthLayer pero sin leyenda CTH
+  // especifica: usa una leyenda generica con la imagen del GetLegendGraphic.
+  // Cada toggle mantiene su propio state {tile, legend} para que ocultar
+  // uno no afecte a los otros.
+  const _eumetWmsLayers = {}; // key -> { tile, legendCtl }
+  function buildEumetWmsToggle(getCfg, key) {
+    const grp = L.layerGroup();
+    grp.on('add', function () {
+      const slot = _eumetWmsLayers[key] || (_eumetWmsLayers[key] = { tile: null, legendCtl: null });
+      if (slot.tile) return;
+      try {
+        const cfg = getCfg();
+        slot.tile = L.tileLayer.wms(cfg.url, Object.assign(
+          { opacity: settingsGet('opacity.eumetWMS.' + key, 0.7), maxZoom: 11, pane: 'meteoTiles' },
+          cfg.options
+        ));
+        let firstError = true;
+        slot.tile.on('tileerror', function (ev) {
+          if (firstError) {
+            firstError = false;
+            console.warn('[meteo] EUMETVIEW ' + key + ' tileerror:', ev.tile && ev.tile.src);
+          }
+        });
+        grp.addLayer(slot.tile);
+        showGenericCloudLegend(cfg, key);
+      } catch (e) {
+        console.warn('[meteo] EUMETVIEW ' + key + ':', e.message);
+        alert((cfg && cfg.title || key) + ' no se pudo cargar:\n' + e.message);
+      }
+    });
+    grp.on('remove', function () {
+      const slot = _eumetWmsLayers[key];
+      if (!slot) return;
+      if (slot.tile) {
+        grp.removeLayer(slot.tile);
+        slot.tile = null;
+      }
+      hideGenericCloudLegend(key);
+    });
+    return grp;
+  }
+
+  // Leyenda flotante simple (sin overlay de FL) — para los productos que no
+  // miden altitud. Una por capa para que coexistan sin tapar la CTH.
+  function showGenericCloudLegend(cfg, key) {
+    if (!map) return;
+    const slot = _eumetWmsLayers[key] || (_eumetWmsLayers[key] = { tile: null, legendCtl: null });
+    if (slot.legendCtl) return;
+    slot.legendCtl = L.control({ position: 'bottomleft' });
+    slot.legendCtl.onAdd = function () {
+      const div = L.DomUtil.create('div', 'cloud-legend cloud-legend-generic');
+      const legendImg = cfg.legendUrl
+        ? `<img class="cloud-legend-image" src="${cfg.legendUrl}" alt="Escala"
+                onerror="this.style.display='none'">`
+        : '';
+      div.innerHTML = `
+        <div class="cloud-legend-title">${cfg.title || ''}</div>
+        ${legendImg}
+        <div class="cloud-legend-attr">${(cfg.options && cfg.options.attribution) || '© EUMETSAT'}</div>
+      `;
+      L.DomEvent.disableClickPropagation(div);
+      return div;
+    };
+    slot.legendCtl.addTo(map);
+  }
+  function hideGenericCloudLegend(key) {
+    const slot = _eumetWmsLayers[key];
+    if (slot && slot.legendCtl) {
+      slot.legendCtl.remove();
+      slot.legendCtl = null;
     }
   }
 
