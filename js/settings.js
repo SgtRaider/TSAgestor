@@ -19,14 +19,17 @@ window.TSAgestor.settings = (function () {
 
   const DEFAULTS = {
     opacity: {
-      country:  1.00,
-      tsaFill:  0.30,
-      airway:   0.85,
-      tma:      0.06,
-      ctr:      0.10,
-      cloudRV:  0.60,
-      cloudCTH: 0.70,
-      route:    0.95,
+      country:   1.00,
+      tsaFill:   0.30,
+      airway:    0.85,
+      tma:       0.06,
+      ctr:       0.10,
+      cloudRV:   0.60,
+      cloudCTH:  0.70,
+      cloudLI:   0.80,   // MTG Lightning AFA (LI)
+      cloudConv: 0.65,   // MSG RGB Convection
+      sigmet:    0.35,   // poligonos SIGMET (fillOpacity)
+      route:     0.95,
     },
     plan: {
       origin:        'LEBZ',

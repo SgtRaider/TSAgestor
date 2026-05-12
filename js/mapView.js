@@ -371,6 +371,12 @@ window.TSAgestor.mapView = (function () {
   // Cada toggle mantiene su propio state {tile, legend} para que ocultar
   // uno no afecte a los otros.
   const _eumetWmsLayers = {}; // key -> { tile, legendCtl }
+  // Mapeo del key del toggle EUMETSAT a la clave de settings para opacidad.
+  function _eumetOpacityKey(key) {
+    if (key === 'lightning')  return 'opacity.cloudLI';
+    if (key === 'convection') return 'opacity.cloudConv';
+    return 'opacity.eumetWMS.' + key;
+  }
   function buildEumetWmsToggle(getCfg, key) {
     const grp = L.layerGroup();
     grp.on('add', function () {
@@ -379,7 +385,7 @@ window.TSAgestor.mapView = (function () {
       try {
         const cfg = getCfg();
         slot.tile = L.tileLayer.wms(cfg.url, Object.assign(
-          { opacity: settingsGet('opacity.eumetWMS.' + key, 0.7), maxZoom: 11, pane: 'meteoTiles' },
+          { opacity: settingsGet(_eumetOpacityKey(key), 0.7), maxZoom: 11, pane: 'meteoTiles' },
           cfg.options
         ));
         let firstError = true;
@@ -568,9 +574,10 @@ window.TSAgestor.mapView = (function () {
       kept++;
       const cls = sigmetClassKey(sig.hazard || sig.qualifier);
       const color = SIGMET_COLORS[cls];
+      const fillOp = settingsGet('opacity.sigmet', 0.35);
       const style = {
         color, weight: 2, opacity: 0.9,
-        fillColor: color, fillOpacity: 0.18,
+        fillColor: color, fillOpacity: fillOp,
         dashArray: '6 3',
         pane: 'tsaPane',
       };
@@ -1384,6 +1391,17 @@ window.TSAgestor.mapView = (function () {
     if (_vectorLayerGroups.ctrs) _vectorLayerGroups.ctrs.eachLayer(l => { if (l.setStyle) l.setStyle({ fillOpacity: ctrOp }); });
     if (cloudRVTile && cloudRVTile.setOpacity) cloudRVTile.setOpacity(settingsGet('opacity.cloudRV', 0.6));
     if (cloudCthTile && cloudCthTile.setOpacity) cloudCthTile.setOpacity(settingsGet('opacity.cloudCTH', 0.7));
+    // Toggles EUMETSAT extra (LI, Convection): cada uno tiene su slot tile.
+    const liSlot   = _eumetWmsLayers.lightning;
+    const conSlot  = _eumetWmsLayers.convection;
+    if (liSlot  && liSlot.tile  && liSlot.tile.setOpacity)  liSlot.tile.setOpacity(settingsGet('opacity.cloudLI',   0.8));
+    if (conSlot && conSlot.tile && conSlot.tile.setOpacity) conSlot.tile.setOpacity(settingsGet('opacity.cloudConv',0.65));
+    // SIGMETs: rellenar todos los poligonos / circulos con la nueva
+    // fillOpacity sin recargar la capa.
+    const sigOp = settingsGet('opacity.sigmet', 0.35);
+    for (const en of _sigmetEntries) {
+      if (en.layer && en.layer.setStyle) en.layer.setStyle({ fillOpacity: sigOp });
+    }
     if (routeLayer) {
       const rOp = settingsGet('opacity.route', 0.95);
       routeLayer.eachLayer(l => {
