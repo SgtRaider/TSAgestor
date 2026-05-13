@@ -404,11 +404,19 @@ window.TSAgestor.mapView = (function () {
           { opacity: settingsGet(_eumetOpacityKey(key), 0.7), maxZoom: 11, pane: 'meteoTiles' },
           cfg.options
         ));
-        let firstError = true;
+        // Tileerror suele ser inocuo: tiles en el borde del disco MSG /
+        // MTG (cobertura geoestacionaria limitada) devuelven 404. Solo
+        // avisamos si hay un patron sistematico (>=10 fallos en una
+        // activacion) que sugiere un problema real (servidor caido,
+        // capa retirada, TIME invalido, etc.).
+        let errorCount = 0;
+        const ERR_THRESHOLD = 10;
         slot.tile.on('tileerror', function (ev) {
-          if (firstError) {
-            firstError = false;
-            console.warn('[meteo] EUMETVIEW ' + key + ' tileerror:', ev.tile && ev.tile.src);
+          errorCount++;
+          if (errorCount === ERR_THRESHOLD) {
+            console.warn(`[meteo] EUMETVIEW ${key}: >=${ERR_THRESHOLD} tileerrors. ` +
+              `Posible capa no disponible. Ultimo URL fallido:`,
+              (ev && ev.tile && ev.tile.src) || '');
           }
         });
         grp.addLayer(slot.tile);

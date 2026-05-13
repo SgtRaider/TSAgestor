@@ -266,11 +266,26 @@ window.TSAgestor.meteoApi = (function () {
     };
   }
 
+  // Como latestCthTimeISO pero parametrizable: cuantos slots de 15 min
+  // retrocedemos. CTH usa 1 (refresco rapido). LI AFA y Convection usan
+  // 2 porque su publicacion suele tardar mas y pedir el ultimo slot
+  // recien cerrado provoca tileerrors intermitentes.
+  function latestEumetTimeISO(slotsBack) {
+    const n = Math.max(1, Number(slotsBack) || 1);
+    const now = new Date();
+    const minute = now.getUTCMinutes();
+    const slot = Math.floor(minute / 15) * 15;
+    now.setUTCMinutes(slot - 15 * n, 0, 0);
+    const pad = nn => String(nn).padStart(2, '0');
+    return `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}` +
+           `T${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:00Z`;
+  }
+
   // Genera la config WMS para los otros dos productos EUMETVIEW (LI AFA y
   // RGB Convection). Misma mecanica que getEumetCthWMS: TIME explicito al
   // slot de 15 min anterior para cache-bust + access_token requerido.
-  function buildEumetWmsCfg({ url, layer, title, attribution, format, transparent }) {
-    const time = latestCthTimeISO();
+  function buildEumetWmsCfg({ url, layer, title, attribution, format, transparent, slotsBack }) {
+    const time = latestEumetTimeISO(slotsBack || 1);
     const legendUrl = `${url}?service=WMS&version=1.3.0` +
       `&request=GetLegendGraphic&format=image/png&width=400&height=200` +
       `&layer=${layer}&access_token=${EUMET_TOKEN}`;
@@ -292,6 +307,7 @@ window.TSAgestor.meteoApi = (function () {
     return buildEumetWmsCfg({
       url: EUMET_LI_WMS, layer: EUMET_LI_LAYER, title: EUMET_LI_TITLE,
       attribution: '© EUMETSAT · MTG LI Accumulated Flash Area',
+      slotsBack: 2,
     });
   }
 
@@ -301,6 +317,7 @@ window.TSAgestor.meteoApi = (function () {
       url: EUMET_CON_WMS, layer: EUMET_CON_LAYER, title: EUMET_CON_TITLE,
       attribution: '© EUMETSAT · MSG/SEVIRI RGB Convection',
       format: 'image/png', transparent: true,
+      slotsBack: 2,
     });
   }
 
