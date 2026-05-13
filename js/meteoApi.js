@@ -803,22 +803,87 @@ window.TSAgestor.meteoApi = (function () {
     return parts.join(' · ');
   }
 
-  function decodeValidity(from, to) {
+  // Convierte el campo validTimeFrom/To de AWC a Date. AWC los devuelve
+  // como EPOCH EN SEGUNDOS (no milisegundos), asi que pasarlos directos
+  // a new Date() daba fechas de enero del 70. Detectamos por tamanyo:
+  // valores < 1e12 son segundos, >= 1e12 son ms.
+  function toDateSafe(v) {
+    if (v == null || v === '') return null;
+    if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+    if (typeof v === 'number') {
+      const ms = v < 1e12 ? v * 1000 : v;
+      const d = new Date(ms);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    if (typeof v === 'string') {
+      if (/^\d+$/.test(v)) {
+        const n = parseInt(v, 10);
+        const ms = n < 1e12 ? n * 1000 : n;
+        return new Date(ms);
+      }
+      const d = new Date(v);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    return null;
+  }
+
+  // Fallback: parsea "VALID DDhhmm/DDhhmm" del texto crudo. Usa la fecha
+  // de emision o "hoy" como referencia para inferir mes/anyo (los SIGMETs
+  // solo dan dia+hora). Si el dia final es menor que el inicial, asume
+  // cambio de mes.
+  function parseSigmetValidityFromRaw(raw, refDate) {
+    if (!raw) return null;
+    const m = String(raw).match(/\bVALID\s+(\d{2})(\d{2})(\d{2})\s*\/\s*(\d{2})(\d{2})(\d{2})\b/);
+    if (!m) return null;
+    const ref = refDate || new Date();
+    let year  = ref.getUTCFullYear();
+    let month = ref.getUTCMonth();
+    const d1 = parseInt(m[1], 10), h1 = parseInt(m[2], 10), mn1 = parseInt(m[3], 10);
+    const d2 = parseInt(m[4], 10), h2 = parseInt(m[5], 10), mn2 = parseInt(m[6], 10);
+    // Si el dia inicial es muy posterior al actual, probablemente mes anterior.
+    if (d1 - ref.getUTCDate() > 20) {
+      month--;
+      if (month < 0) { month = 11; year--; }
+    }
+    const from = new Date(Date.UTC(year, month, d1, h1, mn1));
+    // Si d2 < d1, cruza fin de mes.
+    let yearTo = year, monthTo = month;
+    if (d2 < d1) {
+      monthTo++;
+      if (monthTo > 11) { monthTo = 0; yearTo++; }
+    }
+    const to = new Date(Date.UTC(yearTo, monthTo, d2, h2, mn2));
+    return { from, to };
+  }
+
+  function fmtUtcDayHour(d) {
+    if (!d || isNaN(d.getTime())) return '?';
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}Z`;
+  }
+
+  function decodeValidity(sig) {
+    // 1) Intentar campos estructurados de AWC (epoch segundos).
+    let from = toDateSafe(sig.validTimeFrom);
+    let to   = toDateSafe(sig.validTimeTo);
+    // 2) Si alguno falta o esta corrupto, parsear del raw.
+    if (!from || !to) {
+      const issued = toDateSafe(sig.issueTime) || new Date();
+      const parsed = parseSigmetValidityFromRaw(sig.rawSigmet, issued);
+      if (parsed) {
+        from = from || parsed.from;
+        to   = to   || parsed.to;
+      }
+    }
     if (!from && !to) return '—';
-    const fmt = iso => {
-      const d = new Date(iso);
-      if (isNaN(d.getTime())) return String(iso || '');
-      const pad = n => String(n).padStart(2, '0');
-      return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}Z`;
-    };
-    return `${fmt(from)} → ${fmt(to)}`;
+    return `${fmtUtcDayHour(from)} → ${fmtUtcDayHour(to)}`;
   }
 
   function decodeSigmet(sig) {
     return {
       phenomenon: decodePhenomenon(sig.hazard, sig.qualifier),
       levels:     decodeLevels(sig.base, sig.top, sig.rawSigmet),
-      validity:   decodeValidity(sig.validTimeFrom, sig.validTimeTo),
+      validity:   decodeValidity(sig),
       motion:     decodeMotion(sig.dir, sig.spd, sig.chng),
       firId:      sig.firId   || '',
       firName:    sig.firName || '',
