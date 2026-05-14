@@ -172,6 +172,11 @@ window.TSAgestor.notamHub = (function () {
           upperLabel: upper.label,
         },
         polygon,
+        // El parser PDF rellena centroid via geom.centroid(polygon). El
+        // corte transversal (chooseExtremes -> greatCircleDistance) lo
+        // necesita; sin centroid crashea con "Cannot read properties of
+        // undefined". Lo computamos aqui inline (media de lat/lon).
+        centroid: polygonCentroid(polygon),
         schedules: [{ startUTC, endUTC, raw: 'NotamHub /tsas/active (24h synth)' }],
         rawBlock: `TSA ${t.name}\nNOTAM ${t.parent_notam_id || '?'}\n` +
                   `${t.vertical_lower_label} / ${t.vertical_upper_label}\n` +
@@ -184,6 +189,20 @@ window.TSAgestor.notamHub = (function () {
     console.info(`[notamHub] convertTSAs: ${apiList.length} entrada(s), ${out.length} convertidas, ` +
                  `${skipped.noName} sin nombre, ${skipped.badPolygon} con poligono no parseable`);
     return out;
+  }
+
+  // Centroide barato del poligono (media aritmetica de lat/lon). Suficiente
+  // para anclar el corte transversal y la leyenda. Si el modulo geom esta
+  // cargado, lo delegamos para coherencia con las TSAs del parser PDF.
+  function polygonCentroid(polygon) {
+    const geomMod = window.TSAgestor && window.TSAgestor.geom;
+    if (geomMod && typeof geomMod.centroid === 'function') {
+      return geomMod.centroid(polygon);
+    }
+    if (!polygon || !polygon.length) return [0, 0];
+    let lat = 0, lon = 0;
+    for (const [a, b] of polygon) { lat += a; lon += b; }
+    return [lat / polygon.length, lon / polygon.length];
   }
 
   // Acepta varios shapes posibles:
