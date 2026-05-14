@@ -191,15 +191,25 @@ window.TSAgestor.notamHub = (function () {
       // start/end (ISO UTC) + raw. Convertimos a Date. Si por lo que
       // sea viene vacio, sintetizamos una ventana de 24h alrededor de
       // `atDate` como fallback para que la tabla y filtros no rompan.
+      // Dedup INTRA-array por start+end por si la API repite ventanas
+      // (visto en ICARO XXI: a veces la misma ventana aparece varias
+      // veces si vino en >1 NOTAM padre).
       let schedules = [];
       if (Array.isArray(t.schedules) && t.schedules.length > 0) {
+        const seenInner = new Set();
         schedules = t.schedules
           .map(w => ({
             startUTC: new Date(w.start),
             endUTC:   new Date(w.end),
             raw:      w.raw || `${w.start} / ${w.end}`,
           }))
-          .filter(w => !isNaN(w.startUTC.getTime()) && !isNaN(w.endUTC.getTime()));
+          .filter(w => !isNaN(w.startUTC.getTime()) && !isNaN(w.endUTC.getTime()))
+          .filter(w => {
+            const sig = w.startUTC.getTime() + '-' + w.endUTC.getTime();
+            if (seenInner.has(sig)) return false;
+            seenInner.add(sig);
+            return true;
+          });
       }
       if (!schedules.length) {
         synthCount++;
