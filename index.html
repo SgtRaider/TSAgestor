@@ -248,6 +248,10 @@
           <button id="btn-notamhub-load" class="btn btn-primary" type="button">📡 Cargar TSAs activas</button>
           <button id="btn-notamhub-now" class="btn" type="button" title="Pone la hora actual UTC en el campo">Ahora</button>
         </div>
+        <label class="notamhub-check" title="Tras cargar las TSAs nacionales, pide a Autorouter los NOTAMs de la FIR LPPC (Portugal) y convierte los M-series con polígono parseable en áreas adicionales en el mapa.">
+          <input type="checkbox" id="notamhub-include-lppc" checked>
+          Incluir áreas LPPC (Portugal) vía Autorouter
+        </label>
         <div id="notamhub-status" class="status"></div>
       </div>
 
@@ -699,9 +703,9 @@
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
 <script src="js/filters.js"></script>
-<script src="js/notamHub.js?v=109"></script>
-<script src="js/notamView.js?v=109"></script>
-<script src="js/mapView.js?v=109"></script>
+<script src="js/notamHub.js?v=110"></script>
+<script src="js/notamView.js?v=110"></script>
+<script src="js/mapView.js?v=110"></script>
 <script src="js/crossSection.js"></script>
 <script src="js/flightPlan.js"></script>
 <script src="js/pdfExport.js"></script>

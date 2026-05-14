@@ -253,6 +253,92 @@ window.TSAgestor.notamHub = (function () {
     return out;
   }
 
+  // Extrae el contenido de un campo NOTAM (E, F, G) del raw text.
+  function notamField(raw, letter) {
+    if (!raw) return '';
+    const re = new RegExp(`${letter}\\)\\s*([\\s\\S]*?)(?=\\s+[A-Z]\\)|$)`, 'i');
+    const m = String(raw).match(re);
+    return m ? m[1].trim() : '';
+  }
+
+  // Convierte NOTAMs de Autorouter (formato ICAO) en objetos TSA-like
+  // para anyadirlos a state.tsas. Solo procesa los que:
+  //   - son M-series por id (M\d+/YY) o tienen texto de area, Y
+  //   - tienen geometria parseable (poligono o circulo) en el cuerpo.
+  // Asi acabamos con las areas LPPC (corredores, TRA, TSA portuguesas)
+  // dibujadas en el mapa junto a las TSAs espanyolas de NotamHub.
+  function convertAutorouterNotamsToTSAs(notams, opts) {
+    const meteo = window.TSAgestor && window.TSAgestor.meteoApi;
+    const parser = window.TSAgestor && window.TSAgestor.parser;
+    if (!meteo || !meteo.parseNotamGeometry) {
+      console.warn('[notamHub] meteoApi.parseNotamGeometry no disponible');
+      return [];
+    }
+    const parseAlt = parser && parser.parseAltitudeToken;
+    const labelPrefix = (opts && opts.namePrefix) || '';
+    const out = [];
+    let polyOk = 0, polyFail = 0, notArea = 0;
+    for (let i = 0; i < (notams || []).length; i++) {
+      const n = notams[i];
+      const raw = String(n.text || n.raw || '');
+      const id  = n.notamId || n.id || '';
+      // Filtro de area / corredor / military
+      const isArea =
+        /^[A-Z]\d{3,4}\/\d{2}/.test(id) &&
+        (/^M\d/.test(id) ||
+         /\b(AREA|CORRIDOR|CORREDOR|TRA|TSA|TEMPORARY\s+RESERVED|RESTRICTED|MIL\s+OPS)\b/i.test(raw));
+      if (!isArea) { notArea++; continue; }
+      const geom = meteo.parseNotamGeometry(raw);
+      let polygon;
+      if (geom && geom.kind === 'poly') {
+        polygon = geom.latlngs;
+      } else if (geom && geom.kind === 'circle') {
+        polygon = circleToPolygon(geom.center[0], geom.center[1], geom.radiusM / 1852);
+      }
+      if (!polygon || polygon.length < 3) {
+        polyFail++;
+        if (polyFail <= 3) {
+          console.warn('[notamHub] NOTAM area sin geometria parseable:', id, raw.slice(0, 180));
+        }
+        continue;
+      }
+      polyOk++;
+      // Verticales del F)/G).
+      const fF = notamField(raw, 'F');
+      const fG = notamField(raw, 'G');
+      const lower = (fF && parseAlt) ? parseAlt(fF) : { ft: 0, label: 'GND' };
+      const upper = (fG && parseAlt) ? parseAlt(fG) : { ft: 99999, label: 'UNL' };
+      // Schedule del fromDate/toDate.
+      const startUTC = new Date(n.fromDate || n.startValidity || Date.now());
+      const endUTC   = new Date(n.toDate   || n.endValidity   || (Date.now() + 24 * 3600 * 1000));
+      const body = notamField(raw, 'E');
+      // Nombre legible: ID + primer fragmento del body.
+      const summary = body.split('\n')[0].slice(0, 60);
+      const name = (labelPrefix ? labelPrefix + ' ' : '') + id + (summary ? ' — ' + summary : '');
+      out.push({
+        id: 'AR_' + id + '_' + i,
+        name,
+        vertical: {
+          lowerFt: lower.ft, upperFt: upper.ft,
+          lowerLabel: lower.label, upperLabel: upper.label,
+        },
+        polygon,
+        centroid: polygonCentroid(polygon),
+        schedules: [{
+          startUTC, endUTC,
+          raw: `${n.fromDate || '?'} → ${n.toDate || 'PERM'}`,
+        }],
+        rawBlock: raw,
+        _source: 'autorouter',
+        _parentNotam: id,
+        _icaoLocation: n.icaoLocation || '',
+      });
+    }
+    console.info(`[notamHub] Autorouter -> TSAs: ${notams.length} entrada(s) · ${out.length} convertidas · ` +
+                 `${polyFail} sin geometria · ${notArea} no son area`);
+    return out;
+  }
+
   // Centroide barato del poligono (media aritmetica de lat/lon). Suficiente
   // para anclar el corte transversal y la leyenda. Si el modulo geom esta
   // cargado, lo delegamos para coherencia con las TSAs del parser PDF.
@@ -304,6 +390,7 @@ window.TSAgestor.notamHub = (function () {
     fetchNotamsByAerodrome,
     fetchBulletins,
     convertTSAsToInternal,
+    convertAutorouterNotamsToTSAs,
     getStoredToken, setStoredToken, clearStoredToken,
   };
 })();

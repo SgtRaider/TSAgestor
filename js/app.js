@@ -416,15 +416,58 @@
           `Probable shape de polygon_geojson distinto del esperado. ` +
           `Primera entrada: ${JSON.stringify(sample).slice(0, 250)} — abre F12 → Console para más detalle.`,
           'error');
-      } else {
-        const when = atDate.toISOString().slice(0, 16).replace('T', ' ') + 'Z';
-        setNotamHubStatus(`${tsas.length} TSAs activas a las ${when}. ` +
-          `Fuente: NotamHub /tsas/active. Ventanas horarias sintetizadas a 24h (ver doc del API).`, 'ok');
-        setStatus(`${tsas.length} TSAs cargadas desde NotamHub.`, 'ok');
+        return;
+      }
+      const when = atDate.toISOString().slice(0, 16).replace('T', ' ') + 'Z';
+      setNotamHubStatus(`${tsas.length} TSAs activas a las ${when}. ` +
+        `Fuente: NotamHub /tsas/active.`, 'ok');
+      setStatus(`${tsas.length} TSAs cargadas desde NotamHub.`, 'ok');
+
+      // Si el checkbox LPPC está marcado, anyadimos las areas portuguesas
+      // que Autorouter publique. Las convertimos a TSA-like con
+      // convertAutorouterNotamsToTSAs y las anyadimos a state.tsas.
+      const includeLPPC = ($('#notamhub-include-lppc') || {}).checked;
+      if (includeLPPC) {
+        await augmentWithLPPCAreas();
       }
     } catch (e) {
       console.warn('[notamhub] error:', e);
       setNotamHubStatus('Error: ' + (e.message || e) + '. Abre F12 → Console para detalles.', 'error');
+    }
+  }
+
+  async function augmentWithLPPCAreas() {
+    const meteo = window.TSAgestor && window.TSAgestor.meteoApi;
+    const nh    = window.TSAgestor && window.TSAgestor.notamHub;
+    if (!meteo || !meteo.fetchNotamsForAerodromes || !nh || !nh.convertAutorouterNotamsToTSAs) {
+      console.warn('[notamhub+lppc] dependencias no cargadas');
+      return;
+    }
+    try {
+      const baseMsg = $('#notamhub-status').textContent;
+      setNotamHubStatus(baseMsg + ' · Consultando LPPC vía Autorouter…', 'loading');
+      const notams = await meteo.fetchNotamsForAerodromes(['LPPC']);
+      const lppcTsas = nh.convertAutorouterNotamsToTSAs(notams, { namePrefix: 'LPPC' });
+      if (!lppcTsas.length) {
+        setNotamHubStatus(baseMsg +
+          ` · Autorouter devolvió ${notams.length} NOTAMs LPPC pero ninguno con área parseable.`,
+          'warn');
+        return;
+      }
+      // Anyadimos a state.tsas (sin duplicar por id).
+      const existingIds = new Set(state.tsas.map(t => t.id));
+      let added = 0;
+      for (const t of lppcTsas) {
+        if (!existingIds.has(t.id)) { state.tsas.push(t); added++; }
+      }
+      // Seleccionadas todas las nuevas tambien.
+      for (const t of lppcTsas) state.selected.add(t.id);
+      renderAll();
+      setNotamHubStatus(baseMsg + ` · +${added} áreas LPPC añadidas.`, 'ok');
+    } catch (e) {
+      console.warn('[notamhub+lppc] error:', e);
+      const baseMsg = $('#notamhub-status').textContent.split(' · ')[0];
+      setNotamHubStatus(baseMsg + ' · ⚠ LPPC vía Autorouter falló: ' + (e.message || e), 'warn');
     }
   }
 

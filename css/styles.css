@@ -2172,6 +2172,18 @@ body.welcome-open { overflow: hidden; }
   font-family: 'Archivo', Arial, sans-serif;
   font-size: 13px;
 }
+.notamhub-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ea-azul-palido);
+  cursor: pointer;
+  margin: 4px 0 8px;
+  user-select: none;
+}
+.notamhub-check input { cursor: pointer; }
+
 .notamhub-divider {
   text-align: center;
   position: relative;

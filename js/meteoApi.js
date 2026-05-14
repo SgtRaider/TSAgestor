@@ -720,6 +720,18 @@ window.TSAgestor.meteoApi = (function () {
     if (!res.ok) throw new Error('NOTAM HTTP ' + res.status);
     const data = await res.json();
     if (!Array.isArray(data)) return [];
+    // Diagnostico: cuantos NOTAMs vienen por cada ICAO de los que pedimos
+    // (util para detectar que Autorouter no esta devolviendo nada para una
+    // FIR concreta, p.ej. LPPC).
+    if (data.length > 0) {
+      const byIcao = {};
+      for (const n of data) {
+        const k = String(n.icaoLocation || n.location || '?').toUpperCase();
+        byIcao[k] = (byIcao[k] || 0) + 1;
+      }
+      const summary = list.map(c => `${c}:${byIcao[c] || 0}`).join(' ');
+      console.info(`[notam] Autorouter ${data.length} total — por ICAO: ${summary}`);
+    }
     return data;
   }
 
@@ -980,6 +992,73 @@ window.TSAgestor.meteoApi = (function () {
     let v = deg + min / 60;
     if (hemi === 'S' || hemi === 'W') v = -v;
     return v;
+  }
+
+  // Extrae poligono o circulo del cuerpo de un NOTAM en formato ICAO.
+  // Caso 1: secuencia de >=3 puntos en formato "DDDD[NS]DDDDD[EW]" o
+  //         "[NS]DDDD [EW]DDDDD" con separador opcional " - " entre puntos.
+  // Caso 2: circulo "RADIUS N NM CENTR[ED] [ON] DDDD[NS]DDDDD[EW]".
+  // Devuelve { kind:'poly', latlngs } | { kind:'circle', center, radiusM }
+  // | null si no se puede parsear.
+  function parseNotamGeometry(rawText) {
+    if (!rawText) return null;
+    const text = String(rawText);
+    // Caso CIRCLE primero (mas especifico).
+    const mC = text.match(
+      /RADIUS\s+(\d+(?:\.\d+)?)\s*(NM|KM)\s+(?:CENTR(?:E|ED)\s+)?(?:ON\s+)?(\S+\s*\S*)/i
+    );
+    if (mC) {
+      const radius = Number(mC[1]);
+      const unit = mC[2].toUpperCase();
+      const radiusM = unit === 'KM' ? radius * 1000 : radius * 1852;
+      const pt = parseSingleICAOCoord(mC[3]);
+      if (pt && Number.isFinite(radiusM)) {
+        return { kind: 'circle', center: pt, radiusM };
+      }
+    }
+    // Caso POLY: sequencia de puntos ICAO. Probamos las dos variantes.
+    // Variante A: DDDD[NS]DDDDD[EW]   (digitos primero)
+    const rxA = /\b(\d{4,6})\s*([NS])\s*(\d{5,7})\s*([EW])\b/g;
+    // Variante B: [NS]DDDD [EW]DDDDD  (hemisferio primero)
+    const rxB = /\b([NS])\s*(\d{4,6})\s*([EW])\s*(\d{5,7})\b/g;
+    const pts = [];
+    let m;
+    while ((m = rxA.exec(text)) !== null) {
+      const lat = ddm(m[2], m[1]);
+      const lng = ddm(m[4], m[3]);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) pts.push([lat, lng]);
+    }
+    if (pts.length < 3) {
+      pts.length = 0;
+      while ((m = rxB.exec(text)) !== null) {
+        const lat = ddm(m[1], m[2]);
+        const lng = ddm(m[3], m[4]);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) pts.push([lat, lng]);
+      }
+    }
+    if (pts.length >= 3) {
+      const closed = (pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1])
+        ? pts : pts.concat([pts[0]]);
+      return { kind: 'poly', latlngs: closed };
+    }
+    return null;
+  }
+
+  function parseSingleICAOCoord(s) {
+    if (!s) return null;
+    let m = String(s).match(/\b(\d{4,6})\s*([NS])\s*(\d{5,7})\s*([EW])\b/);
+    if (m) {
+      const lat = ddm(m[2], m[1]);
+      const lng = ddm(m[4], m[3]);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) return [lat, lng];
+    }
+    m = String(s).match(/\b([NS])\s*(\d{4,6})\s*([EW])\s*(\d{5,7})\b/);
+    if (m) {
+      const lat = ddm(m[1], m[2]);
+      const lng = ddm(m[3], m[4]);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) return [lat, lng];
+    }
+    return null;
   }
 
   // Estrategias de construccion de la cadena de waypoints para GRAMET:
@@ -1308,6 +1387,7 @@ window.TSAgestor.meteoApi = (function () {
     getGrametUrl, fetchGramet,
     fetchNotamsForAerodromes,
     fetchSigmets, decodeSigmet, parseSigmetGeometry,
+    parseNotamGeometry,
     hasArCreds, setStoredArCreds, clearStoredArAuth, checkServerAuth,
     // alias retro-compatible para código que aún usa el nombre antiguo
     getGibsCloudWMS: getEumetCthWMS,
