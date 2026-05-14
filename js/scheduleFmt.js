@@ -57,14 +57,40 @@ window.TSAgestor.scheduleFmt = (function () {
     return `${dateStr} ${hhmm(a)}–${hhmm(aEnd)}Z`;
   }
 
+  // Cuenta dias calendario UNICOS cubiertos por las ventanas. Antes
+  // usabamos schedules.length, pero eso era el numero de ventanas (una
+  // TSA con 22 ventanas de 4h en 5 dias daba "22 dias" falso). Y dos
+  // TSAs hermanas podian salir con "20 dias" vs "22 dias" solo porque
+  // la API les daba distinta granularidad.
+  function uniqueDaysCount(schedules) {
+    const days = new Set();
+    for (const s of schedules) {
+      if (!s || !s.startUTC || !s.endUTC) continue;
+      const start = s.startUTC instanceof Date ? s.startUTC : new Date(s.startUTC);
+      const end   = s.endUTC   instanceof Date ? s.endUTC   : new Date(s.endUTC);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) continue;
+      // Recorre dia a dia desde start hasta end (inclusive).
+      const d = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
+      const endDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+      while (d.getTime() <= endDay.getTime()) {
+        days.add(d.toISOString().slice(0, 10));
+        d.setUTCDate(d.getUTCDate() + 1);
+      }
+    }
+    return days.size;
+  }
+
   // Resumen corto: primer grupo + "(+N grupos · M días)" si hay más
   function summary(schedules) {
     const grouped = groupSchedules(schedules);
     if (!grouped.length) return '—';
-    const totalDays = schedules.length;
+    const totalDays = uniqueDaysCount(schedules);
     const first = formatGroup(grouped[0]);
-    if (grouped.length === 1) return first;
-    return `${first} · +${grouped.length - 1} grupos (${totalDays} días)`;
+    if (grouped.length === 1) {
+      // Aunque sea un grupo, si cubre varios dias mostramos el conteo.
+      return totalDays > 1 ? `${first} · ${totalDays} días` : first;
+    }
+    return `${first} · +${grouped.length - 1} grupos · ${totalDays} días`;
   }
 
   // Lista completa formateada (HTML), una línea por grupo.
@@ -85,5 +111,5 @@ window.TSAgestor.scheduleFmt = (function () {
     });
   }
 
-  return { groupSchedules, formatGroup, summary, listHTML, listText };
+  return { groupSchedules, formatGroup, summary, listHTML, listText, uniqueDaysCount };
 })();
