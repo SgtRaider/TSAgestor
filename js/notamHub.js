@@ -143,51 +143,113 @@ window.TSAgestor.notamHub = (function () {
     }
     const parser = window.TSAgestor && window.TSAgestor.parser;
     const parseAlt = parser && parser.parseAltitudeToken;
-    const ref = atDate ? new Date(atDate) : new Date();
-    const startUTC = new Date(Math.floor(ref.getTime() / 3600000) * 3600000);
-    const endUTC   = new Date(startUTC.getTime() + 24 * 3600 * 1000);
     const out = [];
-    const skipped = { noName: 0, badPolygon: 0 };
+    const skipped = { noName: 0, badPolygon: 0, noSchedules: 0 };
+    let synthCount = 0;
     for (let i = 0; i < apiList.length; i++) {
       const t = apiList[i];
       if (!t || !t.name) { skipped.noName++; continue; }
-      const lower = parseAlt ? parseAlt(t.vertical_lower_label || 'GND') : { ft: 0, label: t.vertical_lower_label || 'GND' };
-      const upper = parseAlt ? parseAlt(t.vertical_upper_label || 'UNL') : { ft: 99999, label: t.vertical_upper_label || 'UNL' };
-      const polygon = geojsonToLatLngArray(t.polygon_geojson);
+
+      // Altitudes: la API entrega numericos (vertical_lower_ft /
+      // vertical_upper_ft) ademas de los labels. Preferimos numericos;
+      // fallback a parsing del label por si vienen vacios.
+      let lowerFt, upperFt, lowerLabel, upperLabel;
+      if (Number.isFinite(t.vertical_lower_ft)) {
+        lowerFt = t.vertical_lower_ft;
+        lowerLabel = t.vertical_lower_label || (lowerFt === 0 ? 'GND' : `${lowerFt}FT`);
+      } else {
+        const p = parseAlt ? parseAlt(t.vertical_lower_label || 'GND') : { ft: 0, label: 'GND' };
+        lowerFt = p.ft; lowerLabel = p.label;
+      }
+      if (Number.isFinite(t.vertical_upper_ft)) {
+        upperFt = t.vertical_upper_ft;
+        upperLabel = t.vertical_upper_label || (upperFt >= 60000 ? 'UNL' : `${upperFt}FT`);
+      } else {
+        const p = parseAlt ? parseAlt(t.vertical_upper_label || 'UNL') : { ft: 99999, label: 'UNL' };
+        upperFt = p.ft; upperLabel = p.label;
+      }
+
+      // Poligono: preferimos polygon_geojson; si la TSA es circular y
+      // viene con circle_center_*/circle_radius_nm, generamos el anillo.
+      let polygon = geojsonToLatLngArray(t.polygon_geojson);
+      if ((!polygon || polygon.length < 3) && t.is_circle &&
+          Number.isFinite(t.circle_center_lat) &&
+          Number.isFinite(t.circle_center_lon) &&
+          Number.isFinite(t.circle_radius_nm)) {
+        polygon = circleToPolygon(t.circle_center_lat, t.circle_center_lon, t.circle_radius_nm);
+      }
       if (!polygon || polygon.length < 3) {
         skipped.badPolygon++;
         if (skipped.badPolygon <= 3) {
           console.warn('[notamHub] TSA con poligono no parseable:', t.name,
-            'polygon_geojson:', t.polygon_geojson);
+            'polygon_geojson:', t.polygon_geojson, 'is_circle:', t.is_circle);
         }
         continue;
       }
+
+      // Schedules: la API entrega ahora un array de TsaWindow con
+      // start/end (ISO UTC) + raw. Convertimos a Date. Si por lo que
+      // sea viene vacio, sintetizamos una ventana de 24h alrededor de
+      // `atDate` como fallback para que la tabla y filtros no rompan.
+      let schedules = [];
+      if (Array.isArray(t.schedules) && t.schedules.length > 0) {
+        schedules = t.schedules
+          .map(w => ({
+            startUTC: new Date(w.start),
+            endUTC:   new Date(w.end),
+            raw:      w.raw || `${w.start} / ${w.end}`,
+          }))
+          .filter(w => !isNaN(w.startUTC.getTime()) && !isNaN(w.endUTC.getTime()));
+      }
+      if (!schedules.length) {
+        synthCount++;
+        const ref = atDate ? new Date(atDate) : new Date();
+        const startUTC = new Date(Math.floor(ref.getTime() / 3600000) * 3600000);
+        const endUTC   = new Date(startUTC.getTime() + 24 * 3600 * 1000);
+        schedules = [{ startUTC, endUTC, raw: 'sintético 24h (API sin schedules)' }];
+      }
+
       out.push({
         id: 'NH_' + (t.parent_notam_id || i) + '_' + i,
         name: t.name,
-        vertical: {
-          lowerFt: lower.ft,
-          upperFt: upper.ft,
-          lowerLabel: lower.label,
-          upperLabel: upper.label,
-        },
+        vertical: { lowerFt, upperFt, lowerLabel, upperLabel },
         polygon,
         // El parser PDF rellena centroid via geom.centroid(polygon). El
         // corte transversal (chooseExtremes -> greatCircleDistance) lo
         // necesita; sin centroid crashea con "Cannot read properties of
-        // undefined". Lo computamos aqui inline (media de lat/lon).
+        // undefined".
         centroid: polygonCentroid(polygon),
-        schedules: [{ startUTC, endUTC, raw: 'NotamHub /tsas/active (24h synth)' }],
+        schedules,
         rawBlock: `TSA ${t.name}\nNOTAM ${t.parent_notam_id || '?'}\n` +
-                  `${t.vertical_lower_label} / ${t.vertical_upper_label}\n` +
-                  `${t.n_schedules || 0} ventana(s) horaria(s) en el NOTAM original.`,
+                  `${lowerLabel} / ${upperLabel}\n` +
+                  `${schedules.length} ventana(s) horaria(s).`,
         _source: 'notamhub',
         _parentNotam: t.parent_notam_id,
-        _nSchedules: t.n_schedules || 0,
+        _nSchedules: schedules.length,
+        _isCircle: !!t.is_circle,
       });
     }
-    console.info(`[notamHub] convertTSAs: ${apiList.length} entrada(s), ${out.length} convertidas, ` +
-                 `${skipped.noName} sin nombre, ${skipped.badPolygon} con poligono no parseable`);
+    console.info(`[notamHub] convertTSAs: ${apiList.length} entrada(s) → ${out.length} convertidas` +
+                 ` · ${skipped.noName} sin nombre · ${skipped.badPolygon} sin poligono` +
+                 ` · ${synthCount} con schedules sintetizados`);
+    return out;
+  }
+
+  // Convierte un circulo (centro lat/lon, radio NM) en un anillo de N
+  // puntos para visualizar el poligono. Aproximacion plana suficiente
+  // para radios tipicos de TSA (<100 NM): 1 NM ≈ 1/60° latitud, y la
+  // longitud se compensa con cos(lat).
+  function circleToPolygon(lat, lon, radiusNM, points) {
+    const n = Math.max(8, points || 32);
+    const cosLat = Math.max(0.01, Math.cos(lat * Math.PI / 180));
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * 2 * Math.PI;
+      const dLat = (radiusNM / 60) * Math.cos(a);
+      const dLon = (radiusNM / 60) * Math.sin(a) / cosLat;
+      out.push([lat + dLat, lon + dLon]);
+    }
+    out.push(out[0]);   // cierra el anillo
     return out;
   }
 
