@@ -317,12 +317,39 @@ window.TSAgestor.notamHub = (function () {
     return m ? m[1].trim() : '';
   }
 
+  // Clasificacion del NOTAM para decidir si es "area" (algo que merezca
+  // dibujarse en el mapa como zona segregada). Usa varias heuristicas:
+  //   1) Q-code subject: R<x> = areas restringidas/peligrosas/temporales/
+  //      prohibidas/airspace (QRRCA = restricted activated, QRTCA = TSA
+  //      activated, QRDCA = danger area activated, etc.) Estos son
+  //      MILITARES o de espacio aereo segregado en LPPC, LECM, etc.
+  //   2) ID M-series (Spanish military): M0833/26, M0934/26, ...
+  //   3) Keywords en texto: AREA, CORRIDOR, TRA, TSA, MIL OPS, EXERCISE,
+  //      RESTRICTED/DANGER/PROHIBITED AREA, LPR/LPD/LPT prefix.
+  // Devuelve 'area' | 'area-mil' | null.
+  function classifyAsArea(notam) {
+    const id = notam.notamId || notam.id || '';
+    const raw = String(notam.text || notam.raw || '');
+    const q = raw.match(/Q\)\s*[A-Z]{4}\/Q([A-Z]{2})([A-Z]{2})\//);
+    if (q) {
+      const subj = q[1];   // RR/RD/RT/RP/RA/RM/WL/...
+      // Categorias de espacio aereo activado / cambiado / fuera de servicio
+      if (/^R[RDTPAM]$/.test(subj)) return 'area-mil';
+      // Warnings (W_) -> a veces traen poligonos
+      if (/^W[BLMRPSV]$/.test(subj)) return 'area';
+    }
+    if (/^M\d/.test(id)) return 'area-mil';
+    if (/\bLP[RDT]\d+\b/i.test(raw)) return 'area-mil';  // areas portuguesas
+    if (/\b(MIL\s+OPS|MILITARY\s+EXERCISE|TRG\s+AREA|TRAINING\s+AREA|EXERCISE\s+AREA)\b/i.test(raw)) return 'area-mil';
+    if (/\b(AREA|CORRIDOR|CORREDOR|TRA|TSA|TEMPORARY\s+RESERVED|RESTRICTED\s+AREA|DANGER\s+AREA|PROHIBITED\s+AREA)\b/i.test(raw)) return 'area';
+    return null;
+  }
+
   // Convierte NOTAMs de Autorouter (formato ICAO) en objetos TSA-like
-  // para anyadirlos a state.tsas. Solo procesa los que:
-  //   - son M-series por id (M\d+/YY) o tienen texto de area, Y
-  //   - tienen geometria parseable (poligono o circulo) en el cuerpo.
-  // Asi acabamos con las areas LPPC (corredores, TRA, TSA portuguesas)
-  // dibujadas en el mapa junto a las TSAs espanyolas de NotamHub.
+  // para anyadirlos a state.tsas. Procesa los que classifyAsArea
+  // identifica como zona segregable. La geometria sale del cuerpo si
+  // tiene coords, o del Q-line (centro+radio) como fallback robusto
+  // para NOTAMs militares que solo referencian el area por su id.
   function convertAutorouterNotamsToTSAs(notams, opts) {
     const meteo = window.TSAgestor && window.TSAgestor.meteoApi;
     const parser = window.TSAgestor && window.TSAgestor.parser;
@@ -332,18 +359,26 @@ window.TSAgestor.notamHub = (function () {
     }
     const parseAlt = parser && parser.parseAltitudeToken;
     const labelPrefix = (opts && opts.namePrefix) || '';
+    const onlyMilitary = !!(opts && opts.onlyMilitary);
     const out = [];
-    let polyOk = 0, polyFail = 0, notArea = 0;
+    const stats = { total: 0, area: 0, mil: 0, polyOk: 0, polyFail: 0, notArea: 0, sourceQline: 0, sourceBody: 0 };
+    const sampleSkipped = [];
     for (let i = 0; i < (notams || []).length; i++) {
       const n = notams[i];
       const raw = String(n.text || n.raw || '');
       const id  = n.notamId || n.id || '';
-      // Filtro de area / corredor / military
-      const isArea =
-        /^[A-Z]\d{3,4}\/\d{2}/.test(id) &&
-        (/^M\d/.test(id) ||
-         /\b(AREA|CORRIDOR|CORREDOR|TRA|TSA|TEMPORARY\s+RESERVED|RESTRICTED|MIL\s+OPS)\b/i.test(raw));
-      if (!isArea) { notArea++; continue; }
+      stats.total++;
+      const cls = classifyAsArea(n);
+      if (!cls) {
+        stats.notArea++;
+        if (sampleSkipped.length < 3) sampleSkipped.push({ id, body: raw.slice(0, 120) });
+        continue;
+      }
+      if (onlyMilitary && cls !== 'area-mil') {
+        stats.notArea++;
+        continue;
+      }
+      if (cls === 'area-mil') stats.mil++; else stats.area++;
       const geom = meteo.parseNotamGeometry(raw);
       let polygon;
       if (geom && geom.kind === 'poly') {
@@ -351,29 +386,29 @@ window.TSAgestor.notamHub = (function () {
       } else if (geom && geom.kind === 'circle') {
         polygon = circleToPolygon(geom.center[0], geom.center[1], geom.radiusM / 1852);
       }
+      if (geom && /^q-/.test(geom.source || '')) stats.sourceQline++;
+      else if (geom) stats.sourceBody++;
       if (!polygon || polygon.length < 3) {
-        polyFail++;
-        if (polyFail <= 3) {
-          console.warn('[notamHub] NOTAM area sin geometria parseable:', id, raw.slice(0, 180));
+        stats.polyFail++;
+        if (stats.polyFail <= 3) {
+          console.warn('[notamHub] NOTAM area sin geometria parseable:', id, raw.slice(0, 200));
         }
         continue;
       }
-      polyOk++;
-      // Verticales del F)/G).
+      stats.polyOk++;
       const fF = notamField(raw, 'F');
       const fG = notamField(raw, 'G');
       const lower = (fF && parseAlt) ? parseAlt(fF) : { ft: 0, label: 'GND' };
       const upper = (fG && parseAlt) ? parseAlt(fG) : { ft: 99999, label: 'UNL' };
-      // Schedule del fromDate/toDate.
       const startUTC = new Date(n.fromDate || n.startValidity || Date.now());
       const endUTC   = new Date(n.toDate   || n.endValidity   || (Date.now() + 24 * 3600 * 1000));
       const body = notamField(raw, 'E');
-      // Nombre legible: ID + primer fragmento del body.
       const summary = body.split('\n')[0].slice(0, 60);
       const name = (labelPrefix ? labelPrefix + ' ' : '') + id + (summary ? ' — ' + summary : '');
       out.push({
         id: 'AR_' + id + '_' + i,
         name,
+        format: cls === 'area-mil' ? 'NOTAM-MIL' : 'NOTAM-AREA',
         vertical: {
           lowerFt: lower.ft, upperFt: upper.ft,
           lowerLabel: lower.label, upperLabel: upper.label,
@@ -388,10 +423,17 @@ window.TSAgestor.notamHub = (function () {
         _source: 'autorouter',
         _parentNotam: id,
         _icaoLocation: n.icaoLocation || '',
+        _areaKind: cls,
+        _geomSource: geom && geom.source,
       });
     }
-    console.info(`[notamHub] Autorouter -> TSAs: ${notams.length} entrada(s) · ${out.length} convertidas · ` +
-                 `${polyFail} sin geometria · ${notArea} no son area`);
+    console.info(`[notamHub] Autorouter→TSAs: ${stats.total} entradas · ` +
+                 `${out.length} convertidas (${stats.mil} mil + ${stats.area - stats.mil > 0 ? stats.area - stats.mil : 0} otras) · ` +
+                 `${stats.polyFail} sin geometria · ${stats.notArea} no son area · ` +
+                 `geom: ${stats.sourceBody} body / ${stats.sourceQline} Q-line`);
+    if (sampleSkipped.length) {
+      console.debug('[notamHub] NOTAMs no clasificados como area (muestra):', sampleSkipped);
+    }
     return out;
   }
 

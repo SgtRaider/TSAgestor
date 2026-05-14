@@ -1028,15 +1028,23 @@ window.TSAgestor.meteoApi = (function () {
   }
 
   // Extrae poligono o circulo del cuerpo de un NOTAM en formato ICAO.
-  // Caso 1: secuencia de >=3 puntos en formato "DDDD[NS]DDDDD[EW]" o
-  //         "[NS]DDDD [EW]DDDDD" con separador opcional " - " entre puntos.
-  // Caso 2: circulo "RADIUS N NM CENTR[ED] [ON] DDDD[NS]DDDDD[EW]".
+  // Estrategias en orden de fiabilidad:
+  //   1) CIRCLE explicito en el cuerpo:
+  //      "RADIUS N NM CENTR(ED|E) (ON) DDDD[NS]DDDDD[EW]"
+  //   2) Poligono explicito en el cuerpo:
+  //      secuencia >=3 puntos "DDDD[NS]DDDDD[EW]" o "[NS]DDDD [EW]DDDDD"
+  //   3) FALLBACK: Q-line con centro+radio en formato ICAO compacto:
+  //      "Q) FIR/QCODE/.../<DDDD[NS]DDDDD[EW]<radius3>"
+  //      Esto es CLAVE para NOTAMs militares LPPC y similares que no
+  //      meten coords en el body (solo nombran el area por su id, p.ej.
+  //      "LPR1 ACTIVATED"). El Q-line SI lleva centroide y radio NM.
   // Devuelve { kind:'poly', latlngs } | { kind:'circle', center, radiusM }
   // | null si no se puede parsear.
   function parseNotamGeometry(rawText) {
     if (!rawText) return null;
     const text = String(rawText);
-    // Caso CIRCLE primero (mas especifico).
+
+    // Caso 1: CIRCLE explicito en cuerpo (mas especifico).
     const mC = text.match(
       /RADIUS\s+(\d+(?:\.\d+)?)\s*(NM|KM)\s+(?:CENTR(?:E|ED)\s+)?(?:ON\s+)?(\S+\s*\S*)/i
     );
@@ -1046,24 +1054,30 @@ window.TSAgestor.meteoApi = (function () {
       const radiusM = unit === 'KM' ? radius * 1000 : radius * 1852;
       const pt = parseSingleICAOCoord(mC[3]);
       if (pt && Number.isFinite(radiusM)) {
-        return { kind: 'circle', center: pt, radiusM };
+        return { kind: 'circle', center: pt, radiusM, source: 'body-circle' };
       }
     }
-    // Caso POLY: sequencia de puntos ICAO. Probamos las dos variantes.
+
+    // Caso 2: POLY en cuerpo. Buscamos puntos ICAO PERO ignorando el
+    // Q-line del header (esa coord es el centroide del area, no un
+    // vertice). El Q-line tiene la forma "Q) FIR/Q.../..." asi que
+    // troceamos en el primer "A) " que marca el inicio del cuerpo.
+    const bodyStart = text.indexOf('A)');
+    const body = bodyStart >= 0 ? text.slice(bodyStart) : text;
     // Variante A: DDDD[NS]DDDDD[EW]   (digitos primero)
     const rxA = /\b(\d{4,6})\s*([NS])\s*(\d{5,7})\s*([EW])\b/g;
     // Variante B: [NS]DDDD [EW]DDDDD  (hemisferio primero)
     const rxB = /\b([NS])\s*(\d{4,6})\s*([EW])\s*(\d{5,7})\b/g;
     const pts = [];
     let m;
-    while ((m = rxA.exec(text)) !== null) {
+    while ((m = rxA.exec(body)) !== null) {
       const lat = ddm(m[2], m[1]);
       const lng = ddm(m[4], m[3]);
       if (Number.isFinite(lat) && Number.isFinite(lng)) pts.push([lat, lng]);
     }
     if (pts.length < 3) {
       pts.length = 0;
-      while ((m = rxB.exec(text)) !== null) {
+      while ((m = rxB.exec(body)) !== null) {
         const lat = ddm(m[1], m[2]);
         const lng = ddm(m[3], m[4]);
         if (Number.isFinite(lat) && Number.isFinite(lng)) pts.push([lat, lng]);
@@ -1072,7 +1086,47 @@ window.TSAgestor.meteoApi = (function () {
     if (pts.length >= 3) {
       const closed = (pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1])
         ? pts : pts.concat([pts[0]]);
-      return { kind: 'poly', latlngs: closed };
+      return { kind: 'poly', latlngs: closed, source: 'body-poly' };
+    }
+
+    // Caso 3 FALLBACK: extraer centroide y radio del Q-line.
+    const q = parseNotamQLineGeometry(text);
+    if (q) return q;
+
+    return null;
+  }
+
+  // Parsea el centroide y radio del Q-line ICAO. Formato:
+  //   Q) FIR/QCODE/T/P/S/L/U/<coordenada+radio>
+  // donde la coordenada+radio es DDDD[NS]DDDDD[EW]<NNN> (NN NM).
+  // Algunos NOTAMs no traen el radio (acaba en .../000/999/) y otros
+  // omiten el campo entero, asi que probamos con y sin radio.
+  function parseNotamQLineGeometry(rawText) {
+    if (!rawText) return null;
+    // Intenta primero con radio explicito (3 digitos al final).
+    let m = String(rawText).match(
+      /Q\)\s*[A-Z]{4}\/Q[A-Z]{4}\/[^\/]+\/[^\/]+\/[^\/]+\/\d{3}\/\d{3,4}\/(\d{2,4})([NS])(\d{3,5})([EW])(\d{3})\b/
+    );
+    if (m) {
+      const lat = ddm(m[2], m[1]);
+      const lng = ddm(m[4], m[3]);
+      const radiusNM = parseInt(m[5], 10);
+      if (Number.isFinite(lat) && Number.isFinite(lng) && Number.isFinite(radiusNM) && radiusNM > 0) {
+        return { kind: 'circle', center: [lat, lng], radiusM: radiusNM * 1852, source: 'q-line' };
+      }
+    }
+    // Sin radio: el Q-line acaba en la coordenada. Como fallback dibujamos
+    // un circulo de 10 NM al rededor del centroide para que el piloto vea
+    // donde esta el area aunque sea aproximado.
+    m = String(rawText).match(
+      /Q\)\s*[A-Z]{4}\/Q[A-Z]{4}\/[^\/]+\/[^\/]+\/[^\/]+\/\d{3}\/\d{3,4}\/(\d{2,4})([NS])(\d{3,5})([EW])\b/
+    );
+    if (m) {
+      const lat = ddm(m[2], m[1]);
+      const lng = ddm(m[4], m[3]);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        return { kind: 'circle', center: [lat, lng], radiusM: 10 * 1852, source: 'q-line-noradius' };
+      }
     }
     return null;
   }

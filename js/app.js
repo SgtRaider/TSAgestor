@@ -514,11 +514,17 @@
       const baseMsg = $('#notamhub-status').textContent;
       setNotamHubStatus(baseMsg + ' · Consultando LPPC vía Autorouter…', 'loading');
       const notams = await meteo.fetchNotamsForAerodromes(['LPPC']);
-      const lppcTsas = nh.convertAutorouterNotamsToTSAs(notams, { namePrefix: 'LPPC' });
+      // Por ahora solo cargamos los MILITARES (Q-code R* o ids LP[RDT],
+      // M-series, keywords MIL/EXERCISE/TRG). El resto de NOTAMs LPPC
+      // siguen accesibles desde la pestanya NOTAMs sin pintar en mapa.
+      const lppcTsas = nh.convertAutorouterNotamsToTSAs(notams, {
+        namePrefix: 'LPPC',
+        onlyMilitary: true,
+      });
       if (!lppcTsas.length) {
         setNotamHubStatus(baseMsg +
-          ` · Autorouter devolvió ${notams.length} NOTAMs LPPC pero ninguno con área parseable.`,
-          'warn');
+          ` · Autorouter devolvió ${notams.length} NOTAMs LPPC, ninguno militar con área parseable. ` +
+          `Mira F12 → Console para muestra de los descartados.`, 'warn');
         return;
       }
       // Anyadimos a state.tsas (sin duplicar por id).
