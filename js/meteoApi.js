@@ -758,9 +758,26 @@ window.TSAgestor.meteoApi = (function () {
         const k = String(n.icaoLocation || n.location || '?').toUpperCase();
         byIcao[k] = (byIcao[k] || 0) + 1;
       }
-      const summary = list.map(c => `${c}:${byIcao[c] || 0}`).join(' ');
+      // Solo muestro los ICAOs solicitados — pero si el conteo es 0
+      // para todos, hay un mismatch (campo distinto del esperado o
+      // Autorouter devuelve cosa distinta).
+      const requested = list.map(c => `${c}:${byIcao[c] || 0}`).join(' ');
+      const allRequestedZero = list.every(c => !byIcao[c]);
+      const presentSorted = Object.entries(byIcao)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 15)
+        .map(([k, v]) => `${k}:${v}`)
+        .join(' ');
       console.info(`[notam] Autorouter ${all.length}/${total != null ? total : '?'} NOTAMs ` +
-                   `(${page + 1} req) — por ICAO: ${summary}`);
+                   `(${page + 1} req) — por ICAO pedido: ${requested}`);
+      console.info(`[notam] Autorouter ICAOs presentes (top 15): ${presentSorted}`);
+      if (allRequestedZero) {
+        const sample = all[0] || {};
+        console.warn('[notam] NINGUN NOTAM coincide con los ICAOs pedidos. ' +
+                     'Probable mismatch de campo. Claves del primer NOTAM:',
+                     Object.keys(sample));
+        console.warn('[notam] Primer NOTAM completo (para ver shape):', JSON.parse(JSON.stringify(sample)));
+      }
     } else {
       console.info(`[notam] Autorouter devolvio 0 NOTAMs para itemas=${itemas}` +
                    (total != null ? ` (total reportado=${total})` : ''));

@@ -385,9 +385,17 @@ window.TSAgestor.notamHub = (function () {
           qHist['__noQ'] = (qHist['__noQ'] || 0) + 1;
         }
       }
-      console.info(`[notamHub] LPPC histogram Q-subject:`, qHist);
-      console.info(`[notamHub] LPPC histogram id-series:`, idHist);
-      console.debug(`[notamHub] LPPC samples por Q-subject:`, samples);
+      // JSON.stringify para que se vean los counts directamente en
+      // consola en lugar del "Object" colapsado.
+      console.info('[notamHub] LPPC histogram Q-subject: ' + JSON.stringify(qHist));
+      console.info('[notamHub] LPPC histogram id-series: ' + JSON.stringify(idHist));
+      // Muestra completa del primer NOTAM tal cual llega (claves
+      // reales que devuelve Autorouter) — fundamental para diagnosticar
+      // por que icaoLocation va a 0 en todos.
+      console.warn('[notamHub] LPPC primer NOTAM (claves reales):', Object.keys(notams[0] || {}));
+      console.warn('[notamHub] LPPC primer NOTAM completo:',
+        JSON.parse(JSON.stringify(notams[0] || {})));
+      console.debug('[notamHub] LPPC samples por Q-subject:', samples);
     }
 
     const out = [];
