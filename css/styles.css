@@ -2213,6 +2213,22 @@ body.welcome-open { overflow: hidden; }
   color: #fff;
   letter-spacing: 0.5px;
 }
+.notam-tag-area {
+  background: var(--ea-amarillo);
+  color: #1a1a1a;
+}
+.badge-amber {
+  background: var(--ea-amarillo) !important;
+  color: #1a1a1a !important;
+}
+.notam-card-area {
+  border-left-color: var(--ea-amarillo);
+  background: rgba(250, 194, 0, 0.04);
+}
+.notam-bucket-fir {
+  border-left: 3px solid var(--ea-azul-cielo);
+}
+.notam-bucket-fir h3 { color: var(--ea-azul-cielo); }
 .notam-tag-inline {
   display: inline-block;
   padding: 0 5px;

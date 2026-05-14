@@ -697,7 +697,9 @@ window.TSAgestor.meteoApi = (function () {
     const params = new URLSearchParams({
       aerodromes: list.join(','),
       offset: '0',
-      limit: '300',
+      // Subido a 500 desde 300: cuando incluimos FIRs (LECM, LECB, LPPC,
+      // GCCC) el numero de NOTAMs activos puede pasar de 200 facilmente.
+      limit: '500',
     });
     const url = `${AR_BASE}/notam?${params.toString()}`;
     const res = await _arFetch(url, reqInit);

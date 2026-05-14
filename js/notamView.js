@@ -477,20 +477,59 @@ window.TSAgestor.notamView = (function () {
     return false;
   }
 
+  // M-series NOTAMs (M0833/26 estilo) son los emitidos por la FIR para
+  // areas militares de operacion, corredores, ejercicios, etc. Tipico
+  // de Espanya/Portugal (LECM/LECB/LPPC/GCCC). Los marcamos visualmente
+  // con un tag AREA para que el piloto los identifique de un vistazo.
+  function isAreaNotam(notam) {
+    const id = String(notam.notamId || notam.id || '');
+    if (/^M\d/.test(id)) return true;        // M-series por id
+    if (notam.series === 'M') return true;   // si el API entrega series aparte
+    const raw = String(notam.text || notam.raw || '');
+    // Heuristicas de texto: AREA, CORREDOR, TSA, TRA, TMZ, CTA, FIR boundary
+    if (/\b(AREA|CORRIDOR|CORREDOR|TSA|TRA|TMZ|RMZ|ESPACIO\s+AEREO)\b/i.test(raw)) return true;
+    return false;
+  }
+
   function renderNotamCard(n) {
     const raw = String(n.text || n.raw || '');
     const closure = isClosureNotam(n);
+    const isArea  = isAreaNotam(n);
+    const tags = [];
+    if (closure) tags.push('<span class="notam-tag">CIERRE</span>');
+    if (isArea && !closure) tags.push('<span class="notam-tag notam-tag-area">ÁREA</span>');
     return `
-      <div class="notam-card ${closure ? 'notam-card-closure' : ''}">
+      <div class="notam-card ${closure ? 'notam-card-closure' : (isArea ? 'notam-card-area' : '')}">
         <div class="notam-head">
           <span class="notam-id"><b>${escapeHTML(n.notamId || n.id || '—')}</b></span>
           <span class="notam-ad">${escapeHTML(n.icaoLocation || n.location || '')}</span>
           <span class="notam-window">${fmtDate(n.fromDate || n.startValidity)} → ${fmtDate(n.toDate || n.endValidity)}</span>
-          ${closure ? '<span class="notam-tag">CIERRE</span>' : ''}
+          ${tags.join('')}
         </div>
         <pre class="notam-body">${escapeHTML(raw)}</pre>
       </div>`;
   }
+
+  // Devuelve las FIRs aplicables a una lista de aerodromos. Siempre
+  // incluimos LPPC (Lisboa) porque el usuario opera con cobertura
+  // peninsular ibérica completa y los NOTAMs M-series portugueses
+  // pueden afectar rutas Madrid-Lisboa o transitos al Atlantico.
+  function firsForIcaos(icaos) {
+    const firs = new Set(['LPPC']);
+    for (const icao of icaos) {
+      const p = (icao || '').slice(0, 2).toUpperCase();
+      if (p === 'LE') { firs.add('LECM'); firs.add('LECB'); }
+      else if (p === 'GC') { firs.add('GCCC'); }
+      else if (p === 'LP') { firs.add('LPPC'); }
+      else if (p === 'GM') { firs.add('GMMM'); }
+      else if (p === 'LF') { firs.add('LFFF'); firs.add('LFMM'); }   // Francia
+      else if (p === 'EG') { firs.add('EGTT'); }                       // UK
+      else if (p === 'DA') { firs.add('DAAA'); }                       // Argelia
+    }
+    return [...firs];
+  }
+  const FIR_ICAO_RE = /^(LECM|LECB|LPPC|GCCC|GMMM|LFFF|LFMM|EGTT|DAAA)$/;
+  function isFir(icao) { return FIR_ICAO_RE.test(icao); }
 
   function renderNotamList() {
     const root = $('#notam-results');
@@ -507,28 +546,54 @@ window.TSAgestor.notamView = (function () {
       root.innerHTML = '';
       return;
     }
-    // Agrupados por aerodromo, con cierres primero dentro de cada uno.
+    // Agrupados por icaoLocation. Despues separamos por tipo (aerodromo
+    // o FIR) para renderizar en dos bloques distintos.
     const byIcao = {};
     for (const n of _state.notams) {
       const k = String(n.icaoLocation || n.location || '?').toUpperCase();
       (byIcao[k] = byIcao[k] || []).push(n);
     }
-    const sections = _state.icaos.map(icao => {
-      const list = (byIcao[icao] || []).slice().sort((a, b) => {
-        const ca = isClosureNotam(a) ? 0 : 1, cb = isClosureNotam(b) ? 0 : 1;
-        if (ca !== cb) return ca - cb;
-        const ta = new Date(a.fromDate || a.startValidity || 0).getTime();
-        const tb = new Date(b.fromDate || b.startValidity || 0).getTime();
-        return tb - ta;
-      });
+
+    const sortFn = (a, b) => {
+      const ca = isClosureNotam(a) ? 0 : 1, cb = isClosureNotam(b) ? 0 : 1;
+      if (ca !== cb) return ca - cb;
+      const ta = new Date(a.fromDate || a.startValidity || 0).getTime();
+      const tb = new Date(b.fromDate || b.startValidity || 0).getTime();
+      return tb - ta;
+    };
+
+    const renderSection = (icao, list, opts) => {
+      list = list.slice().sort(sortFn);
       const closures = list.filter(isClosureNotam).length;
+      const areas    = list.filter(isAreaNotam).length;
+      const badges = [
+        `<span class="badge">${list.length} NOTAMs</span>`,
+        closures ? `<span class="badge badge-red">${closures} cierre${closures > 1 ? 's' : ''}</span>` : '',
+        areas    ? `<span class="badge badge-amber">${areas} área${areas > 1 ? 's' : ''}</span>` : '',
+      ].filter(Boolean).join(' ');
+      const title = opts && opts.firLabel
+        ? `<span class="dim">FIR ·</span> ${escapeHTML(icao)}`
+        : escapeHTML(icao);
       return `
-        <section class="notam-bucket">
-          <h3>${escapeHTML(icao)} <span class="badge">${list.length} NOTAMs</span>${closures ? ` <span class="badge badge-red">${closures} cierre${closures > 1 ? 's' : ''}</span>` : ''}</h3>
+        <section class="notam-bucket ${opts && opts.firLabel ? 'notam-bucket-fir' : ''}">
+          <h3>${title} ${badges}</h3>
           ${list.length ? list.map(renderNotamCard).join('') : '<div class="dim">Sin NOTAMs activos</div>'}
         </section>`;
-    }).join('');
-    root.innerHTML = sections;
+    };
+
+    // Bloque 1: NOTAMs por aerodromo (los ICAOs que pidio el usuario)
+    const adSections = _state.icaos.map(icao => renderSection(icao, byIcao[icao] || [])).join('');
+
+    // Bloque 2: NOTAMs por FIR (areas, corredores, M-series). Solo
+    // mostramos FIRs que efectivamente devolvieron NOTAMs.
+    const firsWithData = (_state.firs || []).filter(f => (byIcao[f] || []).length > 0);
+    const firSections = firsWithData.length
+      ? `<h2 class="notam-section-title">NOTAMs de FIR (áreas y corredores)</h2>
+         <p class="dim notam-hint">Incluye M-series (áreas militares, corredores) y NOTAMs de espacio aéreo.</p>` +
+        firsWithData.map(fir => renderSection(fir, byIcao[fir], { firLabel: true })).join('')
+      : '';
+
+    root.innerHTML = adSections + firSections;
   }
 
   function render() {
@@ -552,6 +617,7 @@ window.TSAgestor.notamView = (function () {
       render(); return;
     }
     _state.icaos = icaoList.slice();
+    _state.firs  = firsForIcaos(icaoList);
     _state.depTimeMs = getDepartureMs();
     _state.loading = true;
     _state.error = null;
@@ -559,10 +625,14 @@ window.TSAgestor.notamView = (function () {
     _state.metars = {};
     _state.tafs = {};
     render();
-    setStatus(`Consultando NOTAMs y METAR/TAF de ${icaoList.join(', ')} …`, 'loading');
+    const fullList = [...icaoList, ..._state.firs];
+    setStatus(`Consultando NOTAMs (${icaoList.length} aeródromos + ${_state.firs.length} FIRs) y METAR/TAF…`, 'loading');
 
     // METAR/TAF en paralelo (AWC permite varios ICAO en una sola request).
-    const notamPromise = mapi.fetchNotamsForAerodromes(icaoList)
+    // Para NOTAMs, mandamos aerodromos + FIRs en una sola query a Autorouter:
+    // su endpoint /notam acepta ICAOs de FIR igual que de aerodromo y nos
+    // devuelve los M-series y NOTAMs de area asociados.
+    const notamPromise = mapi.fetchNotamsForAerodromes(fullList)
       .catch(e => { console.warn('[notam] fetch error:', e); return { __error: e }; });
     const metarPromise = mapi.fetchMETAR ? mapi.fetchMETAR(icaoList).catch(e => {
       console.warn('[metar] fetch error:', e); return {};
@@ -590,8 +660,11 @@ window.TSAgestor.notamView = (function () {
     }
 
     _state.loading = false;
+    // Contadores aproximados por tipo (aerodromo vs FIR).
+    const adCount  = _state.notams.filter(n => !isFir(String(n.icaoLocation || '').toUpperCase())).length;
+    const firCount = _state.notams.filter(n =>  isFir(String(n.icaoLocation || '').toUpperCase())).length;
     setStatus(
-      `${_state.notams.length} NOTAMs · ` +
+      `${_state.notams.length} NOTAMs (${adCount} aeródromo · ${firCount} FIR) · ` +
       `${Object.keys(_state.metars).length} METAR · ` +
       `${Object.keys(_state.tafs).length} TAF` +
       (_state.error ? ' · ⚠ error en NOTAMs' : ''),
