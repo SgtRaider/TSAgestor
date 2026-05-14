@@ -2114,6 +2114,89 @@ body.welcome-open { overflow: hidden; }
 }
 .home-cta b { color: var(--ea-amarillo); }
 
+/* ── Pestanya Cargar: bloque NotamHub destacado ───── */
+.notamhub-card {
+  background: linear-gradient(135deg, rgba(14,165,233,0.16) 0%, rgba(0,55,100,0.4) 100%);
+  border: 1px solid var(--ea-azul-cielo);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+}
+.notamhub-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.notamhub-tag {
+  display: inline-block;
+  background: var(--ea-amarillo);
+  color: #1a1a1a;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+.notamhub-title { margin: 0; font-size: 17px; color: #fff; }
+.notamhub-desc  {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--ea-azul-palido);
+  line-height: 1.4;
+}
+.notamhub-desc a { color: var(--ea-azul-cielo); }
+.notamhub-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 8px;
+}
+.notamhub-input-label {
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  color: var(--ea-azul-palido);
+  font-weight: 600;
+  flex: 0 0 240px;
+}
+.notamhub-input-label input {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: #fff;
+  font-family: 'Archivo', Arial, sans-serif;
+  font-size: 13px;
+}
+.notamhub-divider {
+  text-align: center;
+  position: relative;
+  margin: 18px 0 12px;
+  color: var(--ea-azul-palido);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.notamhub-divider::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--border);
+  z-index: 0;
+}
+.notamhub-divider span {
+  position: relative;
+  z-index: 1;
+  background: var(--bg);
+  padding: 0 12px;
+}
+
 /* ── Pestanya NOTAMs + Weather Hold ───────────────── */
 .notam-section-title {
   font-size: 16px;

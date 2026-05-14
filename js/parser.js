@@ -996,5 +996,5 @@ window.TSAgestor.parser = (function () {
     return tsas;
   }
 
-  return { parseFile, parseText, extractTextFromPDF, detectFormat };
+  return { parseFile, parseText, extractTextFromPDF, detectFormat, parseAltitudeToken };
 })();

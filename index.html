@@ -152,7 +152,9 @@
         <div class="feature-grid">
           <div class="feature">
             <div class="feature-title">Carga de NOTAM</div>
-            <div class="feature-desc">Lectura de PDF/TXT del boletín ICARO XXI con
+            <div class="feature-desc"><b>Descarga directa</b> desde NotamHub (API ICARO nacional):
+              TSAs activas a la hora elegida, sin necesidad del boletín PDF.
+              Alternativa: lectura local de PDF/TXT del boletín ICARO XXI con
               extracción automática de TSAs (vértices, cota vertical y ventanas
               horarias agrupadas). Tabla con agrupación por nombre+FL para
               seleccionar familias enteras (CORREDOR&nbsp;SUR&nbsp;4–6) con un clic.</div>
@@ -229,6 +231,28 @@
 
     <!-- CARGAR -->
     <section id="tab-upload" class="tab-content">
+
+      <!-- Opción primaria: descarga directa de NotamHub (API ICARO nacional) -->
+      <div class="notamhub-card">
+        <div class="notamhub-head">
+          <span class="notamhub-tag">RECOMENDADO</span>
+          <h2 class="notamhub-title">Carga directa NotamHub (territorio nacional)</h2>
+        </div>
+        <p class="notamhub-desc">Descarga las <b>TSAs activas</b> y NOTAMs publicados por ENAIRE / ICARO XXI sin
+          necesidad de descargar el boletín PDF. Filtrable por hora UTC. La conexión va vía el proxy del
+          servidor con token de API. <a href="https://notamhub.duckdns.org/docs" target="_blank" rel="noopener noreferrer">Doc del API ↗</a></p>
+        <div class="notamhub-actions">
+          <label class="notamhub-input-label">Activas a las (UTC, opcional)
+            <input type="datetime-local" id="notamhub-at" autocomplete="off">
+          </label>
+          <button id="btn-notamhub-load" class="btn btn-primary" type="button">📡 Cargar TSAs activas</button>
+          <button id="btn-notamhub-now" class="btn" type="button" title="Pone la hora actual UTC en el campo">Ahora</button>
+        </div>
+        <div id="notamhub-status" class="status"></div>
+      </div>
+
+      <div class="notamhub-divider"><span>o cargar desde fichero</span></div>
+
       <div id="dropzone" class="dropzone">
         <div class="drop-icon">📄</div>
         <p class="drop-primary">Arrastra un PDF o TXT aquí</p>
@@ -675,8 +699,9 @@
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
 <script src="js/filters.js"></script>
-<script src="js/notamView.js?v=104"></script>
-<script src="js/mapView.js?v=104"></script>
+<script src="js/notamHub.js?v=105"></script>
+<script src="js/notamView.js?v=105"></script>
+<script src="js/mapView.js?v=105"></script>
 <script src="js/crossSection.js"></script>
 <script src="js/flightPlan.js"></script>
 <script src="js/pdfExport.js"></script>

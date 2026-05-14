@@ -36,6 +36,7 @@ const SHELL_ASSETS = [
   './js/filters.js',
   './js/mapView.js',
   './js/notamView.js',
+  './js/notamHub.js',
   './js/crossSection.js',
   './js/flightPlan.js',
   './js/pdfExport.js',

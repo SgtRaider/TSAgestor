@@ -376,6 +376,48 @@
     }
   }
 
+  // Carga TSAs directamente desde NotamHub (API ICARO nacional). Mismo
+  // flujo que handleFile pero sin pasar por el parser PDF: las TSAs
+  // ya vienen estructuradas del API.
+  async function handleNotamHubLoad(atIso) {
+    const nh = window.TSAgestor && window.TSAgestor.notamHub;
+    if (!nh) { setNotamHubStatus('notamHub no disponible.', 'error'); return; }
+    setNotamHubStatus('Consultando NotamHub…', 'loading');
+    // datetime-local devuelve "YYYY-MM-DDTHH:MM" sin tz; el campo es UTC
+    // por contrato (asi se le dice al usuario), asi que anyadimos 'Z'
+    // para evitar que JS lo interprete como hora local.
+    const atDate = atIso ? new Date(atIso + 'Z') : new Date();
+    try {
+      const apiList = await nh.fetchActiveTSAs({ at: atDate });
+      const tsas = nh.convertTSAsToInternal(apiList, atDate);
+      state.tsas = tsas;
+      state.selected = new Set(tsas.map(t => t.id));
+      state.filter = readFilter();
+      $('#filter-bar').classList.remove('hidden');
+      ensureMap();
+      renderAll();
+      if (!tsas.length) {
+        setNotamHubStatus('NotamHub no devolvio TSAs activas para esa hora.', 'warn');
+        setStatus('No hay TSAs activas en la hora consultada.', 'info');
+      } else {
+        const when = atDate.toISOString().slice(0, 16).replace('T', ' ') + 'Z';
+        setNotamHubStatus(`${tsas.length} TSAs activas a las ${when}. ` +
+          `Fuente: NotamHub /tsas/active. Ventanas horarias sintetizadas a 24h (ver doc del API).`, 'ok');
+        setStatus(`${tsas.length} TSAs cargadas desde NotamHub.`, 'ok');
+      }
+    } catch (e) {
+      console.warn('[notamhub] error:', e);
+      setNotamHubStatus('Error: ' + (e.message || e) + '. ¿Token caducado o servidor caido?', 'error');
+    }
+  }
+
+  function setNotamHubStatus(msg, kind) {
+    const el = $('#notamhub-status');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
   function wireUpload() {
     const fileInput = $('#file-input');
     const dropzone = $('#dropzone');
@@ -402,6 +444,28 @@
       const f = e.dataTransfer.files && e.dataTransfer.files[0];
       if (f) handleFile(f);
     });
+
+    // NotamHub (API ICARO): boton "Cargar TSAs activas" + atajo "Ahora".
+    const btnNH    = $('#btn-notamhub-load');
+    const btnNHNow = $('#btn-notamhub-now');
+    const inputAt  = $('#notamhub-at');
+    if (btnNH) {
+      btnNH.addEventListener('click', () => {
+        const v = inputAt && inputAt.value ? inputAt.value : '';
+        handleNotamHubLoad(v);
+      });
+    }
+    if (btnNHNow && inputAt) {
+      btnNHNow.addEventListener('click', () => {
+        // datetime-local en UTC: tomamos now y formateamos como YYYY-MM-DDTHH:MM
+        // sin zona horaria, recordando al usuario que el campo va en UTC.
+        const d = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        inputAt.value =
+          `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` +
+          `T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+      });
+    }
   }
 
   // ── Selección ────────────────────────────────────────────────────────
