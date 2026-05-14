@@ -186,14 +186,34 @@
       // ademas de "TSA".
       const prefixTokens = prefix.split(/\s+/).filter(Boolean);
       const canGroup = suffix != null && prefixTokens.length >= 2;
-      const schedSig = (t.schedules || []).map(s => {
-        const sa = s.startUTC instanceof Date ? s.startUTC.getTime() : Date.parse(s.startUTC);
-        const sb = s.endUTC   instanceof Date ? s.endUTC.getTime()   : Date.parse(s.endUTC);
-        return sa + '-' + sb;
-      }).join(',');
-      const key = !canGroup
-        ? '__single__|' + t.id
-        : prefix + '||' + (t.vertical.lowerLabel || '') + '||' + (t.vertical.upperLabel || '') + '||' + schedSig;
+      // CLAVE DE AGRUPACION:
+      // El criterio original exigia mismo schedule literal, lo que con
+      // los datos de NotamHub deshacia familias enteras (cada TSA llega
+      // con ventanas ligeramente distintas vinculadas a su NOTAM padre).
+      // Ahora:
+      //   - Si las dos TSAs vienen del MISMO parent_notam_id (campo
+      //     _parentNotam que rellena notamHub), agrupamos directamente
+      //     con (prefix + vertical + parent). Son hermanas por
+      //     construccion (mismo NOTAM).
+      //   - Si no hay parent_notam_id (caso parser PDF clasico),
+      //     conservamos el criterio antiguo (prefix + vertical +
+      //     firma de schedules) para no romper el comportamiento del
+      //     PDF.
+      let key;
+      if (!canGroup) {
+        key = '__single__|' + t.id;
+      } else if (t._parentNotam) {
+        key = prefix + '||' + (t.vertical.lowerLabel || '') + '||' +
+              (t.vertical.upperLabel || '') + '||PN:' + t._parentNotam;
+      } else {
+        const schedSig = (t.schedules || []).map(s => {
+          const sa = s.startUTC instanceof Date ? s.startUTC.getTime() : Date.parse(s.startUTC);
+          const sb = s.endUTC   instanceof Date ? s.endUTC.getTime()   : Date.parse(s.endUTC);
+          return sa + '-' + sb;
+        }).join(',');
+        key = prefix + '||' + (t.vertical.lowerLabel || '') + '||' +
+              (t.vertical.upperLabel || '') + '||SCH:' + schedSig;
+      }
       if (!buckets.has(key)) {
         buckets.set(key, { prefix, suffixes: [], tsas: [] });
         order.push(key);
@@ -235,6 +255,29 @@
     tbody.innerHTML = '';
 
     const groups = groupTSAsByName(state.tsas);
+    // Diagnostico: cuantos grupos vs TSAs sueltas. Si NotamHub no esta
+    // agrupando bien, aqui salen muchos grupos de 1 elemento (singletons).
+    if (state.tsas.length > 0) {
+      const multi  = groups.filter(g => g.tsas.length > 1).length;
+      const singl  = groups.filter(g => g.tsas.length === 1).length;
+      console.info(`[group] ${state.tsas.length} TSAs -> ${groups.length} grupos ` +
+                   `(${multi} multi · ${singl} sueltas).` +
+                   (state.tsas[0] && state.tsas[0]._parentNotam
+                     ? ` Source: NotamHub (parent_notam_id presente).`
+                     : ''));
+      // Si la mayoria son singletons con NotamHub, dump del primer
+      // singleton "TSA <X>" para ver porque no se agrupa.
+      if (state.tsas[0] && state.tsas[0]._parentNotam && singl > multi * 2) {
+        const sample = groups.filter(g => g.tsas.length === 1).slice(0, 3);
+        console.warn('[group] Demasiados singletons. Muestras:',
+          sample.map(g => ({
+            name: g.tsas[0].name,
+            parent: g.tsas[0]._parentNotam,
+            vertical: g.tsas[0].vertical.lowerLabel + '/' + g.tsas[0].vertical.upperLabel,
+            nSchedules: (g.tsas[0].schedules || []).length,
+          })));
+      }
+    }
     for (const g of groups) {
       if (g.tsas.length === 1) {
         // Singleton: fila normal sin decoracion de grupo.
