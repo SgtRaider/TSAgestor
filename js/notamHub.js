@@ -360,6 +360,36 @@ window.TSAgestor.notamHub = (function () {
     const parseAlt = parser && parser.parseAltitudeToken;
     const labelPrefix = (opts && opts.namePrefix) || '';
     const onlyMilitary = !!(opts && opts.onlyMilitary);
+
+    // ── DIAGNOSTICO PREVIO ──────────────────────────────────────────
+    // Antes de filtrar, hacemos histograma de Q-codes y series. Asi
+    // sabemos que tipos de NOTAM trae el origen y donde estan los
+    // militares. CLAVE para LPPC: si no hay R* en el histograma es
+    // que Autorouter no devuelve NOTAMs de espacio aereo, solo de
+    // aerodromos.
+    if (Array.isArray(notams) && notams.length) {
+      const qHist = {};
+      const idHist = {};
+      const samples = {};
+      for (const n of notams) {
+        const raw = String(n.text || n.raw || '');
+        const id  = String(n.notamId || n.id || '');
+        const series = id.slice(0, 1);
+        idHist[series] = (idHist[series] || 0) + 1;
+        const m = raw.match(/Q\)\s*[A-Z]{4}\/Q([A-Z]{2})([A-Z]{2})\//);
+        if (m) {
+          const subj = m[1];
+          qHist[subj] = (qHist[subj] || 0) + 1;
+          if (!samples[subj]) samples[subj] = { id, body: raw.slice(0, 180) };
+        } else {
+          qHist['__noQ'] = (qHist['__noQ'] || 0) + 1;
+        }
+      }
+      console.info(`[notamHub] LPPC histogram Q-subject:`, qHist);
+      console.info(`[notamHub] LPPC histogram id-series:`, idHist);
+      console.debug(`[notamHub] LPPC samples por Q-subject:`, samples);
+    }
+
     const out = [];
     const stats = { total: 0, area: 0, mil: 0, polyOk: 0, polyFail: 0, notArea: 0, sourceQline: 0, sourceBody: 0 };
     const sampleSkipped = [];

@@ -513,7 +513,18 @@
     try {
       const baseMsg = $('#notamhub-status').textContent;
       setNotamHubStatus(baseMsg + ' · Consultando LPPC vía Autorouter…', 'loading');
-      const notams = await meteo.fetchNotamsForAerodromes(['LPPC']);
+      // Pedimos LPPC (FIR) y los aerodromos portugueses principales en
+      // la misma query. Algunas activaciones militares de area se
+      // publican con icaoLocation del aerodromo cercano en vez de la
+      // FIR, asi traemos un superset y filtramos por Q-code.
+      const LPPC_QUERY = [
+        'LPPC',                                // FIR Lisboa
+        'LPPT', 'LPFR', 'LPMA', 'LPPS',        // Lisboa, Faro, Madeira, Porto Santo
+        'LPLA', 'LPPR', 'LPBR', 'LPBJ',        // Lajes, Porto, Braganca, Beja
+        'LPCH', 'LPCO', 'LPMR', 'LPMT',        // Castelo Branco, Coimbra, Monte Real, Montijo
+        'LPST', 'LPOV', 'LPVR',                // Sintra, Ovar, Vila Real
+      ];
+      const notams = await meteo.fetchNotamsForAerodromes(LPPC_QUERY);
       // Por ahora solo cargamos los MILITARES (Q-code R* o ids LP[RDT],
       // M-series, keywords MIL/EXERCISE/TRG). El resto de NOTAMs LPPC
       // siguen accesibles desde la pestanya NOTAMs sin pintar en mapa.
@@ -523,8 +534,8 @@
       });
       if (!lppcTsas.length) {
         setNotamHubStatus(baseMsg +
-          ` · Autorouter devolvió ${notams.length} NOTAMs LPPC, ninguno militar con área parseable. ` +
-          `Mira F12 → Console para muestra de los descartados.`, 'warn');
+          ` · Autorouter devolvió ${notams.length} NOTAMs LPPC (FIR + aerodromos), ninguno militar con área parseable. ` +
+          `Mira F12 → Console para histograma Q-subject.`, 'warn');
         return;
       }
       // Anyadimos a state.tsas (sin duplicar por id).
