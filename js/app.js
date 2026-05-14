@@ -395,12 +395,37 @@
 
   // ── Carga de archivo ─────────────────────────────────────────────────
 
+  // Ordena state.tsas in-place por distancia desde el aeropuerto origen
+  // (toma el ICAO del settings plan.origin, default LEBZ). Si no encontramos
+  // las coords del aeropuerto, deja el orden tal cual. Si una TSA no tiene
+  // centroid, la enviamos al final.
+  function sortTSAsByOriginProximity() {
+    if (!state.tsas || state.tsas.length < 2) return;
+    const aw = window.TSAgestor && window.TSAgestor.airways;
+    const originIcao = String((settings && settings.get('plan.origin', 'LEBZ')) || 'LEBZ').toUpperCase();
+    const origin = aw && aw.waypoints && aw.waypoints[originIcao];
+    if (!origin || !Array.isArray(origin) || origin.length < 2) {
+      console.info(`[sort] No hay coords para ${originIcao}; orden por proximidad omitido.`);
+      return;
+    }
+    if (!geom || !geom.greatCircleDistance) return;
+    const distOf = (t) => {
+      if (!t.centroid || !Array.isArray(t.centroid)) return Infinity;
+      return geom.greatCircleDistance(origin, t.centroid);
+    };
+    state.tsas.sort((a, b) => distOf(a) - distOf(b));
+    console.info(`[sort] TSAs ordenadas por proximidad a ${originIcao} ` +
+                 `(${origin[0].toFixed(2)},${origin[1].toFixed(2)}). ` +
+                 `Mas cercana: ${state.tsas[0].name} (${(distOf(state.tsas[0])/1852).toFixed(0)} NM).`);
+  }
+
   async function handleFile(file) {
     if (!file) return;
     setStatus(`Procesando ${file.name}…`, 'info');
     try {
       const tsas = await parser.parseFile(file);
       state.tsas = tsas;
+      sortTSAsByOriginProximity();
       state.selected = new Set(tsas.map(t => t.id)); // por defecto todas
       state.filter = readFilter();
       if (tsas.length === 0) {
@@ -444,7 +469,8 @@
       }
       const tsas = nh.convertTSAsToInternal(apiList, atDate);
       state.tsas = tsas;
-      state.selected = new Set(tsas.map(t => t.id));
+      sortTSAsByOriginProximity();
+      state.selected = new Set(state.tsas.map(t => t.id));
       state.filter = readFilter();
       $('#filter-bar').classList.remove('hidden');
       ensureMap();
@@ -503,6 +529,7 @@
       }
       // Seleccionadas todas las nuevas tambien.
       for (const t of lppcTsas) state.selected.add(t.id);
+      sortTSAsByOriginProximity();   // reordena con las LPPC anyadidas
       renderAll();
       setNotamHubStatus(baseMsg + ` · +${added} áreas LPPC añadidas.`, 'ok');
     } catch (e) {
@@ -1250,6 +1277,7 @@
     // Restaurar TSAs y filtro si el plan los trae (autocontenido).
     if (Array.isArray(p.tsas) && p.tsas.length) {
       state.tsas = reviveTsasFromJSON(p.tsas);
+      sortTSAsByOriginProximity();
       state.selected = new Set(state.tsas.map(t => t.id));
       if (p.filter && typeof p.filter === 'object') {
         state.filter = Object.assign(
