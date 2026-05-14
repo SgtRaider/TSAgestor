@@ -680,19 +680,21 @@ window.TSAgestor.meteoApi = (function () {
   // NOTAMs via Autorouter /v1.0/notam.
   //
   // Doc oficial: https://www.autorouter.aero/wiki/api/notams/
-  // Params clave (CORREGIDO tras revisar docs):
-  //   - itemas:        JSON-encoded array de ICAOs (aerodromos O FIRs).
-  //                    ATENCION: antes mandabamos `aerodromes=` que no
-  //                    existe en la API. Eso explica que ciertos NOTAMs
-  //                    no aparecian.
-  //   - offset/limit:  paginacion. limit MAX = 100 server-side. Antes
-  //                    pediamos 500 (ignorado, devolvia 100 max).
-  //   - startvalidity: epoch segundos UTC (filtro from).
-  //   - endvalidity:   epoch segundos UTC (filtro to).
   //
-  // Ahora paginamos hasta agotar resultados (max NOTAM_PAGES * 100).
+  // Params:
+  //   - itemas:        JSON-encoded array de ICAOs (aerodromos O FIRs).
+  //                    Formato literal: ["EDDS"] (sin URL-encoding en
+  //                    docs, pero URLSearchParams lo codifica solo).
+  //   - offset/limit:  paginacion. limit MAX = 100 (Default = 100).
+  //   - startvalidity: epoch segundos UTC. Default 0.
+  //   - endvalidity:   epoch segundos UTC. Default 2^32-1.
+  //
+  // Respuesta: { "total": N, "rows": [...NotamOut...] }
+  // (NO es array directo — eso pegaba antes y los descartabamos todos).
+  //
+  // Paginamos con offset hasta cubrir total (o agotar NOTAM_MAX_PAGES).
   const NOTAM_PAGE_SIZE = 100;
-  const NOTAM_MAX_PAGES = 10;            // tope de seguridad: 1000 NOTAMs
+  const NOTAM_MAX_PAGES = 20;            // tope de seguridad: 2000 NOTAMs
 
   async function fetchNotamsForAerodromes(icaoList) {
     if (!icaoList) return [];
@@ -708,6 +710,7 @@ window.TSAgestor.meteoApi = (function () {
     }
     const itemas = JSON.stringify(list);
     const all = [];
+    let total = null;
     let page = 0;
     for (page = 0; page < NOTAM_MAX_PAGES; page++) {
       const params = new URLSearchParams({
@@ -720,7 +723,7 @@ window.TSAgestor.meteoApi = (function () {
       if (res.status === 401) {
         if (!serverAuth) sessionStorage.removeItem(AR_TOKEN_KEY);
         let reason = null;
-        try { const data = await res.clone().json(); reason = data && data.reason; } catch (_) {}
+        try { const d = await res.clone().json(); reason = d && d.reason; } catch (_) {}
         if (reason === 'no_credentials' || reason === 'server_auth_failed') {
           const e = new Error('SERVER_NO_CREDS'); e.detail = reason; throw e;
         }
@@ -728,15 +731,27 @@ window.TSAgestor.meteoApi = (function () {
       }
       if (!res.ok) throw new Error('NOTAM HTTP ' + res.status);
       const data = await res.json();
-      if (!Array.isArray(data) || data.length === 0) break;
-      for (const n of data) all.push(n);
-      if (data.length < NOTAM_PAGE_SIZE) break;     // ultima pagina
+      // Respuesta envelope: { total, rows }. Tambien aceptamos array
+      // directo como fallback por si la API cambia.
+      const rows = Array.isArray(data) ? data
+                 : (data && Array.isArray(data.rows)) ? data.rows
+                 : null;
+      if (!rows) {
+        console.warn('[notam] respuesta inesperada (ni array ni {rows}):', data);
+        break;
+      }
+      if (page === 0 && typeof data.total === 'number') total = data.total;
+      if (rows.length === 0) break;
+      for (const n of rows) all.push(n);
+      // Cortes: si ya tenemos el total declarado, o si la pagina llego
+      // incompleta (ultima pagina).
+      if (total != null && all.length >= total) break;
+      if (rows.length < NOTAM_PAGE_SIZE) break;
     }
     if (page === NOTAM_MAX_PAGES) {
-      console.warn(`[notam] Llegamos al tope ${NOTAM_MAX_PAGES} paginas (${all.length} NOTAMs). ` +
-                   `Puede haber mas. Sube NOTAM_MAX_PAGES si hace falta.`);
+      console.warn(`[notam] Tope ${NOTAM_MAX_PAGES} paginas alcanzado con ${all.length} NOTAMs. ` +
+                   `total reportado=${total}. Sube NOTAM_MAX_PAGES si falta.`);
     }
-    // Diagnostico per-ICAO.
     if (all.length > 0) {
       const byIcao = {};
       for (const n of all) {
@@ -744,9 +759,11 @@ window.TSAgestor.meteoApi = (function () {
         byIcao[k] = (byIcao[k] || 0) + 1;
       }
       const summary = list.map(c => `${c}:${byIcao[c] || 0}`).join(' ');
-      console.info(`[notam] Autorouter ${all.length} NOTAMs (${page} paginas) — por ICAO: ${summary}`);
+      console.info(`[notam] Autorouter ${all.length}/${total != null ? total : '?'} NOTAMs ` +
+                   `(${page + 1} req) — por ICAO: ${summary}`);
     } else {
-      console.info(`[notam] Autorouter devolvio 0 NOTAMs para itemas=${itemas}`);
+      console.info(`[notam] Autorouter devolvio 0 NOTAMs para itemas=${itemas}` +
+                   (total != null ? ` (total reportado=${total})` : ''));
     }
     return all;
   }
