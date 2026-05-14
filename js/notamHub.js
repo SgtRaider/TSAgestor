@@ -57,13 +57,32 @@ window.TSAgestor.notamHub = (function () {
 
   async function _fetchJSON(path, qs, opts) {
     const url = buildUrl(path, qs);
-    const res = await fetch(url, Object.assign({ headers: buildHeaders() }, opts || {}));
+    console.debug('[notamHub] GET', url);
+    let res;
+    try {
+      res = await fetch(url, Object.assign({ headers: buildHeaders() }, opts || {}));
+    } catch (e) {
+      console.error('[notamHub] network error:', e);
+      throw new Error('Red caida o CORS: ' + e.message);
+    }
     if (!res.ok) {
+      let body = '';
+      try { body = await res.text(); } catch (_) {}
+      console.error('[notamHub] HTTP', res.status, body.slice(0, 500));
       let detail = '';
-      try { const j = await res.json(); detail = j.detail || j.error || ''; } catch (_) {}
+      try { const j = JSON.parse(body); detail = j.detail || j.error || JSON.stringify(j).slice(0, 200); }
+      catch (_) { detail = body.slice(0, 200); }
       throw new Error(`HTTP ${res.status} ${res.statusText}${detail ? ' — ' + detail : ''}`);
     }
-    return res.json();
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch (e) {
+      console.error('[notamHub] respuesta no es JSON:', text.slice(0, 500));
+      throw new Error('Respuesta no JSON del API: ' + text.slice(0, 100));
+    }
+    console.debug('[notamHub] response:', Array.isArray(data) ? `array(${data.length})` : typeof data, data);
+    return data;
   }
 
   // ── Endpoints ──────────────────────────────────────────────────────
@@ -118,19 +137,31 @@ window.TSAgestor.notamHub = (function () {
   // ventana de 24h alrededor de `at` para que el resto del flujo
   // (tabla, filtros, mapa) siga funcionando.
   function convertTSAsToInternal(apiList, atDate) {
+    if (!Array.isArray(apiList)) {
+      console.warn('[notamHub] convertTSAs recibido NO-array:', apiList);
+      return [];
+    }
     const parser = window.TSAgestor && window.TSAgestor.parser;
     const parseAlt = parser && parser.parseAltitudeToken;
     const ref = atDate ? new Date(atDate) : new Date();
-    const startUTC = new Date(Math.floor(ref.getTime() / 3600000) * 3600000);  // hora actual redondeada
+    const startUTC = new Date(Math.floor(ref.getTime() / 3600000) * 3600000);
     const endUTC   = new Date(startUTC.getTime() + 24 * 3600 * 1000);
     const out = [];
-    for (let i = 0; i < (apiList || []).length; i++) {
+    const skipped = { noName: 0, badPolygon: 0 };
+    for (let i = 0; i < apiList.length; i++) {
       const t = apiList[i];
-      if (!t || !t.name) continue;
+      if (!t || !t.name) { skipped.noName++; continue; }
       const lower = parseAlt ? parseAlt(t.vertical_lower_label || 'GND') : { ft: 0, label: t.vertical_lower_label || 'GND' };
       const upper = parseAlt ? parseAlt(t.vertical_upper_label || 'UNL') : { ft: 99999, label: t.vertical_upper_label || 'UNL' };
       const polygon = geojsonToLatLngArray(t.polygon_geojson);
-      if (!polygon || polygon.length < 3) continue;
+      if (!polygon || polygon.length < 3) {
+        skipped.badPolygon++;
+        if (skipped.badPolygon <= 3) {
+          console.warn('[notamHub] TSA con poligono no parseable:', t.name,
+            'polygon_geojson:', t.polygon_geojson);
+        }
+        continue;
+      }
       out.push({
         id: 'NH_' + (t.parent_notam_id || i) + '_' + i,
         name: t.name,
@@ -150,6 +181,8 @@ window.TSAgestor.notamHub = (function () {
         _nSchedules: t.n_schedules || 0,
       });
     }
+    console.info(`[notamHub] convertTSAs: ${apiList.length} entrada(s), ${out.length} convertidas, ` +
+                 `${skipped.noName} sin nombre, ${skipped.badPolygon} con poligono no parseable`);
     return out;
   }
 

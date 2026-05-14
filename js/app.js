@@ -384,11 +384,23 @@
     if (!nh) { setNotamHubStatus('notamHub no disponible.', 'error'); return; }
     setNotamHubStatus('Consultando NotamHub…', 'loading');
     // datetime-local devuelve "YYYY-MM-DDTHH:MM" sin tz; el campo es UTC
-    // por contrato (asi se le dice al usuario), asi que anyadimos 'Z'
-    // para evitar que JS lo interprete como hora local.
+    // por contrato, asi que anyadimos 'Z' para que JS no lo interprete
+    // como hora local.
     const atDate = atIso ? new Date(atIso + 'Z') : new Date();
     try {
       const apiList = await nh.fetchActiveTSAs({ at: atDate });
+      if (!Array.isArray(apiList)) {
+        setNotamHubStatus(
+          'Respuesta inesperada del API (no es array): ' + JSON.stringify(apiList).slice(0, 200) +
+          ' — abre F12 → Console para detalles.', 'error');
+        return;
+      }
+      if (apiList.length === 0) {
+        setNotamHubStatus(
+          'El API devolvió 0 TSAs. Comprueba la hora (UTC) o que el token esté autorizado. ' +
+          'Abre F12 → Network → fíjate en la petición a /api/notamhub/tsas/active.', 'warn');
+        return;
+      }
       const tsas = nh.convertTSAsToInternal(apiList, atDate);
       state.tsas = tsas;
       state.selected = new Set(tsas.map(t => t.id));
@@ -397,8 +409,13 @@
       ensureMap();
       renderAll();
       if (!tsas.length) {
-        setNotamHubStatus('NotamHub no devolvio TSAs activas para esa hora.', 'warn');
-        setStatus('No hay TSAs activas en la hora consultada.', 'info');
+        // El API devolvió >0 entradas pero todas fueron filtradas (polígono no parseable, etc.)
+        const sample = apiList[0];
+        setNotamHubStatus(
+          `El API devolvió ${apiList.length} TSAs pero ninguna se pudo convertir. ` +
+          `Probable shape de polygon_geojson distinto del esperado. ` +
+          `Primera entrada: ${JSON.stringify(sample).slice(0, 250)} — abre F12 → Console para más detalle.`,
+          'error');
       } else {
         const when = atDate.toISOString().slice(0, 16).replace('T', ' ') + 'Z';
         setNotamHubStatus(`${tsas.length} TSAs activas a las ${when}. ` +
@@ -407,7 +424,7 @@
       }
     } catch (e) {
       console.warn('[notamhub] error:', e);
-      setNotamHubStatus('Error: ' + (e.message || e) + '. ¿Token caducado o servidor caido?', 'error');
+      setNotamHubStatus('Error: ' + (e.message || e) + '. Abre F12 → Console para detalles.', 'error');
     }
   }
 
