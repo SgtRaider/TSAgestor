@@ -677,11 +677,23 @@ window.TSAgestor.meteoApi = (function () {
     };
   }
 
-  // NOTAMs por aerodromo via Autorouter. Devuelve array bruto de NOTAMs
-  // segun /v1.0/notam?aerodromes=. Acepta uno o varios ICAOs separados
-  // por coma. La autenticacion sigue el mismo patron que GRAMET (server-
-  // auth via Pages Function o Bearer client-side).
-  // Doc: https://www.autorouter.aero/wiki/api/#notams
+  // NOTAMs via Autorouter /v1.0/notam.
+  //
+  // Doc oficial: https://www.autorouter.aero/wiki/api/notams/
+  // Params clave (CORREGIDO tras revisar docs):
+  //   - itemas:        JSON-encoded array de ICAOs (aerodromos O FIRs).
+  //                    ATENCION: antes mandabamos `aerodromes=` que no
+  //                    existe en la API. Eso explica que ciertos NOTAMs
+  //                    no aparecian.
+  //   - offset/limit:  paginacion. limit MAX = 100 server-side. Antes
+  //                    pediamos 500 (ignorado, devolvia 100 max).
+  //   - startvalidity: epoch segundos UTC (filtro from).
+  //   - endvalidity:   epoch segundos UTC (filtro to).
+  //
+  // Ahora paginamos hasta agotar resultados (max NOTAM_PAGES * 100).
+  const NOTAM_PAGE_SIZE = 100;
+  const NOTAM_MAX_PAGES = 10;            // tope de seguridad: 1000 NOTAMs
+
   async function fetchNotamsForAerodromes(icaoList) {
     if (!icaoList) return [];
     const list = (Array.isArray(icaoList) ? icaoList : [icaoList])
@@ -694,45 +706,49 @@ window.TSAgestor.meteoApi = (function () {
       const token = await getArToken();
       reqInit.headers = { 'Authorization': 'Bearer ' + token };
     }
-    const params = new URLSearchParams({
-      aerodromes: list.join(','),
-      offset: '0',
-      // Subido a 500 desde 300: cuando incluimos FIRs (LECM, LECB, LPPC,
-      // GCCC) el numero de NOTAMs activos puede pasar de 200 facilmente.
-      limit: '500',
-    });
-    const url = `${AR_BASE}/notam?${params.toString()}`;
-    const res = await _arFetch(url, reqInit);
-    if (res.status === 401) {
-      if (!serverAuth) sessionStorage.removeItem(AR_TOKEN_KEY);
-      let reason = null;
-      try {
-        const data = await res.clone().json();
-        reason = data && data.reason;
-      } catch (_) {}
-      if (reason === 'no_credentials' || reason === 'server_auth_failed') {
-        const e = new Error('SERVER_NO_CREDS');
-        e.detail = reason;
-        throw e;
+    const itemas = JSON.stringify(list);
+    const all = [];
+    let page = 0;
+    for (page = 0; page < NOTAM_MAX_PAGES; page++) {
+      const params = new URLSearchParams({
+        itemas,
+        offset: String(page * NOTAM_PAGE_SIZE),
+        limit:  String(NOTAM_PAGE_SIZE),
+      });
+      const url = `${AR_BASE}/notam?${params.toString()}`;
+      const res = await _arFetch(url, reqInit);
+      if (res.status === 401) {
+        if (!serverAuth) sessionStorage.removeItem(AR_TOKEN_KEY);
+        let reason = null;
+        try { const data = await res.clone().json(); reason = data && data.reason; } catch (_) {}
+        if (reason === 'no_credentials' || reason === 'server_auth_failed') {
+          const e = new Error('SERVER_NO_CREDS'); e.detail = reason; throw e;
+        }
+        throw new Error('TOKEN_REJECTED');
       }
-      throw new Error('TOKEN_REJECTED');
+      if (!res.ok) throw new Error('NOTAM HTTP ' + res.status);
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length === 0) break;
+      for (const n of data) all.push(n);
+      if (data.length < NOTAM_PAGE_SIZE) break;     // ultima pagina
     }
-    if (!res.ok) throw new Error('NOTAM HTTP ' + res.status);
-    const data = await res.json();
-    if (!Array.isArray(data)) return [];
-    // Diagnostico: cuantos NOTAMs vienen por cada ICAO de los que pedimos
-    // (util para detectar que Autorouter no esta devolviendo nada para una
-    // FIR concreta, p.ej. LPPC).
-    if (data.length > 0) {
+    if (page === NOTAM_MAX_PAGES) {
+      console.warn(`[notam] Llegamos al tope ${NOTAM_MAX_PAGES} paginas (${all.length} NOTAMs). ` +
+                   `Puede haber mas. Sube NOTAM_MAX_PAGES si hace falta.`);
+    }
+    // Diagnostico per-ICAO.
+    if (all.length > 0) {
       const byIcao = {};
-      for (const n of data) {
+      for (const n of all) {
         const k = String(n.icaoLocation || n.location || '?').toUpperCase();
         byIcao[k] = (byIcao[k] || 0) + 1;
       }
       const summary = list.map(c => `${c}:${byIcao[c] || 0}`).join(' ');
-      console.info(`[notam] Autorouter ${data.length} total — por ICAO: ${summary}`);
+      console.info(`[notam] Autorouter ${all.length} NOTAMs (${page} paginas) — por ICAO: ${summary}`);
+    } else {
+      console.info(`[notam] Autorouter devolvio 0 NOTAMs para itemas=${itemas}`);
     }
-    return data;
+    return all;
   }
 
   // SIGMETs internacionales (AWC iSIGMET).
