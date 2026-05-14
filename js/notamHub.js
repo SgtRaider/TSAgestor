@@ -212,6 +212,7 @@ window.TSAgestor.notamHub = (function () {
       out.push({
         id: 'NH_' + (t.parent_notam_id || i) + '_' + i,
         name: t.name,
+        format: 'NOTAMHUB',
         vertical: { lowerFt, upperFt, lowerLabel, upperLabel },
         polygon,
         // El parser PDF rellena centroid via geom.centroid(polygon). El
@@ -229,10 +230,55 @@ window.TSAgestor.notamHub = (function () {
         _isCircle: !!t.is_circle,
       });
     }
-    console.info(`[notamHub] convertTSAs: ${apiList.length} entrada(s) → ${out.length} convertidas` +
-                 ` · ${skipped.noName} sin nombre · ${skipped.badPolygon} sin poligono` +
-                 ` · ${synthCount} con schedules sintetizados`);
-    return out;
+
+    // Dedup por (name + vertical). La API a veces devuelve la misma TSA
+    // varias veces (uno por cada NOTAM padre que la publica con ventana
+    // distinta). Las fusionamos en una sola TSA con la UNION de
+    // schedules. Asi quedan filas unicas en la tabla en vez de
+    // "TSA CORREDOR SUR 1 LOW" repetida x2.
+    const dedupMap = new Map();
+    let mergedCount = 0;
+    for (const t of out) {
+      const key = t.name + '||' + t.vertical.lowerLabel + '||' + t.vertical.upperLabel;
+      if (!dedupMap.has(key)) {
+        dedupMap.set(key, Object.assign({}, t, { schedules: t.schedules.slice() }));
+        continue;
+      }
+      const ex = dedupMap.get(key);
+      // Set de schedules ya vistos (start+end ms) para no duplicar.
+      const seen = new Set(ex.schedules.map(s =>
+        (s.startUTC instanceof Date ? s.startUTC.getTime() : Date.parse(s.startUTC)) + '-' +
+        (s.endUTC   instanceof Date ? s.endUTC.getTime()   : Date.parse(s.endUTC))
+      ));
+      for (const s of t.schedules) {
+        const sa = s.startUTC instanceof Date ? s.startUTC.getTime() : Date.parse(s.startUTC);
+        const sb = s.endUTC   instanceof Date ? s.endUTC.getTime()   : Date.parse(s.endUTC);
+        const sig = sa + '-' + sb;
+        if (!seen.has(sig)) { ex.schedules.push(s); seen.add(sig); }
+      }
+      // Lista de parent_notam_ids acumulados para diagnostico.
+      if (t._parentNotam) {
+        const cur = String(ex._parentNotam || '').split(',').filter(Boolean);
+        if (!cur.includes(t._parentNotam)) cur.push(t._parentNotam);
+        ex._parentNotam = cur.join(',');
+      }
+      ex._nSchedules = ex.schedules.length;
+      mergedCount++;
+    }
+    // Ordena las schedules de cada TSA por start asc.
+    const dedupedOut = [];
+    for (const t of dedupMap.values()) {
+      t.schedules.sort((a, b) => {
+        const sa = a.startUTC instanceof Date ? a.startUTC.getTime() : Date.parse(a.startUTC);
+        const sb = b.startUTC instanceof Date ? b.startUTC.getTime() : Date.parse(b.startUTC);
+        return sa - sb;
+      });
+      dedupedOut.push(t);
+    }
+    console.info(`[notamHub] convertTSAs: ${apiList.length} entrada(s) → ${dedupedOut.length} TSAs ` +
+                 `(${mergedCount} fusionadas por name+vertical) · ${skipped.noName} sin nombre · ` +
+                 `${skipped.badPolygon} sin poligono · ${synthCount} con schedules sintetizados`);
+    return dedupedOut;
   }
 
   // Convierte un circulo (centro lat/lon, radio NM) en un anillo de N

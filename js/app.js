@@ -187,24 +187,22 @@
       const prefixTokens = prefix.split(/\s+/).filter(Boolean);
       const canGroup = suffix != null && prefixTokens.length >= 2;
       // CLAVE DE AGRUPACION:
-      // El criterio original exigia mismo schedule literal, lo que con
-      // los datos de NotamHub deshacia familias enteras (cada TSA llega
-      // con ventanas ligeramente distintas vinculadas a su NOTAM padre).
-      // Ahora:
-      //   - Si las dos TSAs vienen del MISMO parent_notam_id (campo
-      //     _parentNotam que rellena notamHub), agrupamos directamente
-      //     con (prefix + vertical + parent). Son hermanas por
-      //     construccion (mismo NOTAM).
-      //   - Si no hay parent_notam_id (caso parser PDF clasico),
-      //     conservamos el criterio antiguo (prefix + vertical +
-      //     firma de schedules) para no romper el comportamiento del
-      //     PDF.
+      //   - NotamHub (TSA con campo _source === 'notamhub'): la dedup
+      //     en convertTSAsToInternal ya colapso las TSAs identicas
+      //     por (name + vertical). Aqui solo nos queda agrupar hermanas
+      //     de familia (TSA TALAVERA LOW SOUTH 1, 2) que pueden venir
+      //     de NOTAMs distintos (parent_notam_id distinto). Por eso
+      //     agrupamos por (prefix + vertical) sin schedule ni parent.
+      //   - Parser PDF clasico: conservamos el criterio antiguo
+      //     (prefix + vertical + firma de schedules) para no agrupar
+      //     TSAs con ventanas distintas que vienen de NOTAMs distintos
+      //     del mismo boletin.
       let key;
       if (!canGroup) {
         key = '__single__|' + t.id;
-      } else if (t._parentNotam) {
+      } else if (t._source === 'notamhub') {
         key = prefix + '||' + (t.vertical.lowerLabel || '') + '||' +
-              (t.vertical.upperLabel || '') + '||PN:' + t._parentNotam;
+              (t.vertical.upperLabel || '');
       } else {
         const schedSig = (t.schedules || []).map(s => {
           const sa = s.startUTC instanceof Date ? s.startUTC.getTime() : Date.parse(s.startUTC);
