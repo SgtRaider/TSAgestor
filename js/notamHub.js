@@ -152,31 +152,26 @@ window.TSAgestor.notamHub = (function () {
     const skipped = { noName: 0, badPolygon: 0, noSchedules: 0 };
     let synthCount = 0;
 
-    // Diagnostico is_work_area: cuenta true/false/undefined/otros antes
-    // de convertir nada, para detectar si el API esta mandando el campo
-    // con otro nombre (isWorkArea, work_area...) o no lo manda.
+    // Diagnostico is_work_area: cuenta true/false/undefined/otros y
+    // decide si el campo es fiable.
+    //   - Si hay >=1 false -> el campo discrimina, lo usamos como API dice.
+    //   - Si TODAS son true (y count > 0) -> el API tiene un default fijo
+    //     y el campo no discrimina. Activamos heuristica por nombre
+    //     (PASILLO/CORREDOR -> transito, resto -> trabajo).
+    //   - Si todas undefined -> mismo fallback heuristico.
+    let useNameHeuristic = false;
     if (apiList.length > 0) {
-      const wHist = { true: 0, false: 0, undefined: 0, otherKey: 0 };
-      let alternativeKey = null;
+      const wHist = { true: 0, false: 0, undefined: 0 };
       for (const t of apiList) {
-        if (typeof t.is_work_area === 'boolean') {
-          wHist[String(t.is_work_area)]++;
-        } else {
-          wHist.undefined++;
-          if (!alternativeKey) {
-            // Busca cualquier clave parecida en el primer NOTAM que no tenga is_work_area.
-            for (const k of Object.keys(t || {})) {
-              if (/work|area|type|kind/i.test(k) && k !== 'is_work_area') {
-                alternativeKey = k + '=' + JSON.stringify(t[k]).slice(0, 40);
-                break;
-              }
-            }
-          }
-        }
+        if (typeof t.is_work_area === 'boolean') wHist[String(t.is_work_area)]++;
+        else wHist.undefined++;
       }
+      const fieldDiscriminates = wHist.true > 0 && wHist.false > 0;
+      useNameHeuristic = !fieldDiscriminates;
       console.info('[notamHub] is_work_area distribucion: ' + JSON.stringify(wHist) +
-        (alternativeKey ? ` · posible campo alternativo: ${alternativeKey}` : '') +
-        ` · claves del primer item: ${JSON.stringify(Object.keys(apiList[0]))}`);
+        (useNameHeuristic
+          ? ' · campo no discrimina, usando heuristica nombre (CORREDOR/PASILLO -> transito)'
+          : ' · campo OK del API'));
     }
     for (let i = 0; i < apiList.length; i++) {
       const t = apiList[i];
@@ -270,10 +265,15 @@ window.TSAgestor.notamHub = (function () {
         _parentNotam: t.parent_notam_id,
         _nSchedules: schedules.length,
         _isCircle: !!t.is_circle,
-        // is_work_area: true -> area de trabajo (verde), false -> transito
-        // (rojo). undefined si la API aun no lo expone -> tratamos como
-        // transito (default conservador).
-        _isWorkArea: t.is_work_area === true,
+        // is_work_area:
+        //   - Si el API lo discrimina (mix de true/false) -> lo usamos.
+        //   - Si el API manda todo true o todo undefined ->
+        //     heuristica por nombre: PASILLO/CORREDOR -> transito,
+        //     resto -> trabajo. Coincide con la convencion del
+        //     boletin ICARO XXI verificada con el PDF.
+        _isWorkArea: useNameHeuristic
+          ? !/\b(PASILLO|CORREDOR|CORRIDOR|TRANSITO|TRANSIT)\b/i.test(t.name || '')
+          : (t.is_work_area === true),
       });
     }
 
