@@ -502,82 +502,9 @@
       setNotamHubStatus(`${tsas.length} TSAs ${usingRange ? 'en' : 'a'} ${whenLabel}. ` +
         `Fuente: NotamHub /tsas/active${usingRange ? ' (rango)' : ''}.`, 'ok');
       setStatus(`${tsas.length} TSAs cargadas desde NotamHub.`, 'ok');
-
-      // Si el checkbox LPPC está marcado, anyadimos las areas portuguesas
-      // que Autorouter publique. Las convertimos a TSA-like con
-      // convertAutorouterNotamsToTSAs y las anyadimos a state.tsas.
-      const includeLPPC = ($('#notamhub-include-lppc') || {}).checked;
-      if (includeLPPC) {
-        await augmentWithLPPCAreas();
-      }
     } catch (e) {
       console.warn('[notamhub] error:', e);
       setNotamHubStatus('Error: ' + (e.message || e) + '. Abre F12 → Console para detalles.', 'error');
-    }
-  }
-
-  async function augmentWithLPPCAreas() {
-    const meteo = window.TSAgestor && window.TSAgestor.meteoApi;
-    const nh    = window.TSAgestor && window.TSAgestor.notamHub;
-    if (!meteo || !meteo.fetchNotamsForAerodromes || !nh || !nh.convertAutorouterNotamsToTSAs) {
-      console.warn('[notamhub+lppc] dependencias no cargadas');
-      return;
-    }
-    try {
-      const baseMsg = $('#notamhub-status').textContent;
-      setNotamHubStatus(baseMsg + ' · Consultando LPPC vía Autorouter…', 'loading');
-      // Pedimos LPPC (FIR) y los aerodromos portugueses principales en
-      // la misma query. Algunas activaciones militares de area se
-      // publican con icaoLocation del aerodromo cercano en vez de la
-      // FIR, asi traemos un superset y filtramos por Q-code.
-      const LPPC_QUERY = [
-        'LPPC',                                // FIR Lisboa
-        'LPPT', 'LPFR', 'LPMA', 'LPPS',        // Lisboa, Faro, Madeira, Porto Santo
-        'LPLA', 'LPPR', 'LPBR', 'LPBJ',        // Lajes, Porto, Braganca, Beja
-        'LPCH', 'LPCO', 'LPMR', 'LPMT',        // Castelo Branco, Coimbra, Monte Real, Montijo
-        'LPST', 'LPOV', 'LPVR',                // Sintra, Ovar, Vila Real
-      ];
-      const notamsAll = await meteo.fetchNotamsForAerodromes(LPPC_QUERY);
-      // Modo amplio: cargamos TODAS las areas del FIR LPPC (civiles +
-      // militares). La clasificacion de area la decide classifyAsArea
-      // (Q-code R*, ids especiales, keywords). Filtros minimos:
-      //   - TRIGGER NOTAMs: solo apuntadores a AIP SUP, no tienen
-      //     coords operativas.
-      //   - radius >= 100 NM: placeholder FIR-wide sin info util.
-      const bodyOf = n => String(n.text || n.raw || n.iteme || '');
-      const isTrigger = (n) => /\bTRIGGER\s+NOTAM\b/i.test(bodyOf(n));
-      const hasReasonableRadius = (n) => {
-        const r = Number(n.radius);
-        return !Number.isFinite(r) || (r > 0 && r < 100);
-      };
-      const notams = notamsAll.filter(n => !isTrigger(n) && hasReasonableRadius(n));
-      const droppedRaw = notamsAll.length - notams.length;
-      console.info(`[notamhub+lppc] ${notamsAll.length} NOTAMs LPPC totales · ${notams.length} operativos (descartados ${droppedRaw} TRIGGER / radius>=100NM)`);
-      const lppcTsas = nh.convertAutorouterNotamsToTSAs(notams, {
-        namePrefix: 'LPPC',
-        onlyMilitary: false,
-      });
-      if (!lppcTsas.length) {
-        setNotamHubStatus(baseMsg +
-          ` · ${notamsAll.length} NOTAMs LPPC consultados, 0 areas con geometria parseable.`,
-          'warn');
-        return;
-      }
-      // Anyadimos a state.tsas (sin duplicar por id).
-      const existingIds = new Set(state.tsas.map(t => t.id));
-      let added = 0;
-      for (const t of lppcTsas) {
-        if (!existingIds.has(t.id)) { state.tsas.push(t); added++; }
-      }
-      // Seleccionadas todas las nuevas tambien.
-      for (const t of lppcTsas) state.selected.add(t.id);
-      sortTSAsByOriginProximity();   // reordena con las LPPC anyadidas
-      renderAll();
-      setNotamHubStatus(baseMsg + ` · +${added} áreas LPPC añadidas.`, 'ok');
-    } catch (e) {
-      console.warn('[notamhub+lppc] error:', e);
-      const baseMsg = $('#notamhub-status').textContent.split(' · ')[0];
-      setNotamHubStatus(baseMsg + ' · ⚠ LPPC vía Autorouter falló: ' + (e.message || e), 'warn');
     }
   }
 
