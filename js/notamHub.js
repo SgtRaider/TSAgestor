@@ -124,6 +124,66 @@ window.TSAgestor.notamHub = (function () {
     return _fetchJSON('/bulletins', null);
   }
 
+  // Normaliza un NotamOut del API al shape que consume notamView/UI:
+  //   notamId, icaoLocation, fromDate, toDate, text/raw, fir/aerodrome
+  // El API entrega: notam_id, section, fir, aerodrome, area, valid_from,
+  // valid_to, is_estimate, is_permanent, body. Mapeamos:
+  //   icaoLocation <- aerodrome || fir || area
+  //   text/raw     <- body (puede ser null en NOTAMs sin cuerpo)
+  function normalizeNotam(n) {
+    if (!n) return null;
+    const icao = n.aerodrome || n.fir || n.area || '';
+    return {
+      notamId:      n.notam_id || '',
+      icaoLocation: String(icao).toUpperCase(),
+      fromDate:     n.valid_from || null,
+      toDate:       n.valid_to   || null,
+      text:         n.body || '',
+      raw:          n.body || '',
+      _source:      'notamhub',
+      _section:     n.section || '',
+      _isEstimate:  !!n.is_estimate,
+      _isPermanent: !!n.is_permanent,
+    };
+  }
+
+  // Pide a NotamHub todos los NOTAMs relevantes para una lista de
+  // ICAOs. La API es punto-a-punto: /notams/aerodrome/{icao} y
+  // /notams/fir/{icao}, asi que disparamos N requests en paralelo y
+  // unimos los resultados.
+  // Distingue aerodromos (LE??, GC??) de FIRs (LECM, LECB, GCCC,
+  // LPPC, ...). Si una request falla (404, timeout) la trata como
+  // vacia y sigue con el resto, asi nunca rompe el resto.
+  async function fetchAllNotamsFor(icaos, opts) {
+    if (!Array.isArray(icaos) || !icaos.length) return [];
+    opts = opts || {};
+    const at = opts.at instanceof Date ? opts.at.toISOString() : opts.at;
+    const FIR_RE = /^(LECM|LECB|LPPC|GCCC|GMMM|LFFF|LFMM|EGTT|DAAA)$/;
+    const calls = icaos.map(icao => {
+      const code = String(icao || '').trim().toUpperCase();
+      if (!/^[A-Z]{4}$/.test(code)) return Promise.resolve([]);
+      const isFir = FIR_RE.test(code);
+      const p = isFir
+        ? fetchNotamsByFIR(code, { at })
+        : fetchNotamsByAerodrome(code, { at });
+      return p.catch(e => {
+        console.warn('[notamHub] fetchNotams', code, 'fallo:', e && e.message || e);
+        return [];
+      });
+    });
+    const results = await Promise.all(calls);
+    const out = [];
+    for (const arr of results) {
+      if (!Array.isArray(arr)) continue;
+      for (const n of arr) {
+        const norm = normalizeNotam(n);
+        if (norm) out.push(norm);
+      }
+    }
+    console.info(`[notamHub] fetchAllNotamsFor: ${icaos.length} ICAOs -> ${out.length} NOTAMs`);
+    return out;
+  }
+
   function ping() {
     return _fetchJSON('/health', null).catch(() => false);
   }
@@ -567,6 +627,7 @@ window.TSAgestor.notamHub = (function () {
     fetchBulletins,
     convertTSAsToInternal,
     convertAutorouterNotamsToTSAs,
+    fetchAllNotamsFor, normalizeNotam,
     getStoredToken, setStoredToken, clearStoredToken,
   };
 })();

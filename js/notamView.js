@@ -628,12 +628,21 @@ window.TSAgestor.notamView = (function () {
     const fullList = [...icaoList, ..._state.firs];
     setStatus(`Consultando NOTAMs (${icaoList.length} aeródromos + ${_state.firs.length} FIRs) y METAR/TAF…`, 'loading');
 
-    // METAR/TAF en paralelo (AWC permite varios ICAO en una sola request).
-    // Para NOTAMs, mandamos aerodromos + FIRs en una sola query a Autorouter:
-    // su endpoint /notam acepta ICAOs de FIR igual que de aerodromo y nos
-    // devuelve los M-series y NOTAMs de area asociados.
+    // 3 fuentes paralelas:
+    //   (1) Autorouter /notam con itemas = aerodromos + FIRs.
+    //   (2) NotamHub /notams/aerodrome/{icao} + /notams/fir/{icao} para
+    //       cada item de la lista. Solo entrega NOTAMs de territorio
+    //       nacional, asi que ICAOs extranjeros vuelven vacios.
+    //   (3) AWC METAR / TAF.
+    // Las fuentes 1 y 2 se mezclan despues por notamId para no duplicar.
+    const nh = window.TSAgestor && window.TSAgestor.notamHub;
     const notamPromise = mapi.fetchNotamsForAerodromes(fullList)
-      .catch(e => { console.warn('[notam] fetch error:', e); return { __error: e }; });
+      .catch(e => { console.warn('[notam] Autorouter fetch error:', e); return { __error: e }; });
+    const notamHubPromise = (nh && nh.fetchAllNotamsFor)
+      ? nh.fetchAllNotamsFor(fullList).catch(e => {
+          console.warn('[notam] NotamHub fetch error:', e); return [];
+        })
+      : Promise.resolve([]);
     const metarPromise = mapi.fetchMETAR ? mapi.fetchMETAR(icaoList).catch(e => {
       console.warn('[metar] fetch error:', e); return {};
     }) : Promise.resolve({});
@@ -641,32 +650,64 @@ window.TSAgestor.notamView = (function () {
       console.warn('[taf] fetch error:', e); return {};
     }) : Promise.resolve({});
 
-    const [notamRes, metarRes, tafRes] = await Promise.all([notamPromise, metarPromise, tafPromise]);
+    const [notamRes, notamHubRes, metarRes, tafRes] = await Promise.all([
+      notamPromise, notamHubPromise, metarPromise, tafPromise,
+    ]);
 
     _state.metars = normalizeReports(metarRes);
     _state.tafs   = normalizeReports(tafRes);
 
+    // Procesamos Autorouter (puede traer error, en cuyo caso solo
+    // mostramos lo de NotamHub).
+    let arNotams = [];
+    let arError = null;
     if (notamRes && notamRes.__error) {
       const msg = String(notamRes.__error.message || notamRes.__error);
       if (msg === 'SERVER_NO_CREDS' || msg === 'TOKEN_REJECTED' || msg === 'NO_CREDS') {
-        _state.error = 'Credenciales Autorouter no configuradas en el servidor. ' +
-          'Configura AUTOROUTER_USER / AUTOROUTER_PASS en Cloudflare Pages → Environment Variables.';
+        arError = 'Autorouter sin credenciales (ENV AUTOROUTER_USER/PASS).';
       } else {
-        _state.error = 'NOTAMs: ' + msg;
+        arError = 'Autorouter: ' + msg;
       }
-      _state.notams = [];
     } else {
-      _state.notams = Array.isArray(notamRes) ? notamRes : (notamRes && notamRes.notams) || [];
+      arNotams = Array.isArray(notamRes) ? notamRes : (notamRes && notamRes.notams) || [];
+    }
+    const nhNotams = Array.isArray(notamHubRes) ? notamHubRes : [];
+
+    // Fusion + dedup por notamId. Cuando ambas fuentes entregan el
+    // mismo NOTAM (lo normal para boletines espanyoles), nos quedamos
+    // con el de NotamHub porque su cuerpo (body) viene preparseado
+    // y ademas indica is_permanent/is_estimate.
+    const byId = new Map();
+    for (const n of arNotams) {
+      const id = String(n && (n.notamId || n.id) || '').trim();
+      if (!id) continue;
+      byId.set(id, Object.assign({ _source: 'autorouter' }, n));
+    }
+    for (const n of nhNotams) {
+      const id = String(n.notamId || '').trim();
+      if (!id) continue;
+      byId.set(id, n);       // NotamHub gana
+    }
+    _state.notams = Array.from(byId.values());
+
+    // Si SOLO falla Autorouter y NotamHub trajo cosas, ocultamos el
+    // error (el usuario tiene datos para el origen nacional).
+    if (arError && _state.notams.length === 0) {
+      _state.error = arError;
+    } else if (arError) {
+      console.info('[notam] Autorouter fallo pero NotamHub trajo ' +
+                   _state.notams.length + ' NOTAMs; ignoramos el error.');
     }
 
     _state.loading = false;
-    // Contadores aproximados por tipo (aerodromo vs FIR).
-    const adCount  = _state.notams.filter(n => !isFir(String(n.icaoLocation || '').toUpperCase())).length;
-    const firCount = _state.notams.filter(n =>  isFir(String(n.icaoLocation || '').toUpperCase())).length;
+    const adCount   = _state.notams.filter(n => !isFir(String(n.icaoLocation || '').toUpperCase())).length;
+    const firCount  = _state.notams.filter(n =>  isFir(String(n.icaoLocation || '').toUpperCase())).length;
+    const fromAr    = _state.notams.filter(n => n._source === 'autorouter').length;
+    const fromNh    = _state.notams.filter(n => n._source === 'notamhub').length;
     setStatus(
-      `${_state.notams.length} NOTAMs (${adCount} aeródromo · ${firCount} FIR) · ` +
-      `${Object.keys(_state.metars).length} METAR · ` +
-      `${Object.keys(_state.tafs).length} TAF` +
+      `${_state.notams.length} NOTAMs (${adCount} aeródromo · ${firCount} FIR) ` +
+      `· fuente: ${fromAr} Autorouter · ${fromNh} NotamHub ` +
+      `· ${Object.keys(_state.metars).length} METAR · ${Object.keys(_state.tafs).length} TAF` +
       (_state.error ? ' · ⚠ error en NOTAMs' : ''),
       _state.error ? 'error' : 'ok'
     );
