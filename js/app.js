@@ -538,33 +538,28 @@
         'LPST', 'LPOV', 'LPVR',                // Sintra, Ovar, Vila Real
       ];
       const notamsAll = await meteo.fetchNotamsForAerodromes(LPPC_QUERY);
-      // Filtro estricto: aceptamos NOTAMs cuyo titulo (primera linea
-      // de iteme) o cuerpo contenga EXACTAMENTE alguno de:
-      //   - "EXC CONTROLLED AIRSPACE" (acepta tambien EXCLUDING)
-      //   - "TITAN SKY"
-      // Ademas descartamos:
-      //   - TRIGGER NOTAMs (apuntan a un AIP SUP sin coords reales, se
-      //     dibujan como circulos gigantes de 999 NM).
-      //   - NOTAMs con radius >= 100 NM (placeholder FIR-wide sin
-      //     informacion operacional util).
-      const LPPC_BODY_RE = /\b(EXC(?:LUDING)?\s+CONTROLLED\s+AIRSPACE|TITAN\s+SKY)\b/i;
+      // Modo amplio: cargamos TODAS las areas del FIR LPPC (civiles +
+      // militares). La clasificacion de area la decide classifyAsArea
+      // (Q-code R*, ids especiales, keywords). Filtros minimos:
+      //   - TRIGGER NOTAMs: solo apuntadores a AIP SUP, no tienen
+      //     coords operativas.
+      //   - radius >= 100 NM: placeholder FIR-wide sin info util.
       const bodyOf = n => String(n.text || n.raw || n.iteme || '');
       const isTrigger = (n) => /\bTRIGGER\s+NOTAM\b/i.test(bodyOf(n));
       const hasReasonableRadius = (n) => {
         const r = Number(n.radius);
         return !Number.isFinite(r) || (r > 0 && r < 100);
       };
-      const matched = notamsAll.filter(n => LPPC_BODY_RE.test(bodyOf(n)));
-      const notams = matched.filter(n => !isTrigger(n) && hasReasonableRadius(n));
-      const droppedTrigger = matched.length - notams.length;
-      console.info(`[notamhub+lppc] ${notamsAll.length} NOTAMs LPPC totales · ${matched.length} con EXC/TITAN SKY · ${notams.length} operativos (descartados ${droppedTrigger} TRIGGER / radius>=100NM)`);
+      const notams = notamsAll.filter(n => !isTrigger(n) && hasReasonableRadius(n));
+      const droppedRaw = notamsAll.length - notams.length;
+      console.info(`[notamhub+lppc] ${notamsAll.length} NOTAMs LPPC totales · ${notams.length} operativos (descartados ${droppedRaw} TRIGGER / radius>=100NM)`);
       const lppcTsas = nh.convertAutorouterNotamsToTSAs(notams, {
         namePrefix: 'LPPC',
-        onlyMilitary: true,
+        onlyMilitary: false,
       });
       if (!lppcTsas.length) {
         setNotamHubStatus(baseMsg +
-          ` · ${notamsAll.length} NOTAMs LPPC consultados, 0 con "EXC CONTROLLED AIRSPACE" o "TITAN SKY" y área parseable.`,
+          ` · ${notamsAll.length} NOTAMs LPPC consultados, 0 areas con geometria parseable.`,
           'warn');
         return;
       }
