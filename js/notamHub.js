@@ -87,12 +87,17 @@ window.TSAgestor.notamHub = (function () {
 
   // ── Endpoints ──────────────────────────────────────────────────────
 
-  // /tsas/active — TSAs activas en `at` (default = ahora). bbox =
-  // "min_lat,max_lat,min_lon,max_lon". vmin/vmax = filtro altitud (ft).
+  // /tsas/active — TSAs activas. Modos:
+  //   - Punto en el tiempo: pasar solo `at` (default API = ahora).
+  //   - Rango: pasar `at` + `atTo`. Devuelve TSAs con al menos una
+  //     ventana solapando el periodo [at, atTo].
+  // bbox = "min_lat,max_lat,min_lon,max_lon"; vmin/vmax = filtro
+  // altitud (ft).
   function fetchActiveTSAs(params) {
     params = params || {};
     const qs = {};
-    if (params.at)   qs.at   = params.at instanceof Date ? params.at.toISOString() : params.at;
+    if (params.at)   qs.at    = params.at   instanceof Date ? params.at.toISOString()   : params.at;
+    if (params.atTo) qs.at_to = params.atTo instanceof Date ? params.atTo.toISOString() : params.atTo;
     if (params.bbox) qs.bbox = Array.isArray(params.bbox) ? params.bbox.join(',') : params.bbox;
     if (params.vmin != null) qs.vmin = params.vmin;
     if (params.vmax != null) qs.vmax = params.vmax;

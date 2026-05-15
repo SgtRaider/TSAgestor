@@ -2184,6 +2184,25 @@ body.welcome-open { overflow: hidden; }
 }
 .notamhub-check input { cursor: pointer; }
 
+.notamhub-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 8px;
+  font-size: 12px;
+}
+.notamhub-presets-label {
+  color: var(--ea-azul-palido);
+  font-weight: 600;
+  margin-right: 4px;
+}
+.btn.btn-sm {
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .notamhub-divider {
   text-align: center;
   position: relative;

@@ -239,14 +239,26 @@
           <h2 class="notamhub-title">Carga directa NotamHub (territorio nacional)</h2>
         </div>
         <p class="notamhub-desc">Descarga las <b>TSAs activas</b> y NOTAMs publicados por ENAIRE / ICARO XXI sin
-          necesidad de descargar el boletín PDF. Filtrable por hora UTC. La conexión va vía el proxy del
-          servidor con token de API. <a href="https://notamhub.duckdns.org/docs" target="_blank" rel="noopener noreferrer">Doc del API ↗</a></p>
+          necesidad de descargar el boletín PDF. Acepta hora puntual o <b>rango de fechas</b> (devuelve TSAs
+          con alguna ventana solapando el periodo). La conexión va vía el proxy del servidor con token de
+          API. <a href="https://notamhub.duckdns.org/docs" target="_blank" rel="noopener noreferrer">Doc del API ↗</a></p>
         <div class="notamhub-actions">
-          <label class="notamhub-input-label">Activas a las (UTC, opcional)
+          <label class="notamhub-input-label">Desde (UTC, opcional)
             <input type="datetime-local" id="notamhub-at" autocomplete="off">
           </label>
+          <label class="notamhub-input-label">Hasta (UTC, opcional)
+            <input type="datetime-local" id="notamhub-at-to" autocomplete="off">
+          </label>
           <button id="btn-notamhub-load" class="btn btn-primary" type="button">📡 Cargar TSAs activas</button>
-          <button id="btn-notamhub-now" class="btn" type="button" title="Pone la hora actual UTC en el campo">Ahora</button>
+        </div>
+        <div class="notamhub-presets">
+          <span class="notamhub-presets-label">Presets:</span>
+          <button class="btn btn-ghost btn-sm" type="button" data-notamhub-preset="now">Ahora</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-notamhub-preset="next6">Próximas 6 h</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-notamhub-preset="next24">Próximas 24 h</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-notamhub-preset="next48">Próximas 48 h</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-notamhub-preset="next7d">Próximos 7 días</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-notamhub-preset="clear">Limpiar</button>
         </div>
         <label class="notamhub-check" title="Tras cargar las TSAs nacionales, pide a Autorouter los NOTAMs de la FIR LPPC (Portugal) y convierte los M-series con polígono parseable en áreas adicionales en el mapa.">
           <input type="checkbox" id="notamhub-include-lppc" checked>
@@ -703,9 +715,9 @@
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
 <script src="js/filters.js"></script>
-<script src="js/notamHub.js?v=120"></script>
-<script src="js/notamView.js?v=120"></script>
-<script src="js/mapView.js?v=120"></script>
+<script src="js/notamHub.js?v=121"></script>
+<script src="js/notamView.js?v=121"></script>
+<script src="js/mapView.js?v=121"></script>
 <script src="js/crossSection.js"></script>
 <script src="js/flightPlan.js"></script>
 <script src="js/pdfExport.js"></script>

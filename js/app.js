@@ -442,19 +442,32 @@
     }
   }
 
-  // Carga TSAs directamente desde NotamHub (API ICARO nacional). Mismo
-  // flujo que handleFile pero sin pasar por el parser PDF: las TSAs
-  // ya vienen estructuradas del API.
-  async function handleNotamHubLoad(atIso) {
+  // datetime-local devuelve "YYYY-MM-DDTHH:MM" sin tz; el campo es UTC
+  // por contrato, asi que anyadimos 'Z' para que JS no lo interprete
+  // como hora local. null si el string esta vacio.
+  function parseUtcInput(iso) {
+    if (!iso) return null;
+    const d = new Date(iso + 'Z');
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // Carga TSAs directamente desde NotamHub (API ICARO nacional). Acepta
+  // punto en el tiempo (atIso) o rango (atIso + atToIso). Si solo se
+  // pasa atTo, lo ignoramos y usamos punto. Si solo at, snapshot
+  // puntual. Si ambos, rango con `at_to` -> TSAs solapando la ventana.
+  async function handleNotamHubLoad(atIso, atToIso) {
     const nh = window.TSAgestor && window.TSAgestor.notamHub;
     if (!nh) { setNotamHubStatus('notamHub no disponible.', 'error'); return; }
-    setNotamHubStatus('Consultando NotamHub…', 'loading');
-    // datetime-local devuelve "YYYY-MM-DDTHH:MM" sin tz; el campo es UTC
-    // por contrato, asi que anyadimos 'Z' para que JS no lo interprete
-    // como hora local.
-    const atDate = atIso ? new Date(atIso + 'Z') : new Date();
+    const atDate = parseUtcInput(atIso) || new Date();
+    const atToDate = parseUtcInput(atToIso);
+    const usingRange = !!(atToDate && atToDate.getTime() > atDate.getTime());
+    const queryParams = usingRange ? { at: atDate, atTo: atToDate } : { at: atDate };
+    setNotamHubStatus(usingRange
+      ? `Consultando NotamHub (rango ${atDate.toISOString().slice(0,16)}Z → ${atToDate.toISOString().slice(0,16)}Z)…`
+      : `Consultando NotamHub (punto ${atDate.toISOString().slice(0,16)}Z)…`,
+      'loading');
     try {
-      const apiList = await nh.fetchActiveTSAs({ at: atDate });
+      const apiList = await nh.fetchActiveTSAs(queryParams);
       if (!Array.isArray(apiList)) {
         setNotamHubStatus(
           'Respuesta inesperada del API (no es array): ' + JSON.stringify(apiList).slice(0, 200) +
@@ -463,8 +476,8 @@
       }
       if (apiList.length === 0) {
         setNotamHubStatus(
-          'El API devolvió 0 TSAs. Comprueba la hora (UTC) o que el token esté autorizado. ' +
-          'Abre F12 → Network → fíjate en la petición a /api/notamhub/tsas/active.', 'warn');
+          'El API devolvió 0 TSAs para el rango/hora pedido. ' +
+          'Comprueba que las fechas son UTC y que el token está autorizado.', 'warn');
         return;
       }
       const tsas = nh.convertTSAsToInternal(apiList, atDate);
@@ -476,18 +489,18 @@
       ensureMap();
       renderAll();
       if (!tsas.length) {
-        // El API devolvió >0 entradas pero todas fueron filtradas (polígono no parseable, etc.)
         const sample = apiList[0];
         setNotamHubStatus(
           `El API devolvió ${apiList.length} TSAs pero ninguna se pudo convertir. ` +
-          `Probable shape de polygon_geojson distinto del esperado. ` +
-          `Primera entrada: ${JSON.stringify(sample).slice(0, 250)} — abre F12 → Console para más detalle.`,
+          `Primera entrada: ${JSON.stringify(sample).slice(0, 250)} — abre F12 → Console.`,
           'error');
         return;
       }
-      const when = atDate.toISOString().slice(0, 16).replace('T', ' ') + 'Z';
-      setNotamHubStatus(`${tsas.length} TSAs activas a las ${when}. ` +
-        `Fuente: NotamHub /tsas/active.`, 'ok');
+      const whenLabel = usingRange
+        ? `${atDate.toISOString().slice(0, 16).replace('T', ' ')}Z → ${atToDate.toISOString().slice(0, 16).replace('T', ' ')}Z`
+        : `${atDate.toISOString().slice(0, 16).replace('T', ' ')}Z`;
+      setNotamHubStatus(`${tsas.length} TSAs ${usingRange ? 'en' : 'a'} ${whenLabel}. ` +
+        `Fuente: NotamHub /tsas/active${usingRange ? ' (rango)' : ''}.`, 'ok');
       setStatus(`${tsas.length} TSAs cargadas desde NotamHub.`, 'ok');
 
       // Si el checkbox LPPC está marcado, anyadimos las areas portuguesas
@@ -590,27 +603,43 @@
       if (f) handleFile(f);
     });
 
-    // NotamHub (API ICARO): boton "Cargar TSAs activas" + atajo "Ahora".
-    const btnNH    = $('#btn-notamhub-load');
-    const btnNHNow = $('#btn-notamhub-now');
-    const inputAt  = $('#notamhub-at');
+    // NotamHub (API ICARO): boton "Cargar TSAs activas" + presets.
+    const btnNH      = $('#btn-notamhub-load');
+    const inputAt    = $('#notamhub-at');
+    const inputAtTo  = $('#notamhub-at-to');
     if (btnNH) {
       btnNH.addEventListener('click', () => {
-        const v = inputAt && inputAt.value ? inputAt.value : '';
-        handleNotamHubLoad(v);
+        const v   = inputAt   && inputAt.value   ? inputAt.value   : '';
+        const v2  = inputAtTo && inputAtTo.value ? inputAtTo.value : '';
+        handleNotamHubLoad(v, v2);
       });
     }
-    if (btnNHNow && inputAt) {
-      btnNHNow.addEventListener('click', () => {
-        // datetime-local en UTC: tomamos now y formateamos como YYYY-MM-DDTHH:MM
-        // sin zona horaria, recordando al usuario que el campo va en UTC.
-        const d = new Date();
-        const pad = n => String(n).padStart(2, '0');
-        inputAt.value =
-          `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` +
-          `T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+    // Presets: now / next6 / next24 / next48 / next7d / clear. Rellenan
+    // los inputs at + at_to en UTC.
+    const pad = n => String(n).padStart(2, '0');
+    const toUtcInput = (d) =>
+      `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` +
+      `T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+    document.querySelectorAll('[data-notamhub-preset]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const preset = btn.dataset.notamhubPreset;
+        const now = new Date();
+        if (preset === 'clear') {
+          if (inputAt)   inputAt.value   = '';
+          if (inputAtTo) inputAtTo.value = '';
+          return;
+        }
+        if (preset === 'now') {
+          if (inputAt)   inputAt.value   = toUtcInput(now);
+          if (inputAtTo) inputAtTo.value = '';
+          return;
+        }
+        const hours = { next6: 6, next24: 24, next48: 48, next7d: 24 * 7 }[preset];
+        if (!hours) return;
+        if (inputAt)   inputAt.value   = toUtcInput(now);
+        if (inputAtTo) inputAtTo.value = toUtcInput(new Date(now.getTime() + hours * 3600 * 1000));
       });
-    }
+    });
   }
 
   // ── Selección ────────────────────────────────────────────────────────
