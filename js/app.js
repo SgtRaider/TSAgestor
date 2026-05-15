@@ -538,14 +538,15 @@
         'LPST', 'LPOV', 'LPVR',                // Sintra, Ovar, Vila Real
       ];
       const notamsAll = await meteo.fetchNotamsForAerodromes(LPPC_QUERY);
-      // Filtro estricto: solo aceptamos NOTAMs cuyo cuerpo contenga
-      // "EXC CONTROLLED AIRSPACE" (o EXCLUDING) o "TITAN SKY".
-      // Decision operativa del usuario para evitar ruido (Q-codes R*
-      // genericos traen muchas activaciones de procedimientos que no
-      // segregan area).
+      // Filtro estricto: aceptamos NOTAMs cuyo titulo (primera linea
+      // de iteme) o cuerpo contenga EXACTAMENTE alguno de:
+      //   - "EXC CONTROLLED AIRSPACE" (acepta tambien EXCLUDING)
+      //   - "TITAN SKY"
+      // Se busca en el texto reconstruido (n.text que incluye Q-line +
+      // A) + B) + ... + E) iteme + ...) y como fallback en iteme directo.
       const LPPC_BODY_RE = /\b(EXC(?:LUDING)?\s+CONTROLLED\s+AIRSPACE|TITAN\s+SKY)\b/i;
-      const notams = notamsAll.filter(n =>
-        LPPC_BODY_RE.test(String(n.text || n.raw || n.iteme || '')));
+      const bodyOf = n => String(n.text || n.raw || n.iteme || '');
+      const notams = notamsAll.filter(n => LPPC_BODY_RE.test(bodyOf(n)));
       console.info(`[notamhub+lppc] ${notamsAll.length} NOTAMs LPPC totales · ${notams.length} pasan el filtro EXC CONTROLLED AIRSPACE / TITAN SKY`);
       const lppcTsas = nh.convertAutorouterNotamsToTSAs(notams, {
         namePrefix: 'LPPC',
