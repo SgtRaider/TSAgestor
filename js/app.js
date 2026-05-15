@@ -537,18 +537,24 @@
         'LPCH', 'LPCO', 'LPMR', 'LPMT',        // Castelo Branco, Coimbra, Monte Real, Montijo
         'LPST', 'LPOV', 'LPVR',                // Sintra, Ovar, Vila Real
       ];
-      const notams = await meteo.fetchNotamsForAerodromes(LPPC_QUERY);
-      // Por ahora solo cargamos los MILITARES (Q-code R* o ids LP[RDT],
-      // M-series, keywords MIL/EXERCISE/TRG). El resto de NOTAMs LPPC
-      // siguen accesibles desde la pestanya NOTAMs sin pintar en mapa.
+      const notamsAll = await meteo.fetchNotamsForAerodromes(LPPC_QUERY);
+      // Filtro estricto: solo aceptamos NOTAMs cuyo cuerpo contenga
+      // "EXC CONTROLLED AIRSPACE" (o EXCLUDING) o "TITAN SKY".
+      // Decision operativa del usuario para evitar ruido (Q-codes R*
+      // genericos traen muchas activaciones de procedimientos que no
+      // segregan area).
+      const LPPC_BODY_RE = /\b(EXC(?:LUDING)?\s+CONTROLLED\s+AIRSPACE|TITAN\s+SKY)\b/i;
+      const notams = notamsAll.filter(n =>
+        LPPC_BODY_RE.test(String(n.text || n.raw || n.iteme || '')));
+      console.info(`[notamhub+lppc] ${notamsAll.length} NOTAMs LPPC totales · ${notams.length} pasan el filtro EXC CONTROLLED AIRSPACE / TITAN SKY`);
       const lppcTsas = nh.convertAutorouterNotamsToTSAs(notams, {
         namePrefix: 'LPPC',
         onlyMilitary: true,
       });
       if (!lppcTsas.length) {
         setNotamHubStatus(baseMsg +
-          ` · Autorouter devolvió ${notams.length} NOTAMs LPPC (FIR + aerodromos), ninguno militar con área parseable. ` +
-          `Mira F12 → Console para histograma Q-subject.`, 'warn');
+          ` · ${notamsAll.length} NOTAMs LPPC consultados, 0 con "EXC CONTROLLED AIRSPACE" o "TITAN SKY" y área parseable.`,
+          'warn');
         return;
       }
       // Anyadimos a state.tsas (sin duplicar por id).
