@@ -263,6 +263,22 @@
         <div id="notamhub-status" class="status"></div>
       </div>
 
+      <!-- Importar / Exportar KML -->
+      <div class="kml-card">
+        <div class="kml-head">
+          <span class="kml-tag">KML</span>
+          <h2 class="kml-title">Añadir / exportar TSAs en KML</h2>
+        </div>
+        <p class="kml-desc">Importa polígonos KML de otras FIRs (Portugal, Francia, ejercicios OTAN…) para complementar las TSAs nacionales. Tras importar puedes <b>editar altitud y validez</b> de cada TSA en la tabla. Todas las TSAs KML (importadas + editadas) se pueden volver a exportar como un único archivo KML.</p>
+        <div class="kml-actions">
+          <input type="file" id="kml-input" accept=".kml,application/vnd.google-earth.kml+xml,application/xml,text/xml" hidden multiple>
+          <label for="kml-input" class="btn btn-primary">📁 Importar KML</label>
+          <button id="btn-kml-export" class="btn" type="button" title="Descarga un .kml con todas las TSAs marcadas como KML">💾 Exportar KML</button>
+          <span id="kml-counter" class="kml-counter dim">0 TSAs KML cargadas</span>
+        </div>
+        <div id="kml-status" class="status"></div>
+      </div>
+
       <div class="notamhub-divider"><span>o cargar desde fichero</span></div>
 
       <div id="dropzone" class="dropzone">
@@ -725,9 +741,10 @@
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
 <script src="js/filters.js"></script>
-<script src="js/notamHub.js?v=146"></script>
-<script src="js/notamView.js?v=146"></script>
-<script src="js/mapView.js?v=146"></script>
+<script src="js/notamHub.js?v=147"></script>
+<script src="js/kmlIO.js?v=147"></script>
+<script src="js/notamView.js?v=147"></script>
+<script src="js/mapView.js?v=147"></script>
 <script src="js/crossSection.js"></script>
 <script src="js/flightPlan.js"></script>
 <script src="js/pdfExport.js"></script>
@@ -753,5 +770,41 @@
     });
   }
 </script>
+
+<!-- Modal de edición de TSA KML -->
+<div id="kml-edit-modal" class="kml-modal hidden" role="dialog" aria-labelledby="kml-edit-title">
+  <div class="kml-modal-backdrop"></div>
+  <div class="kml-modal-panel">
+    <header class="kml-modal-head">
+      <h2 id="kml-edit-title">Editar TSA KML</h2>
+      <button type="button" class="kml-modal-close" aria-label="Cerrar">×</button>
+    </header>
+    <div class="kml-modal-body">
+      <label class="kml-modal-field">
+        <span>Nombre</span>
+        <input type="text" id="kml-edit-name" autocomplete="off">
+      </label>
+      <div class="kml-modal-row">
+        <label class="kml-modal-field">
+          <span>Límite inferior</span>
+          <input type="text" id="kml-edit-lower" placeholder="GND, FL080, 2500FT AMSL" autocomplete="off">
+        </label>
+        <label class="kml-modal-field">
+          <span>Límite superior</span>
+          <input type="text" id="kml-edit-upper" placeholder="UNL, FL245, 10000FT AMSL" autocomplete="off">
+        </label>
+      </div>
+      <label class="kml-modal-field">
+        <span>Ventanas horarias <span class="dim">(una por línea, formato <code>YYYY-MM-DD HH:MM → YYYY-MM-DD HH:MM</code> UTC)</span></span>
+        <textarea id="kml-edit-schedules" rows="6" spellcheck="false" placeholder="2026-05-14 06:00 -> 2026-05-14 18:00&#10;2026-05-15 06:00 -> 2026-05-15 18:00"></textarea>
+      </label>
+      <p class="dim kml-modal-hint">Los cambios se aplican inmediatamente al mapa, la tabla y los filtros. Para conservarlos entre sesiones, exporta el KML.</p>
+    </div>
+    <footer class="kml-modal-foot">
+      <button type="button" id="btn-kml-edit-cancel" class="btn">Cancelar</button>
+      <button type="button" id="btn-kml-edit-save"   class="btn btn-primary">Guardar</button>
+    </footer>
+  </div>
+</div>
 </body>
 </html>

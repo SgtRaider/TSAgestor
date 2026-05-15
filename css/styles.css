@@ -2228,6 +2228,149 @@ body.welcome-open { overflow: hidden; }
   padding: 0 12px;
 }
 
+/* ── Tarjeta KML en Cargar ────────────────────────── */
+.kml-card {
+  background: linear-gradient(135deg, rgba(74, 222, 128, 0.10) 0%, rgba(22, 78, 99, 0.45) 100%);
+  border: 1px solid #4ade80;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+.kml-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.kml-tag {
+  display: inline-block;
+  background: #4ade80;
+  color: #064e3b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+.kml-title { margin: 0; font-size: 17px; color: #fff; }
+.kml-desc {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--ea-azul-palido);
+  line-height: 1.45;
+}
+.kml-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.kml-counter {
+  margin-left: auto;
+  font-size: 11px;
+  font-style: italic;
+}
+.btn-kml-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; height: 22px;
+  margin-left: 6px;
+  padding: 0;
+  border: 1px solid #4ade80;
+  background: rgba(74, 222, 128, 0.18);
+  color: #4ade80;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  vertical-align: middle;
+}
+.btn-kml-edit:hover { background: #4ade80; color: #064e3b; }
+
+/* ── Modal de edicion KML ─────────────────────────── */
+.kml-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.kml-modal.hidden { display: none; }
+.kml-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(2px);
+}
+.kml-modal-panel {
+  position: relative;
+  background: var(--bg-panel);
+  border: 1px solid var(--ea-azul-claro);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  width: 100%;
+  max-width: 560px;
+  max-height: 88vh;
+  overflow: auto;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+}
+.kml-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.kml-modal-head h2 { margin: 0; font-size: 16px; color: var(--ea-amarillo); }
+.kml-modal-close {
+  background: transparent;
+  border: none;
+  color: var(--ea-azul-palido);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.kml-modal-close:hover { color: #fff; }
+.kml-modal-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.kml-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ea-azul-palido);
+  font-weight: 600;
+}
+.kml-modal-field input,
+.kml-modal-field textarea {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: #fff;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 13px;
+  padding: 7px 9px;
+}
+.kml-modal-field input:focus,
+.kml-modal-field textarea:focus {
+  outline: none;
+  border-color: var(--ea-amarillo);
+  box-shadow: 0 0 0 2px rgba(250, 194, 0, 0.18);
+}
+.kml-modal-field textarea { resize: vertical; min-height: 80px; }
+.kml-modal-row { display: flex; gap: 12px; }
+.kml-modal-row .kml-modal-field { flex: 1; }
+.kml-modal-hint { margin: 0; font-size: 11px; }
+.kml-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.15);
+}
+
 /* ── Pestanya NOTAMs + Weather Hold ───────────────── */
 
 /* Toolbar superior: tarjeta con campo + botones + status */

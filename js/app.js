@@ -357,11 +357,16 @@
     const displayName = opts.isGroupMember
       ? escapeHTML(t.name)
       : `<b>${escapeHTML(t.name)}</b>`;
+    // Boton ✎ Editar solo para TSAs importadas de KML: permite ajustar
+    // altitud y validez (el KML normalmente no las trae).
+    const editBtn = (t._source === 'kml')
+      ? ` <button type="button" class="btn-kml-edit" data-id="${escapeHTML(t.id)}" title="Editar altitud y validez de esta TSA KML">✎</button>`
+      : '';
     tr.innerHTML = `
       <td class="col-check">
         <input type="checkbox" class="tsa-check" data-id="${escapeHTML(t.id)}"${isSelected ? ' checked' : ''}>
       </td>
-      <td${opts.isGroupMember ? ' class="tsa-name-indent"' : ''}>${displayName}</td>
+      <td${opts.isGroupMember ? ' class="tsa-name-indent"' : ''}>${displayName}${editBtn}</td>
       <td>${t.format}</td>
       <td>${escapeHTML(t.vertical.lowerLabel)}</td>
       <td>${escapeHTML(t.vertical.upperLabel)}</td>
@@ -515,6 +520,168 @@
     el.className = 'status' + (kind ? ' ' + kind : '');
   }
 
+  // ── KML import / export ────────────────────────────────────────────
+
+  function setKmlStatus(msg, kind) {
+    const el = $('#kml-status');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  function refreshKMLCounter() {
+    const el = $('#kml-counter');
+    if (!el) return;
+    const n = state.tsas.filter(t => t._source === 'kml').length;
+    el.textContent = `${n} TSA${n === 1 ? '' : 's'} KML cargada${n === 1 ? '' : 's'}`;
+  }
+
+  async function handleKMLImport(files) {
+    const kml = window.TSAgestor && window.TSAgestor.kmlIO;
+    if (!kml) { setKmlStatus('Módulo KML no disponible.', 'error'); return; }
+    setKmlStatus(`Importando ${files.length} archivo(s) KML…`, 'loading');
+    let importedTotal = 0, addedTotal = 0;
+    const existingIds = new Set(state.tsas.map(t => t.id));
+    for (const file of files) {
+      try {
+        const text = await file.text();
+        // Prefijo de nombre: usamos el nombre del archivo (sin .kml).
+        const prefix = file.name.replace(/\.kml$/i, '').replace(/[^\w\-\s]/g, '');
+        const parsed = kml.parseKML(text, { namePrefix: prefix });
+        importedTotal += parsed.length;
+        for (const t of parsed) {
+          if (existingIds.has(t.id)) continue;
+          state.tsas.push(t);
+          state.selected.add(t.id);
+          existingIds.add(t.id);
+          addedTotal++;
+        }
+      } catch (e) {
+        console.warn('[kml] error importando', file.name, e);
+      }
+    }
+    if (addedTotal > 0) {
+      sortTSAsByOriginProximity();
+      state.filter = readFilter();
+      $('#filter-bar').classList.remove('hidden');
+      ensureMap();
+      renderAll();
+      setKmlStatus(`✓ ${addedTotal} TSAs KML añadidas (${importedTotal} placemarks leídos). Edita altitud y validez con el botón ✎ en la tabla.`, 'ok');
+      setStatus(`+${addedTotal} TSAs KML.`, 'ok');
+    } else if (importedTotal > 0) {
+      setKmlStatus(`${importedTotal} placemarks leídos pero ninguno tenía polígono válido o todos eran duplicados.`, 'warn');
+    } else {
+      setKmlStatus('No se encontraron polígonos en los archivos KML.', 'error');
+    }
+    refreshKMLCounter();
+  }
+
+  function handleKMLExport() {
+    const kml = window.TSAgestor && window.TSAgestor.kmlIO;
+    if (!kml) { setKmlStatus('Módulo KML no disponible.', 'error'); return; }
+    const kmlTsas = state.tsas.filter(t => t._source === 'kml');
+    if (!kmlTsas.length) {
+      setKmlStatus('No hay TSAs KML para exportar. Importa primero un archivo .kml.', 'warn');
+      return;
+    }
+    const xml = kml.exportKML(state.tsas, {
+      onlyKmlSourced: true,
+      documentName: 'TSAgestor — TSAs KML',
+    });
+    const pad = n => String(n).padStart(2, '0');
+    const d = new Date();
+    const stamp = `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}-${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}`;
+    kml.downloadAsFile(xml, `tsagestor-kml-${stamp}.kml`);
+    setKmlStatus(`✓ Exportadas ${kmlTsas.length} TSAs a tsagestor-kml-${stamp}.kml`, 'ok');
+  }
+
+  // ── Editor modal de TSA KML ────────────────────────────────────────
+
+  let _kmlEditTargetId = null;
+
+  function openKMLEditor(tsaId) {
+    const t = state.tsas.find(x => x.id === tsaId);
+    if (!t) return;
+    _kmlEditTargetId = tsaId;
+    $('#kml-edit-name').value  = t.name || '';
+    $('#kml-edit-lower').value = (t.vertical && t.vertical.lowerLabel) || 'GND';
+    $('#kml-edit-upper').value = (t.vertical && t.vertical.upperLabel) || 'UNL';
+    $('#kml-edit-schedules').value = (t.schedules || []).map(s => {
+      const fmt = d => {
+        const x = d instanceof Date ? d : new Date(d);
+        if (isNaN(x.getTime())) return '';
+        const pad = n => String(n).padStart(2, '0');
+        return `${x.getUTCFullYear()}-${pad(x.getUTCMonth()+1)}-${pad(x.getUTCDate())} ${pad(x.getUTCHours())}:${pad(x.getUTCMinutes())}`;
+      };
+      return `${fmt(s.startUTC)} -> ${fmt(s.endUTC)}`;
+    }).join('\n');
+    $('#kml-edit-modal').classList.remove('hidden');
+  }
+
+  function closeKMLEditor() {
+    _kmlEditTargetId = null;
+    $('#kml-edit-modal').classList.add('hidden');
+  }
+
+  function saveKMLEditor() {
+    if (!_kmlEditTargetId) return closeKMLEditor();
+    const t = state.tsas.find(x => x.id === _kmlEditTargetId);
+    if (!t) return closeKMLEditor();
+    const newName  = $('#kml-edit-name').value.trim() || t.name;
+    const lowerLab = $('#kml-edit-lower').value.trim() || 'GND';
+    const upperLab = $('#kml-edit-upper').value.trim() || 'UNL';
+    const lowerP = (parser && parser.parseAltitudeToken) ? parser.parseAltitudeToken(lowerLab) : { ft: 0, label: lowerLab };
+    const upperP = (parser && parser.parseAltitudeToken) ? parser.parseAltitudeToken(upperLab) : { ft: 99999, label: upperLab };
+    // Parse schedules: cada linea "YYYY-MM-DD HH:MM -> YYYY-MM-DD HH:MM"
+    // (acepta tambien "→" o "-"). Las horas se interpretan como UTC.
+    const lines = $('#kml-edit-schedules').value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+    const newSchedules = [];
+    for (const line of lines) {
+      const m = line.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s*(?:->|→|—|-)\s*(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})$/);
+      if (!m) continue;
+      const start = new Date(`${m[1]}T${m[2]}:00Z`);
+      const end   = new Date(`${m[3]}T${m[4]}:00Z`);
+      if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) continue;
+      newSchedules.push({ startUTC: start, endUTC: end, raw: `KML manual · ${m[1]} ${m[2]}Z → ${m[3]} ${m[4]}Z` });
+    }
+    if (!newSchedules.length) {
+      // Si el usuario borró todo, conservamos al menos una ventana
+      // sintética para que la TSA no se quede sin schedule (rompe filtros).
+      const now = new Date();
+      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      newSchedules.push({ startUTC: start, endUTC: new Date(start.getTime() + 30 * 86400000), raw: 'KML manual · sin horario' });
+    }
+    t.name = newName;
+    t.vertical = {
+      lowerFt:    lowerP.ft,
+      upperFt:    upperP.ft,
+      lowerLabel: lowerP.label || lowerLab,
+      upperLabel: upperP.label || upperLab,
+    };
+    t.schedules = newSchedules;
+    closeKMLEditor();
+    renderAll();
+    if (state.mapReady && mapView.render) mapView.render(getVisible());
+  }
+
+  function wireKMLEditor() {
+    const modal = $('#kml-edit-modal');
+    if (!modal || modal._wired) return;
+    modal._wired = true;
+    $('#btn-kml-edit-cancel').addEventListener('click', closeKMLEditor);
+    $('#btn-kml-edit-save').addEventListener('click', saveKMLEditor);
+    modal.querySelector('.kml-modal-close').addEventListener('click', closeKMLEditor);
+    modal.querySelector('.kml-modal-backdrop').addEventListener('click', closeKMLEditor);
+    // Delegacion: cualquier .btn-kml-edit dentro de la tabla abre el modal.
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest && e.target.closest('.btn-kml-edit');
+      if (btn) {
+        e.preventDefault();
+        openKMLEditor(btn.dataset.id);
+      }
+    });
+  }
+
   function wireUpload() {
     const fileInput = $('#file-input');
     const dropzone = $('#dropzone');
@@ -541,6 +708,23 @@
       const f = e.dataTransfer.files && e.dataTransfer.files[0];
       if (f) handleFile(f);
     });
+
+    // KML import / export
+    const kmlInput = $('#kml-input');
+    if (kmlInput && !kmlInput._wired) {
+      kmlInput._wired = true;
+      kmlInput.addEventListener('change', async (e) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length) await handleKMLImport(files);
+        kmlInput.value = '';
+      });
+    }
+    const btnKmlExport = $('#btn-kml-export');
+    if (btnKmlExport && !btnKmlExport._wired) {
+      btnKmlExport._wired = true;
+      btnKmlExport.addEventListener('click', handleKMLExport);
+    }
+    refreshKMLCounter();
 
     // NotamHub (API ICARO): boton "Cargar TSAs activas" + presets.
     const btnNH      = $('#btn-notamhub-load');
@@ -2310,6 +2494,7 @@
   function renderAll() {
     renderTable();
     renderViews();
+    refreshKMLCounter();
   }
 
   // ── Bootstrap ────────────────────────────────────────────────────────
@@ -2397,6 +2582,7 @@
     wireFilter();
     wireActions();
     wireSelection();
+    wireKMLEditor();
     refreshExportUI();
     console.log('[TSAgestor] listo.');
   });
