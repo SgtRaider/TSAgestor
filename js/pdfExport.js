@@ -274,7 +274,7 @@ window.TSAgestor.pdfExport = (function () {
     doc.setFontSize(10);
     doc.setTextColor(40);
     const lines = [
-      `Inicial: ${fmtNum(fuel.initialFuel)} ${u}        Consumo base: ${fmtNum(fuel.fuelFlow)} ${u}/h        Velocidad base: ${fuel.defaultSpeedKt} kt`,
+      `Inicial: ${fmtNum(fuel.initialFuel)} ${u}        Consumo base: ${fmtNum(fuel.fuelFlow)} ${u}/h        IAS base: ${fuel.defaultSpeedKt} kt`,
       `Total consumido: ${fmtNum(fuel.totalFuelUsed)} ${u}        Restante en destino: ${fmtNum(fuel.finalRemaining)} ${u}        Tiempo total: ${formatDuration(fuel.totalTimeMin)}`,
     ];
     if (fuel.jokerFuel != null) {
@@ -309,11 +309,12 @@ window.TSAgestor.pdfExport = (function () {
     }
     y += 2;
 
-    // Tabla por tramos. Mantenemos siempre las columnas Viento y GS para que
-    // el PDF tenga el mismo layout que el log en pantalla; si no se han
-    // cargado vientos, las celdas muestran "—".
+    // Tabla por tramos. Mantenemos las columnas IAS / TAS / Viento / GS
+    // para que el PDF tenga el mismo layout que el log en pantalla. Si no
+    // se han cargado vientos, las celdas Viento/GS muestran "—". TAS = IAS
+    // corregida por altitud densidad (tabla bilineal en geom.kiasToTAS).
     y = ensureSpace(doc, y, 20, margin);
-    const head = ['#', 'Waypoint', 'Tramo NM', 'TAS kt', 'Viento', 'GS kt',
+    const head = ['#', 'Waypoint', 'Tramo NM', 'IAS kt', 'TAS kt', 'Viento', 'GS kt',
                   'T tramo', 'T total', `Cons ${u}/h`, `Comb tramo ${u}`,
                   `Restante ${u}`, 'Estado'];
     const statusColIdx = head.length - 1;
@@ -323,8 +324,9 @@ window.TSAgestor.pdfExport = (function () {
       body: fuel.rows.map(r => [
         r.index + 1,
         r.name,
-        r.index === 0 ? '—' : r.legDistNM.toFixed(1),
-        r.index === 0 ? '—' : Math.round(r.legSpeedKt),
+        (r.index === 0 || r.isHold) ? '—' : r.legDistNM.toFixed(1),
+        (r.index === 0 || r.isHold) ? '—' : (Number.isFinite(r.legIAS) ? Math.round(r.legIAS) : '—'),
+        (r.index === 0 || r.isHold) ? '—' : (Number.isFinite(r.legSpeedKt) ? Math.round(r.legSpeedKt) : '—'),
         (r.index === 0 || !r.wind) ? '—'
           : `${String(Math.round(r.wind.dir)).padStart(3, '0')}/${Math.round(r.wind.speedKt)}`,
         (r.index === 0 || r.legGS == null) ? '—' : Math.round(r.legGS),
