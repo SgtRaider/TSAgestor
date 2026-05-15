@@ -1317,6 +1317,19 @@ window.TSAgestor.mapView = (function () {
     }[c]));
   }
 
+  // Badge "Work Area" / "Transit Area" basado en _isWorkArea.
+  // Verde para work, rojo para transit, gris si no se conoce (TSAs sin
+  // origen NotamHub/PDF parsed que no expusieron el flag).
+  function buildAreaBadge(tsa) {
+    if (!tsa || typeof tsa._isWorkArea !== 'boolean') {
+      return `<span class="tsa-flag tsa-flag-unknown">Área TSA</span>`;
+    }
+    const isWork = tsa._isWorkArea === true;
+    const cls = isWork ? 'tsa-flag-work' : 'tsa-flag-transit';
+    const txt = isWork ? 'Work Area' : 'Transit Area';
+    return `<span class="tsa-flag ${cls}">${txt}</span>`;
+  }
+
   function buildPopup(tsa) {
     const fmt = window.TSAgestor.scheduleFmt;
     const lines = fmt
@@ -1325,7 +1338,9 @@ window.TSAgestor.mapView = (function () {
     const totalGroups = fmt ? fmt.listText(tsa.schedules).length : tsa.schedules.length;
     const more = totalGroups > 8 ? `<br><i>…y ${totalGroups - 8} grupos más</i>` : '';
     return `
-      <b>${escapeHTML(tsa.name)}</b><br>
+      <div class="tsa-popup-title-row">
+        <b>${escapeHTML(tsa.name)}</b>${buildAreaBadge(tsa)}
+      </div>
       <i>${tsa.format}</i><br>
       Altitud: <b>${escapeHTML(tsa.vertical.lowerLabel)}</b> → <b>${escapeHTML(tsa.vertical.upperLabel)}</b><br>
       Vértices: ${tsa.polygon.length}<br>
