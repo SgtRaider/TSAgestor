@@ -444,7 +444,11 @@ window.TSAgestor.notamHub = (function () {
     // Patron LPPC: "EXC CONTROLLED AIRSPACE" / "EXCLUDING CONTROLLED
     // AIRSPACE" significa que la activacion segrega un area dejando
     // fuera el CTA -> es una TSA militar en la practica.
-    if (/\bEXC(?:LUDING)?\s+CONTROLLED\s+AIRSPACE\b/i.test(raw)) return 'area-mil';
+    if (/\bEXC(?:LUDING)?\s+CONTROLLED\s+AIRSPACE\b/i.test(raw)) {
+      console.info('[notamHub] match EXC CONTROLLED AIRSPACE:', id,
+        '·', raw.replace(/\s+/g, ' ').slice(0, 200));
+      return 'area-mil';
+    }
     if (/\b(AREA|CORRIDOR|CORREDOR|TRA|TSA|TEMPORARY\s+RESERVED|RESTRICTED\s+AREA|DANGER\s+AREA|PROHIBITED\s+AREA)\b/i.test(raw)) return 'area';
     return null;
   }
@@ -501,6 +505,23 @@ window.TSAgestor.notamHub = (function () {
         JSON.parse(JSON.stringify(notams[0] || {})));
       console.debug('[notamHub] LPPC samples por Q-subject:', samples);
     }
+
+    // Pre-scan: lista todos los NOTAMs cuyo cuerpo contiene
+    // "EXC CONTROLLED AIRSPACE" para que el usuario pueda comprobar
+    // cuantos hay independientemente de si otra regla los clasificara
+    // antes. Solo log informativo, no afecta al pipeline.
+    const excList = [];
+    for (const n of (notams || [])) {
+      const raw = String(n && (n.text || n.raw) || '');
+      if (/\bEXC(?:LUDING)?\s+CONTROLLED\s+AIRSPACE\b/i.test(raw)) {
+        excList.push({
+          id: n.notamId || n.id || '?',
+          snippet: raw.replace(/\s+/g, ' ').slice(0, 160),
+        });
+      }
+    }
+    console.info(`[notamHub] LPPC NOTAMs con "EXC CONTROLLED AIRSPACE": ${excList.length}`);
+    if (excList.length) console.table(excList);
 
     const out = [];
     const stats = { total: 0, area: 0, mil: 0, polyOk: 0, polyFail: 0, notArea: 0, sourceQline: 0, sourceBody: 0 };
