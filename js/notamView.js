@@ -544,6 +544,24 @@ window.TSAgestor.notamView = (function () {
            /\bESPACIO\s+AEREO\b/.test(s);
   }
 
+  // Detecta NOTAMs de area por OTROS criterios ademas de la section:
+  //   - Series ICAO D / M / W (D = danger area / military activity,
+  //     M = military, W = warning). En el sistema espanyol estos son
+  //     los apartados de areas peligrosas / segregadas.
+  //   - Q-code subject R* (RR restringido, RD peligroso, RT temporal,
+  //     RP prohibido, RA airspace, RM restringido militar) que ICAO
+  //     usa para clasificar NOTAMs de espacio aereo.
+  function isAreaByIdOrQcode(notam) {
+    const id = String(notam.notamId || notam.id || '').trim();
+    // D2428/26, M0833/26, W0123/26 -> primera letra es la serie.
+    if (/^[DMW]\d/.test(id)) return true;
+    const raw = String(notam.text || notam.raw || notam.body || '');
+    // Q-line: Q) FIR/QXXYY/...  primera pareja XX = subject. R* = areas.
+    const m = raw.match(/Q\)\s*[A-Z]{4}\/Q([A-Z]{2})([A-Z]{2})\//);
+    if (m && /^R[RDPTAM]$/.test(m[1])) return true;
+    return false;
+  }
+
   function renderNotamList() {
     const root = $('#notam-results');
     if (!root) return;
@@ -673,9 +691,14 @@ window.TSAgestor.notamView = (function () {
         const id = String(n.notamId || '').trim();
         if (!id) continue;
         // Omitir NOTAMs de apartados de area (areas segregadas, TSAs,
-        // corredores, military training). En ICARO XXI el campo
-        // section identifica el capitulo del boletin.
-        if (isAreaSection(n._section)) { droppedAreas++; continue; }
+        // corredores, military training). Tres criterios:
+        //   1) section del API (ICARO XXI capitulo)
+        //   2) serie ICAO del id (D/M/W -> areas peligrosas/military/
+        //      warning, ej. D2428/26, M0833/26)
+        //   3) Q-code subject R* (RR/RD/RT/RP/RA/RM)
+        if (isAreaSection(n._section) || isAreaByIdOrQcode(n)) {
+          droppedAreas++; continue;
+        }
         if (!byId.has(id)) byId.set(id, n);
       }
       _state.notams = Array.from(byId.values());
