@@ -806,15 +806,13 @@ window.TSAgestor.meteoApi = (function () {
     // Reconstruccion del header Q-line si tenemos code23 + code45.
     // Formato: Q) FIR/QXXYY/Traffic/Purpose/Scope/Lower/Upper/<coord+rad>
     //
-    // Autorouter entrega lat/lon como NUMERO decimal en grados (positivo
-    // norte/este, negativo sur/oeste). radius en NM. Convertimos a
-    // formato ICAO compacto DDMMN/DDDMME para que parseNotamQLineGeometry
-    // pueda extraer centro+radio.
+    // Autorouter entrega lat/lon como ENTERO ESCALADO x10^7 (signed)
+    // — p.ej. 461311302 -> 46.1311302 grados; -105584612 -> -10.5585.
+    // Detectamos el escalado por magnitud (|v| > 360 = escalado) y
+    // dividimos antes de formatear ICAO compacto DDMMN/DDDMME.
     let qLine = '';
     if (n.code23 && n.code45) {
       const pad3 = v => (v == null ? '999' : String(v).padStart(3, '0'));
-      // Acepta number (decimal) o string ("44.5", "44"). Si vienen ya
-      // formateados ("4438N"), Number() devuelve NaN y dejamos pasar.
       const toNum = (v) => {
         if (typeof v === 'number') return Number.isFinite(v) ? v : null;
         if (typeof v === 'string') {
@@ -823,7 +821,15 @@ window.TSAgestor.meteoApi = (function () {
         }
         return null;
       };
-      const lat = toNum(n.lat), lon = toNum(n.lon), rad = toNum(n.radius);
+      // Si el numero es "muy grande" (mayor que 360 en valor absoluto)
+      // asumimos que viene escalado x10^7 y deshacemos el escalado.
+      const unscaleAngle = (v) => {
+        if (v == null) return null;
+        return Math.abs(v) > 360 ? v / 1e7 : v;
+      };
+      const lat = unscaleAngle(toNum(n.lat));
+      const lon = unscaleAngle(toNum(n.lon));
+      const rad = toNum(n.radius);
       const fmtLat = (v) => {
         if (v == null) return '';
         const hem = v >= 0 ? 'N' : 'S';
