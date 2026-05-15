@@ -1816,11 +1816,20 @@
       tr.className = rowClass(r);
       const isFirst = r.index === 0;
       const isHold = !!r.isHold;
-      // Vel/Flow: editable solo para vuelo; espera no tiene TAS, su flow
-      // sigue siendo editable porque la espera consume al ritmo /h.
-      const velCell = (isFirst || isHold)
+      // IAS / TAS / Flow:
+      //   - IAS = input editable (velocidad indicada del piloto). El
+      //     campo del override sigue siendo "speedKt" para compat con
+      //     planes guardados.
+      //   - TAS = calculada a partir de IAS + FL via geom.kiasToTAS
+      //     (read-only). La muestra flightPlan en r.legSpeedKt.
+      //   - Espera: ambas a "—". No hay TAS sin vuelo.
+      const iasVal = Number.isFinite(r.legIAS) ? Math.round(r.legIAS) : '';
+      const iasCell = (isFirst || isHold)
         ? '<td>—</td>'
-        : `<td><input type="number" class="leg-input leg-vel" data-leg="${r.index}" data-field="speedKt" value="${Math.round(r.legSpeedKt)}" min="50" max="900" step="5"></td>`;
+        : `<td><input type="number" class="leg-input leg-vel" data-leg="${r.index}" data-field="speedKt" value="${iasVal}" min="50" max="900" step="5" title="Velocidad indicada (KIAS)"></td>`;
+      const tasCell = (isFirst || isHold)
+        ? '<td>—</td>'
+        : `<td class="cell-tas" title="TAS calculada (tabla KIAS×altitud)">${Math.round(r.legSpeedKt)}</td>`;
       const flowCell = isFirst
         ? '<td>—</td>'
         : `<td><input type="number" class="leg-input leg-flow" data-leg="${r.index}" data-field="fuelFlow" value="${Math.round(r.legFuelFlow)}" min="0" step="10"></td>`;
@@ -1859,7 +1868,8 @@
         <td>${r.index + 1}</td>
         <td>${nameHTML}</td>
         <td class="cell-leg-dist">${isFirst || isHold ? '—' : r.legDistNM.toFixed(1)}</td>
-        ${velCell}
+        ${iasCell}
+        ${tasCell}
         <td class="cell-wind ${windCls}"${windTooltip}>${isHold ? '—' : windText}</td>
         <td class="cell-gs">${isHold ? '—' : gsText}</td>
         ${holdCell}
@@ -2038,6 +2048,8 @@
           : r.wind && r.wind.headwind < -5 ? 'wind-head' : '');
       }
       if (tdGS) tdGS.textContent = (isFirst || r.legGS == null) ? '—' : Math.round(r.legGS);
+      const tdTAS = tr.querySelector('.cell-tas');
+      if (tdTAS) tdTAS.textContent = (isFirst || r.isHold) ? '—' : Math.round(r.legSpeedKt);
     });
   }
 

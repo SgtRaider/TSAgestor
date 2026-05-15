@@ -96,6 +96,80 @@ window.TSAgestor.geom = (function () {
     return 'high';
   }
 
+  // ─── KIAS → TAS via tabla bilineal ─────────────────────────────────
+  // Tabla suministrada por el usuario. Filas = altitud densidad (pies),
+  // columnas = KIAS. Las celdas vacias (null) representan puntos fuera
+  // del rango de operacion practica (TAS muy altas a poca KIAS son
+  // imposibles, p.ej. 180 KIAS a 28000+ ft).
+  const TAS_DA   = [0, 2000, 4000, 6000, 8000, 10000, 12000, 14000, 16000, 18000,
+                    20000, 22000, 24000, 26000, 28000, 30000, 32000, 34000, 36000];
+  const TAS_KIAS = [60, 80, 100, 120, 140, 160, 180];
+  const TAS_TABLE = [
+    [ 60,  80, 100, 120, 140, 160, 180],
+    [ 62,  82, 103, 124, 144, 165, 185],
+    [ 64,  85, 106, 127, 149, 170, 191],
+    [ 66,  88, 109, 131, 153, 175, 197],
+    [ 68,  90, 113, 135, 158, 180, 203],
+    [ 70,  93, 116, 140, 163, 186, 209],
+    [ 72,  96, 120, 144, 168, 192, 216],
+    [ 74,  99, 124, 149, 174, 198, 223],
+    [ 77, 103, 128, 154, 179, 205, 231],
+    [ 79, 106, 132, 159, 185, 212, 238],
+    [ 82, 110, 137, 164, 192, 219, 247],
+    [ 85, 113, 142, 170, 198, 227, null],
+    [ 88, 117, 147, 176, 205, 235, null],
+    [ 91, 122, 152, 182, 213, 243, null],
+    [ 95, 126, 158, 189, 221, null, null],
+    [ 98, 131, 163, 196, 229, null, null],
+    [102, 136, 170, 204, 238, null, null],
+    [106, 141, 176, 211, 247, null, null],
+    [110, 147, 183, 220, null, null, null],
+  ];
+
+  // Busca el indice inferior del array para hacer interpolacion lineal.
+  // Devuelve [i0, i1, t] tal que val esta en [arr[i0], arr[i1]] y
+  // t = (val - arr[i0]) / (arr[i1] - arr[i0]). Extrapola con clamping.
+  function _bracket(arr, val) {
+    if (val <= arr[0]) return [0, 0, 0];
+    if (val >= arr[arr.length - 1]) return [arr.length - 1, arr.length - 1, 0];
+    for (let i = 0; i < arr.length - 1; i++) {
+      if (val >= arr[i] && val <= arr[i + 1]) {
+        const t = (val - arr[i]) / (arr[i + 1] - arr[i]);
+        return [i, i + 1, t];
+      }
+    }
+    return [arr.length - 1, arr.length - 1, 0];
+  }
+
+  // Lookup bilineal TAS(KIAS, altitud_densidad_ft). Si alguna esquina
+  // de la celda es null (fuera de rango operativo), usamos la mas
+  // cercana disponible en la columna.
+  function kiasToTAS(kias, daFt) {
+    if (!Number.isFinite(kias) || kias <= 0) return kias;
+    if (!Number.isFinite(daFt)) daFt = 0;
+    const [r0, r1, tr] = _bracket(TAS_DA,   daFt);
+    const [c0, c1, tc] = _bracket(TAS_KIAS, kias);
+    // Si la celda destino tiene null, hace fallback a la fila previa con valor.
+    function cell(r, c) {
+      let v = TAS_TABLE[r][c];
+      if (v != null) return v;
+      // Sube por la columna hasta encontrar una fila con dato.
+      for (let rr = r - 1; rr >= 0; rr--) {
+        if (TAS_TABLE[rr][c] != null) return TAS_TABLE[rr][c];
+      }
+      return null;
+    }
+    const v00 = cell(r0, c0), v01 = cell(r0, c1);
+    const v10 = cell(r1, c0), v11 = cell(r1, c1);
+    // Si todo es null, devolvemos KIAS (sin correccion).
+    if (v00 == null && v01 == null && v10 == null && v11 == null) return kias;
+    const v0 = (v00 == null ? v01 : v01 == null ? v00 : v00 + (v01 - v00) * tc);
+    const v1 = (v10 == null ? v11 : v11 == null ? v10 : v10 + (v11 - v10) * tc);
+    if (v0 == null) return v1;
+    if (v1 == null) return v0;
+    return v0 + (v1 - v0) * tr;
+  }
+
   // Distancia mínima de un punto P a un segmento geodésico AB (km).
   function pointToSegmentKm(P, A, B) {
     const dAB = greatCircleDistance(A, B);
@@ -132,5 +206,6 @@ window.TSAgestor.geom = (function () {
     altitudeBand,
     pointToSegmentKm,
     pointToPolylineKm,
+    kiasToTAS,
   };
 })();

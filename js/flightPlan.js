@@ -723,17 +723,31 @@ window.TSAgestor.flightPlan = (function () {
       ? opts.departureUTC.getTime()
       : (opts.departureUTC ? new Date(opts.departureUTC).getTime() : Date.now());
 
-    // TAS efectiva por leg (incluyendo overrides manuales).
-    const tasPerLeg = coords.map((_, i) => {
-      const ov = overrides[i] || {};
-      return Number.isFinite(ov.speedKt) && ov.speedKt > 0 ? ov.speedKt : speedKt;
-    });
-
     // FL efectivo por waypoint (cae al FL del plan si el waypoint no trae
     // ninguno asignado). Origen/destino suelen ir a GND (fl=0), TSAs a su
     // limite vertical, cruise al FL del formulario.
     const cruiseFL = Number(opts.flightLevel) || (coords[0] && coords[0].fl) || 350;
     const flPerWp = coords.map(c => Number.isFinite(c.fl) ? c.fl : cruiseFL);
+
+    // IAS introducida por el piloto (con override manual por leg). Antes
+    // se trataba esto como TAS, pero la velocidad indicada SI depende de
+    // la altitud (cae con la densidad), asi que aqui guardamos IAS y
+    // derivamos TAS via tabla bilineal kiasToTAS().
+    const iasPerLeg = coords.map((_, i) => {
+      const ov = overrides[i] || {};
+      return Number.isFinite(ov.speedKt) && ov.speedKt > 0 ? ov.speedKt : speedKt;
+    });
+    // TAS efectiva por leg: KIAS leida en la tabla con la altitud
+    // densidad = FL del segmento (uso FL destino como representante;
+    // para subdivisiones por cambio de FL >=5000ft el integrateLeg hace
+    // el calculo fino por sub-leg).
+    const kiasToTAS = (geom && geom.kiasToTAS)
+      ? geom.kiasToTAS
+      : ((k) => k);   // fallback identidad si la utilidad no esta.
+    const tasPerLeg = iasPerLeg.map((kias, i) => {
+      const flFt = (flPerWp[i] != null ? flPerWp[i] : cruiseFL) * 100;
+      return kiasToTAS(kias, flFt);
+    });
 
     // Detecta filas de "espera": coords sinteticas con isHold=true que
     // representan un hold sobre la posicion del waypoint anterior, sin
@@ -770,11 +784,17 @@ window.TSAgestor.flightPlan = (function () {
         const wA = o.phA ? lookupAt(o.phA, etaMid, flMid) : null;
         const wB = o.phB ? lookupAt(o.phB, etaMid, flMid) : null;
         const wSub = blendByPosition(wA, wB, tMid);
-        let gs = o.tas;
+        // TAS al FL del sub-leg: si nos pasaron `ias`, recalculamos
+        // (la densidad cae con la altura, asi que TAS sube). Si no,
+        // usamos el TAS fijo `o.tas` (compat hacia atras).
+        const tasSub = o.ias != null
+          ? (geom.kiasToTAS ? geom.kiasToTAS(o.ias, flMid * 100) : o.ias)
+          : o.tas;
+        let gs = tasSub;
         let hw = 0;
         if (wSub) {
           hw = -wSub.windSpeedKt * Math.cos((wSub.windDir - o.track) * Math.PI / 180);
-          gs = Math.max(30, o.tas + hw);
+          gs = Math.max(30, tasSub + hw);
           const r = wSub.windDir * Math.PI / 180;
           sumU += -wSub.windSpeedKt * Math.sin(r);
           sumV += -wSub.windSpeedKt * Math.cos(r);
@@ -851,7 +871,7 @@ window.TSAgestor.flightPlan = (function () {
             [coords[i - 1].lat, coords[i - 1].lon],
             [coords[i].lat,     coords[i].lon]);
           const res = integrateLeg({
-            legNM, track, tas: tasPerLeg[i],
+            legNM, track, tas: tasPerLeg[i], ias: iasPerLeg[i],
             flA: flPerWp[i - 1], flB: flPerWp[i],
             phA: windsHourly[i - 1], phB: windsHourly[i],
             etaA: prevEtas[i - 1], etaBest: prevEtas[i],
@@ -907,6 +927,7 @@ window.TSAgestor.flightPlan = (function () {
           fl: c.fl,
           isHold: true,
           legDistNM: 0,
+          legIAS: null,
           legSpeedKt: null,
           legGS: null,
           legFuelFlow: segFlow,
@@ -931,7 +952,7 @@ window.TSAgestor.flightPlan = (function () {
         const prev = coords[i - 1];
         track = geom.bearing([prev.lat, prev.lon], [c.lat, c.lon]);
         const res = integrateLeg({
-          legNM, track, tas: tasPerLeg[i],
+          legNM, track, tas: tasPerLeg[i], ias: iasPerLeg[i],
           flA: flPerWp[i - 1], flB: flPerWp[i],
           phA: windsHourly[i - 1], phB: windsHourly[i],
           etaA: etas[i - 1], etaBest: etas[i],
@@ -978,8 +999,9 @@ window.TSAgestor.flightPlan = (function () {
         airway: c.airway,
         fl: c.fl,
         legDistNM: legNM,
-        legSpeedKt: tasPerLeg[i],                  // TAS
-        legGS: i === 0 ? null : gs,
+        legIAS: iasPerLeg[i],                      // velocidad indicada (input)
+        legSpeedKt: tasPerLeg[i],                  // TAS (KIAS corregida por densidad)
+        legGS: i === 0 ? null : gs,                // GS = TAS + componente viento
         legFuelFlow: segFlow,
         wind: windInfo,
         speedOverridden: Number.isFinite(ov.speedKt) && ov.speedKt !== speedKt,

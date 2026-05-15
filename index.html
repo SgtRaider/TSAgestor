@@ -387,7 +387,7 @@
           <label>Nivel (FL)
             <input type="number" id="plan-fl" value="250" min="50" max="600" step="10">
           </label>
-          <label>Velocidad (kt)
+          <label title="Velocidad indicada (IAS / KIAS). La TAS la calcula la app por tramo a partir del FL real usando una tabla.">IAS (kt)
             <input type="number" id="plan-speed" value="120" min="50" max="900" step="10">
           </label>
           <label>Salida (UTC)
@@ -503,7 +503,8 @@
                   <th>#</th>
                   <th>Waypoint</th>
                   <th>Tramo (NM)</th>
-                  <th title="True Airspeed (entrada del piloto)">TAS (kt)</th>
+                  <th title="Indicated Airspeed (entrada del piloto, KIAS)">IAS (kt)</th>
+                  <th title="True Airspeed = IAS corregida por altitud densidad (tabla)">TAS (kt)</th>
                   <th title="Viento del tramo: dirección/velocidad">Viento</th>
                   <th title="Ground Speed: TAS corregida con componente de viento">GS (kt)</th>
                   <th title="Minutos de espera/hold sobre este waypoint. Se suma al tiempo de tramo y consume al ritmo de la columna Consumo.">Espera (min)</th>
