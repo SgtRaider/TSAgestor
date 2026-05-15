@@ -224,6 +224,10 @@ window.TSAgestor.notamHub = (function () {
         schedules = [{ startUTC, endUTC, raw: 'sintético 24h (API sin schedules)' }];
       }
 
+      // is_work_area: campo nuevo del API. true = area de trabajo
+      // (operativo), false = tránsito. Lo capturamos para que mapView
+      // pueda colorear y la leyenda diferenciar.
+      const isWorkArea = (t.is_work_area === true);
       out.push({
         id: 'NH_' + (t.parent_notam_id || i) + '_' + i,
         name: t.name,
@@ -238,11 +242,13 @@ window.TSAgestor.notamHub = (function () {
         schedules,
         rawBlock: `TSA ${t.name}\nNOTAM ${t.parent_notam_id || '?'}\n` +
                   `${lowerLabel} / ${upperLabel}\n` +
-                  `${schedules.length} ventana(s) horaria(s).`,
+                  `${schedules.length} ventana(s) horaria(s).` +
+                  `\nTipo: ${isWorkArea ? 'Área de trabajo' : 'Área de tránsito'}`,
         _source: 'notamhub',
         _parentNotam: t.parent_notam_id,
         _nSchedules: schedules.length,
         _isCircle: !!t.is_circle,
+        _isWorkArea: isWorkArea,
       });
     }
 

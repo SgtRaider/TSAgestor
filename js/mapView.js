@@ -40,6 +40,22 @@ window.TSAgestor.mapView = (function () {
     high: '#ef4444',
   };
 
+  // Nuevo esquema basado en is_work_area (NotamHub).
+  //   true  -> area de trabajo (operativa) -> VERDE
+  //   false -> area de transito           -> ROJO
+  //   indef -> fallback a band colors (caso parser PDF que no trae el flag)
+  const AREA_COLORS = {
+    work:    '#16a34a',   // verde
+    transit: '#dc2626',   // rojo
+  };
+  function tsaColor(tsa) {
+    if (tsa && tsa._isWorkArea === true)  return AREA_COLORS.work;
+    if (tsa && tsa._isWorkArea === false) return AREA_COLORS.transit;
+    // Fallback (parser PDF, sin info de tipo): usamos el viejo color por banda.
+    const band = geom.altitudeBand(tsa.vertical.upperFt);
+    return BAND_COLORS[band];
+  }
+
   const SEA_COLOR  = '#cce4f6';
   const LAND_FILL  = '#f3e6c4';
   const LAND_LINE  = '#7d6843';
@@ -747,8 +763,7 @@ window.TSAgestor.mapView = (function () {
     const tsaCount = filtered.length;
     const rows = groups.map(g => {
       const t = g.tsas[0]; // representante (misma vertical y schedule)
-      const band = geom.altitudeBand(t.vertical.upperFt);
-      const color = BAND_COLORS[band];
+      const color = tsaColor(t);
       const schedTxt = fmt ? fmt.listText(t.schedules).join(' · ') : '';
       const name = formatGroupNameLocal(g);
       const countBadge = g.tsas.length > 1
@@ -1258,10 +1273,9 @@ window.TSAgestor.mapView = (function () {
     legend.onAdd = function () {
       const div = L.DomUtil.create('div', 'map-legend');
       div.innerHTML =
-        '<b>Banda de altitud</b><br>' +
-        `<span class="swatch" style="background:${BAND_COLORS.low}"></span>≤ FL100<br>` +
-        `<span class="swatch" style="background:${BAND_COLORS.mid}"></span>FL100 – FL245<br>` +
-        `<span class="swatch" style="background:${BAND_COLORS.high}"></span>&gt; FL245`;
+        '<b>Áreas</b><br>' +
+        `<span class="swatch" style="background:${AREA_COLORS.work}"></span>Trabajo<br>` +
+        `<span class="swatch" style="background:${AREA_COLORS.transit}"></span>Tránsito`;
       return div;
     };
     legend.addTo(map);
@@ -1321,8 +1335,7 @@ window.TSAgestor.mapView = (function () {
     // Snapshot del listado para el handler de click (cierra sobre tsas).
     const tsaList = tsas.slice();
     for (const tsa of tsas) {
-      const band = geom.altitudeBand(tsa.vertical.upperFt);
-      const color = BAND_COLORS[band];
+      const color = tsaColor(tsa);
       const poly = L.polygon(tsa.polygon, {
         color, weight: 2, fillColor: color, fillOpacity: tsaOpacity,
         pane: 'tsaPane',
