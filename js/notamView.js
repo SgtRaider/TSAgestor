@@ -491,8 +491,127 @@ window.TSAgestor.notamView = (function () {
     return false;
   }
 
+  // Clasificacion por categoria. Devuelve { id, label } usado como
+  // modificador CSS (.notam-cat-{id}) y texto del badge. Prioridad:
+  //   1) Q-code (si esta presente en el body — formato ICAO).
+  //   2) Heuristicas de texto en castellano e ingles.
+  // El id se mantiene corto y estable porque tambien pinta el color
+  // del borde izquierdo del card.
+  function classifyNotam(notam) {
+    const raw = String(notam.text || notam.raw || notam.body || '').toUpperCase();
+    const q = raw.match(/Q\)\s*[A-Z]{4}\/Q([A-Z])([A-Z])/);
+    if (q) {
+      const c1 = q[1];
+      if (c1 === 'M') return { id: 'RWY',  label: 'Pista' };
+      if (c1 === 'L') return { id: 'LGT',  label: 'Iluminación' };
+      if (c1 === 'I' || c1 === 'N') return { id: 'NAV', label: 'Radioayudas' };
+      if (c1 === 'G') return { id: 'GPS',  label: 'GNSS' };
+      if (c1 === 'C') return { id: 'COMM', label: 'Comunicaciones' };
+      if (c1 === 'A') return { id: 'ATC',  label: 'ATC' };
+      if (c1 === 'O') return { id: 'OBST', label: 'Obstáculo' };
+      if (c1 === 'F') return { id: 'FAC',  label: 'Instalaciones' };
+      if (c1 === 'P') return { id: 'PROC', label: 'Procedimientos' };
+      if (c1 === 'W') return { id: 'WARN', label: 'Aviso' };
+    }
+    // Test order: lo MAS especifico primero. Procedimientos (IAC/RNP/
+    // SID/STAR) y augmentaciones GNSS (GBAS/SBAS/EGNOS) se evaluan
+    // ANTES que RWY/NAV genericos porque un NOTAM tipo "IAC 1 - RNP Z
+    // RWY 07 NO AVBL" es semanticamente un problema de procedimiento,
+    // no de pista; y "GBAS GLS RWY 14L U/S" es GNSS, no NAV.
+    if (/\b(SID|STAR|APCH|IAC|IAP|RNP|RNAV)\b/.test(raw))            return { id: 'PROC', label: 'Procedimientos' };
+    if (/\b(GBAS|SBAS|EGNOS|GPS|GNSS|RAIM)\b/.test(raw))             return { id: 'GPS',  label: 'GNSS' };
+    if (/\b(CRANE|GRUA|OBSTACL|OBST\b|MAST|TORRE|CHIMNEY)\b/.test(raw)) return { id: 'OBST', label: 'Obstáculo' };
+    // LGT antes que RWY porque "VASIS RWY 13 U/S" es un problema de
+    // iluminacion, no de pista. PAPI/VASIS/LGT son keywords muy
+    // especificos: solo aparecen en NOTAMs de iluminacion.
+    if (/\b(PAPI|VASIS|LIGHT(?:ING)?|LGT|ILUMINACI[OÓ]N)\b/.test(raw)) return { id: 'LGT',  label: 'Iluminación' };
+    if (/\b(RWY|RUNWAY|PISTA)\b/.test(raw))                          return { id: 'RWY',  label: 'Pista' };
+    if (/\b(TWY|TAXIWAY|RODAJE|APN|APRON|PLATAFORMA)\b/.test(raw))   return { id: 'TWY',  label: 'Calle de rodaje' };
+    if (/\b(ILS|VOR|NDB|DME|LOC|GP|TACAN)\b/.test(raw))              return { id: 'NAV',  label: 'Radioayudas' };
+    if (/\b(GCA|TWR|APP|ATC|TORRE\s+CONTROL)\b/.test(raw))           return { id: 'ATC',  label: 'ATC' };
+    if (/\b(FREQ|FRECUENCIA|MHZ|KHZ|ATIS|GND\s+CTL)\b/.test(raw))    return { id: 'COMM', label: 'Comunicaciones' };
+    if (/\b(FUEL|JET\s*A1|AVGAS|COMBUSTIBLE)\b/.test(raw))           return { id: 'FUEL', label: 'Combustible' };
+    if (/\b(WIP|WORK\s+IN\s+PROGRESS|TRABAJOS|OBRAS)\b/.test(raw))   return { id: 'WIP',  label: 'Obras' };
+    if (/\b(AIP|AMDT|SUP)\b/.test(raw))                              return { id: 'AIP',  label: 'AIP' };
+    return { id: 'OTHER', label: 'Otros' };
+  }
+
+  // Estado temporal relativo. Devuelve { kind, label } para pintar un
+  // chip junto a la ventana de validez. nowMs por defecto = ahora.
+  function notamTimeStatus(notam, nowMs) {
+    nowMs = nowMs || Date.now();
+    const fromMs = Date.parse(notam.fromDate || notam.startValidity || '');
+    if (Number.isNaN(fromMs)) return null;
+    const permanent = !!notam._isPermanent ||
+      /PERM/i.test(String(notam.toDate || notam.endValidity || ''));
+    const toMs = permanent ? Infinity : Date.parse(notam.toDate || notam.endValidity || '');
+    if (!permanent && Number.isNaN(toMs)) return null;
+
+    const HOUR = 3600 * 1000;
+    const DAY  = 24 * HOUR;
+
+    if (nowMs < fromMs) {
+      return { kind: 'future', label: 'Inicia en ' + humanDelta(fromMs - nowMs) };
+    }
+    if (!permanent && nowMs > toMs) {
+      return { kind: 'expired', label: 'Expirado' };
+    }
+    if (permanent) {
+      return { kind: 'perm', label: 'Activo · PERM' };
+    }
+    const left = toMs - nowMs;
+    if (left < HOUR)       return { kind: 'urgent', label: 'Termina en <1 h' };
+    if (left < DAY)        return { kind: 'urgent', label: 'Termina en ' + humanDelta(left) };
+    if (left < 3 * DAY)    return { kind: 'soon',   label: 'Termina en ' + humanDelta(left) };
+    return { kind: 'active', label: 'Activo · ' + humanDelta(left) + ' restantes' };
+  }
+
+  function humanDelta(ms) {
+    if (ms < 60 * 1000) return '<1 min';
+    const min = Math.round(ms / 60000);
+    if (min < 60) return min + ' min';
+    const h = Math.round(min / 60);
+    if (h < 48) return h + ' h';
+    const d = Math.round(h / 24);
+    return d + ' d';
+  }
+
+  // Subraya tokens operativamente relevantes dentro del texto crudo del
+  // NOTAM. La entrada se escapa primero a HTML, luego se inyectan los
+  // <span> con clases hl-* (RWY/TWY codes, frecuencias, FL, estados
+  // U/S/CLSD/AVBL, fechas). Asi el piloto identifica de un vistazo
+  // que esta limitado.
+  function highlightBody(text) {
+    let s = String(text == null ? '' : text)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    // RWY/TWY designators (RWY 14L/32R, RWY 04, TWY E-4, TWY B)
+    s = s.replace(/\bRWY\s+([0-9]{1,2}[LRC]?(?:\/[0-9]{1,2}[LRC]?)?)\b/g,
+      '<span class="hl-rwy">RWY $1</span>');
+    s = s.replace(/\bTWY\s+([A-Z](?:[0-9A-Z\-\/]{0,6}))\b/g,
+      '<span class="hl-twy">TWY $1</span>');
+    // Frecuencias VHF/MHz/kHz
+    s = s.replace(/\b(\d{3}\.\d{1,3})\s*MHZ\b/g, '<span class="hl-freq">$1 MHz</span>');
+    s = s.replace(/\b(\d{3,4})\s*KHZ\b/g, '<span class="hl-freq">$1 kHz</span>');
+    // Niveles de vuelo y altitudes
+    s = s.replace(/\bFL\s*0*([0-9]{2,3})\b/g, '<span class="hl-fl">FL$1</span>');
+    s = s.replace(/\b(\d{3,5})\s*FT\s*(AMSL|MSL|AGL|GND)?\b/g, function(_m, ft, ref) {
+      return '<span class="hl-fl">' + ft + ' FT' + (ref ? ' ' + ref : '') + '</span>';
+    });
+    // Estado: malo
+    s = s.replace(/\b(U\/S|UNSERVICEABLE|CLSD|CLOSED|CERRAD[OA]S?|NOT\s+AVBL|NO\s+AVBL|PROHIB)\b/g,
+      '<span class="hl-bad">$1</span>');
+    // Estado: bueno
+    s = s.replace(/\b(AVBL|AVAILABLE|DISPONIBLE|SERVICEABLE)\b/g,
+      '<span class="hl-good">$1</span>');
+    // Estado: precaucion
+    s = s.replace(/\b(LIMITADO|LIMITED|DEGRADED|DEGRADADO|RESTRINGIDO|RESTRICTED|REDUCED)\b/g,
+      '<span class="hl-warn">$1</span>');
+    return s;
+  }
+
   function renderNotamCard(n) {
-    const raw = String(n.text || n.raw || '');
+    const raw = String(n.text || n.raw || n.body || '');
     const closure = isClosureNotam(n);
     const isArea  = isAreaNotam(n);
     const id = String(n.notamId || n.id || '—');
@@ -505,14 +624,19 @@ window.TSAgestor.notamView = (function () {
     const fromIso = n.fromDate || n.startValidity;
     const toIso   = n.toDate   || n.endValidity;
     const perm = n._isPermanent || (toIso && /PERM/i.test(String(toIso)));
+    const cat = classifyNotam(n);
+    const status = notamTimeStatus(n);
+
     const tags = [];
     if (closure) tags.push('<span class="notam-tag notam-tag-red">CIERRE</span>');
+    else tags.push(`<span class="notam-tag notam-cat-tag notam-cat-${cat.id}">${escapeHTML(cat.label)}</span>`);
     if (isArea && !closure) tags.push('<span class="notam-tag notam-tag-amber">ÁREA</span>');
     if (perm) tags.push('<span class="notam-tag notam-tag-grey">PERM</span>');
     if (n._isEstimate) tags.push('<span class="notam-tag notam-tag-grey" title="Validez estimada">EST</span>');
 
-    const cardClass = closure ? 'notam-card-closure'
-                   : (isArea ? 'notam-card-area' : '');
+    const cardClass = closure
+      ? 'notam-card-closure'
+      : (isArea ? 'notam-card-area' : `notam-card-cat-${cat.id}`);
 
     // Cabecera estructurada con chips de metadatos
     const metaChips = [];
@@ -523,6 +647,10 @@ window.TSAgestor.notamView = (function () {
       metaChips.push(`<span class="notam-chip notam-chip-series" title="Serie ICAO ${escapeHTML(series)}">${escapeHTML(series)} · ${escapeHTML(seriesLabel)}</span>`);
     }
 
+    const statusChip = status
+      ? `<span class="notam-status-chip notam-status-${status.kind}">${escapeHTML(status.label)}</span>`
+      : '';
+
     return `
       <article class="notam-card ${cardClass}">
         <header class="notam-card-head">
@@ -532,12 +660,15 @@ window.TSAgestor.notamView = (function () {
             ${tags.join('')}
           </div>
           <div class="notam-card-window">
-            <span class="notam-window-label">Desde</span> ${escapeHTML(fmtDate(fromIso))}
-            <span class="notam-window-arrow">→</span>
-            <span class="notam-window-label">Hasta</span> ${perm ? '<b>PERM</b>' : escapeHTML(fmtDate(toIso))}
+            ${statusChip}
+            <span class="notam-window-dates">
+              <span class="notam-window-label">Desde</span> ${escapeHTML(fmtDate(fromIso))}
+              <span class="notam-window-arrow">→</span>
+              <span class="notam-window-label">Hasta</span> ${perm ? '<b>PERM</b>' : escapeHTML(fmtDate(toIso))}
+            </span>
           </div>
         </header>
-        <pre class="notam-body">${escapeHTML(raw)}</pre>
+        <pre class="notam-body">${highlightBody(raw)}</pre>
       </article>`;
   }
 
