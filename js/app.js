@@ -1271,6 +1271,9 @@
       };
       plan.coords.splice(target + 1, 0, holdCoord);
       plan.fuelOpts.legOverrides.splice(target + 1, 0, { holdMin: h.holdMin || 0 });
+      if (Array.isArray(plan.fuelOpts.windsHourly)) {
+        plan.fuelOpts.windsHourly.splice(target + 1, 0, plan.fuelOpts.windsHourly[target] || null);
+      }
     }
     plan.fuel = flightPlan.buildFuelLog(plan.coords, plan.fuelOpts);
     renderFuelLog(plan.fuel);
@@ -1983,6 +1986,14 @@
     plan.coords.splice(afterIdx + 1, 0, holdCoord);
     plan.fuelOpts.legOverrides = plan.fuelOpts.legOverrides || [];
     plan.fuelOpts.legOverrides.splice(afterIdx + 1, 0, { holdMin: DEFAULT_HOLD_MIN });
+    // Mantener vientos alineados: buildFuelLog descarta windsHourly si
+    // su length != coords.length, asi que al insertar un coord hay que
+    // insertar tambien una entrada en windsHourly (clonamos la del
+    // waypoint anterior, que es la misma posicion fisica que el hold).
+    if (Array.isArray(plan.fuelOpts.windsHourly)) {
+      const cloned = plan.fuelOpts.windsHourly[afterIdx] || null;
+      plan.fuelOpts.windsHourly.splice(afterIdx + 1, 0, cloned);
+    }
     // Re-render completo: hay que recrear filas e indices, no basta in-place.
     plan.fuel = flightPlan.buildFuelLog(plan.coords, plan.fuelOpts);
     renderFuelLog(plan.fuel);
@@ -1997,6 +2008,9 @@
     if (!plan || !plan.coords || !plan.coords[idx] || !plan.coords[idx].isHold) return;
     plan.coords.splice(idx, 1);
     if (plan.fuelOpts.legOverrides) plan.fuelOpts.legOverrides.splice(idx, 1);
+    if (Array.isArray(plan.fuelOpts.windsHourly)) {
+      plan.fuelOpts.windsHourly.splice(idx, 1);
+    }
     plan.fuel = flightPlan.buildFuelLog(plan.coords, plan.fuelOpts);
     renderFuelLog(plan.fuel);
     syncEtaUTCToCoords(plan);
