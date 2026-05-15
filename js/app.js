@@ -542,12 +542,22 @@
       // de iteme) o cuerpo contenga EXACTAMENTE alguno de:
       //   - "EXC CONTROLLED AIRSPACE" (acepta tambien EXCLUDING)
       //   - "TITAN SKY"
-      // Se busca en el texto reconstruido (n.text que incluye Q-line +
-      // A) + B) + ... + E) iteme + ...) y como fallback en iteme directo.
+      // Ademas descartamos:
+      //   - TRIGGER NOTAMs (apuntan a un AIP SUP sin coords reales, se
+      //     dibujan como circulos gigantes de 999 NM).
+      //   - NOTAMs con radius >= 100 NM (placeholder FIR-wide sin
+      //     informacion operacional util).
       const LPPC_BODY_RE = /\b(EXC(?:LUDING)?\s+CONTROLLED\s+AIRSPACE|TITAN\s+SKY)\b/i;
       const bodyOf = n => String(n.text || n.raw || n.iteme || '');
-      const notams = notamsAll.filter(n => LPPC_BODY_RE.test(bodyOf(n)));
-      console.info(`[notamhub+lppc] ${notamsAll.length} NOTAMs LPPC totales · ${notams.length} pasan el filtro EXC CONTROLLED AIRSPACE / TITAN SKY`);
+      const isTrigger = (n) => /\bTRIGGER\s+NOTAM\b/i.test(bodyOf(n));
+      const hasReasonableRadius = (n) => {
+        const r = Number(n.radius);
+        return !Number.isFinite(r) || (r > 0 && r < 100);
+      };
+      const matched = notamsAll.filter(n => LPPC_BODY_RE.test(bodyOf(n)));
+      const notams = matched.filter(n => !isTrigger(n) && hasReasonableRadius(n));
+      const droppedTrigger = matched.length - notams.length;
+      console.info(`[notamhub+lppc] ${notamsAll.length} NOTAMs LPPC totales · ${matched.length} con EXC/TITAN SKY · ${notams.length} operativos (descartados ${droppedTrigger} TRIGGER / radius>=100NM)`);
       const lppcTsas = nh.convertAutorouterNotamsToTSAs(notams, {
         namePrefix: 'LPPC',
         onlyMilitary: true,

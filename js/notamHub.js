@@ -409,6 +409,36 @@ window.TSAgestor.notamHub = (function () {
     return out;
   }
 
+  // Intenta extraer un bbox util de los campos crudos de Autorouter:
+  //   nelat, nelon, swlat, swlon (escalados x10^7 igual que lat/lon)
+  // Devuelve { minLat, maxLat, minLng, maxLng } si los cuatro existen y
+  // el extent es razonable (< 5 grados en cada eje, ~300 NM). Para los
+  // TRIGGER NOTAMs el bbox suele ser gigante (todo el Atlantico) -> lo
+  // descartamos para no pintar un poligono inutil.
+  function tryBboxFromAutorouter(n) {
+    if (!n) return null;
+    const unscale = (v) => {
+      const x = typeof v === 'number' ? v : Number(v);
+      if (!Number.isFinite(x)) return null;
+      return Math.abs(x) > 360 ? x / 1e7 : x;
+    };
+    const nelat = unscale(n.nelat);
+    const nelon = unscale(n.nelon);
+    const swlat = unscale(n.swlat);
+    const swlon = unscale(n.swlon);
+    if (nelat == null || nelon == null || swlat == null || swlon == null) return null;
+    const minLat = Math.min(nelat, swlat);
+    const maxLat = Math.max(nelat, swlat);
+    const minLng = Math.min(nelon, swlon);
+    const maxLng = Math.max(nelon, swlon);
+    const dLat = maxLat - minLat;
+    const dLng = maxLng - minLng;
+    // Bbox demasiado grande -> probable placeholder FIR-wide. Descarta.
+    if (dLat <= 0 || dLng <= 0) return null;
+    if (dLat > 5 || dLng > 5) return null;
+    return { minLat, maxLat, minLng, maxLng };
+  }
+
   // Extrae el contenido de un campo NOTAM (E, F, G) del raw text.
   function notamField(raw, letter) {
     if (!raw) return '';
@@ -545,15 +575,36 @@ window.TSAgestor.notamHub = (function () {
         continue;
       }
       if (cls === 'area-mil') stats.mil++; else stats.area++;
-      const geom = meteo.parseNotamGeometry(raw);
-      let polygon;
-      if (geom && geom.kind === 'poly') {
-        polygon = geom.latlngs;
-      } else if (geom && geom.kind === 'circle') {
-        polygon = circleToPolygon(geom.center[0], geom.center[1], geom.radiusM / 1852);
+      // Geometria: preferimos el bbox de Autorouter (nelat/nelon/swlat/
+      // swlon, escalados x10^7) cuando esta acotado y es razonable,
+      // porque suele estar mas pegado al area real que el Q-line center
+      // + radius (que a veces es FIR-wide). Si bbox no es valido o es
+      // gigante, caemos al parser tradicional (Q-line / cuerpo).
+      let polygon = null;
+      let geomSource = '';
+      const bbox = tryBboxFromAutorouter(n);
+      if (bbox) {
+        polygon = [
+          [bbox.minLat, bbox.minLng],
+          [bbox.minLat, bbox.maxLng],
+          [bbox.maxLat, bbox.maxLng],
+          [bbox.maxLat, bbox.minLng],
+          [bbox.minLat, bbox.minLng],
+        ];
+        geomSource = 'bbox';
+        stats.sourceBody++;
       }
-      if (geom && /^q-/.test(geom.source || '')) stats.sourceQline++;
-      else if (geom) stats.sourceBody++;
+      if (!polygon) {
+        const geom = meteo.parseNotamGeometry(raw);
+        if (geom && geom.kind === 'poly') {
+          polygon = geom.latlngs;
+        } else if (geom && geom.kind === 'circle') {
+          polygon = circleToPolygon(geom.center[0], geom.center[1], geom.radiusM / 1852);
+        }
+        if (geom && /^q-/.test(geom.source || '')) stats.sourceQline++;
+        else if (geom) stats.sourceBody++;
+        geomSource = geom ? geom.source : '';
+      }
       if (!polygon || polygon.length < 3) {
         stats.polyFail++;
         if (stats.polyFail <= 3) {
