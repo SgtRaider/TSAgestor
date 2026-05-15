@@ -641,7 +641,7 @@ window.TSAgestor.notamHub = (function () {
         _parentNotam: id,
         _icaoLocation: n.icaoLocation || '',
         _areaKind: cls,
-        _geomSource: geom && geom.source,
+        _geomSource: geomSource,
       });
     }
     console.info(`[notamHub] Autorouter→TSAs: ${stats.total} entradas · ` +
