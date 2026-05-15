@@ -725,16 +725,29 @@ window.TSAgestor.mapView = (function () {
   let tsaLegendCtl = null;
   let tsaLegendTSAs = [];
 
-  // Ventana [hoy 00:00 UTC, pasado-manyana 00:00 UTC) = 48h de calendario.
-  function todayPlusTomorrowUTC() {
+  // Ventana de TSAs visibles en la leyenda. Por defecto = 48h (hoy +
+  // manyana). Si HOY es VIERNES (UTC), se amplia hasta el LUNES
+  // incluido (4 dias: vie+sab+dom+lun) porque las operaciones de fin
+  // de semana suelen consultar el bloque entero el viernes.
+  function legendWindowUTC() {
     const now = new Date();
     const startMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    return { startMs, endMs: startMs + 2 * 86400000 };
+    // getUTCDay: 0=Dom, 1=Lun, 2=Mar, 3=Mie, 4=Jue, 5=Vie, 6=Sab
+    const dow = now.getUTCDay();
+    const isFriday = dow === 5;
+    const days = isFriday ? 4 : 2;   // vie..lun (4) o hoy..manyana (2)
+    return {
+      startMs,
+      endMs: startMs + days * 86400000,
+      isFriday,
+      days,
+    };
   }
 
-  // Filtra TSAs y sus schedules para mostrar solo lo que cae en hoy+manyana.
+  // Filtra TSAs y sus schedules para mostrar solo lo que cae en la
+  // ventana actual (2 o 4 dias segun sea viernes o no).
   function filterForTodayAndTomorrow(tsas) {
-    const { startMs, endMs } = todayPlusTomorrowUTC();
+    const { startMs, endMs } = legendWindowUTC();
     const out = [];
     for (const t of tsas) {
       const inWindow = (t.schedules || []).filter(s =>
@@ -747,17 +760,25 @@ window.TSAgestor.mapView = (function () {
 
   function buildTSALegendHTML(tsas) {
     const filtered = filterForTodayAndTomorrow(tsas);
-    const win = todayPlusTomorrowUTC();
+    const win = legendWindowUTC();
     const winLabel = (() => {
       const a = new Date(win.startMs);
       const b = new Date(win.endMs - 86400000);  // ultimo dia inclusivo
       const fmtDate = d => `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}`;
       return `${fmtDate(a)} – ${fmtDate(b)} UTC`;
     })();
+    // Titulo dinamico: en viernes muestra el bloque completo de fin
+    // de semana incluido el lunes.
+    const headTitle = win.isFriday
+      ? 'TSAs activas viernes → lunes'
+      : 'TSAs activas hoy &amp; mañana';
+    const emptyMsg = win.isFriday
+      ? 'Ninguna TSA activa de viernes a lunes'
+      : 'Ninguna TSA activa hoy o mañana';
     if (!filtered.length) {
       return `
-        <div class="tsa-legend-head">TSAs activas hoy &amp; mañana <span class="tsa-legend-count">0</span></div>
-        <div class="tsa-legend-empty"><i>Ninguna TSA activa hoy o mañana</i><br><span class="tsa-legend-window">${winLabel}</span></div>`;
+        <div class="tsa-legend-head">${headTitle} <span class="tsa-legend-count">0</span></div>
+        <div class="tsa-legend-empty"><i>${emptyMsg}</i><br><span class="tsa-legend-window">${winLabel}</span></div>`;
     }
     const fmt = window.TSAgestor.scheduleFmt;
     // Agrupamiento visual por prefijo de nombre + misma banda vertical +
@@ -787,7 +808,7 @@ window.TSAgestor.mapView = (function () {
       ? `${tsaCount}`
       : `${tsaCount} TSAs · ${groupCount} grupos`;
     return `
-      <div class="tsa-legend-head">TSAs activas hoy &amp; mañana <span class="tsa-legend-count">${countTxt}</span></div>
+      <div class="tsa-legend-head">${headTitle} <span class="tsa-legend-count">${countTxt}</span></div>
       <div class="tsa-legend-window-bar">${winLabel}</div>
       <div class="tsa-legend-body">${rows}</div>`;
   }
