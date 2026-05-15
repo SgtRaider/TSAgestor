@@ -70,6 +70,21 @@ window.TSAgestor.filters = (function () {
 
   function matches(tsa, state) {
     if (!state) return true;
+    // Filtro por tipo (work/transit). Si la TSA no tiene _isWorkArea
+    // boolean, la dejamos pasar en cualquier filtro de tipo (no podemos
+    // clasificarla — caso tipico de KML importado sin metadata).
+    if (state.tsaType === 'work'    && tsa._isWorkArea === false) return false;
+    if (state.tsaType === 'transit' && tsa._isWorkArea === true)  return false;
+    // Filtro "active-now": al menos una ventana cubre el momento actual.
+    if (state.activeNow) {
+      const now = Date.now();
+      const anyActive = (tsa.schedules || []).some(s => {
+        const a = s.startUTC instanceof Date ? s.startUTC.getTime() : Date.parse(s.startUTC);
+        const b = s.endUTC   instanceof Date ? s.endUTC.getTime()   : Date.parse(s.endUTC);
+        return Number.isFinite(a) && Number.isFinite(b) && a <= now && now < b;
+      });
+      if (!anyActive) return false;
+    }
     const anyField = state.dateFrom || state.dateTo || state.timeFrom || state.timeTo;
     if (!anyField) return true;
     return tsa.schedules.some(s => scheduleMatches(s, state));
@@ -82,6 +97,9 @@ window.TSAgestor.filters = (function () {
   function summaryText(state) {
     if (!state) return 'Sin filtro';
     const parts = [];
+    if (state.tsaType === 'work')    parts.push('Tipo: Work');
+    if (state.tsaType === 'transit') parts.push('Tipo: Transit');
+    if (state.activeNow) parts.push('Solo activas ahora');
     if (state.dateFrom || state.dateTo) {
       parts.push(`Fechas: ${state.dateFrom || '—'} a ${state.dateTo || '—'}`);
     }

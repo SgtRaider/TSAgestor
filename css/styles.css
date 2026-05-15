@@ -30,6 +30,77 @@
   --high:     var(--ea-rojo);
   --radius: 6px;
   --shadow: 0 4px 12px rgba(0, 25, 60, 0.45);
+
+  /* ── Design tokens ──────────────────────────────────────
+     Spacing rhythm (multiples de 4px). Usar var(--sp-N) en
+     nuevos componentes y al refactorizar; los hardcodes
+     antiguos se quedan donde estan por compatibilidad visual. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  /* Radii canonicos */
+  --r-sm:    4px;   /* inputs, chips densos dentro de cards */
+  --r-md:    6px;   /* cards, paneles pequenos */
+  --r-lg:    10px;  /* panels, modales */
+  --r-xl:    14px;  /* contenedores grandes */
+  --r-pill: 999px;  /* chips interactivos tipo "filtro" */
+
+  /* Font sizes (pixel-driven) */
+  --fs-xs:   10px;
+  --fs-sm:   11px;
+  --fs-md:   12px;
+  --fs-lg:   14px;
+  --fs-xl:   16px;
+
+  /* Colores semanticos comunes para chips de estado */
+  --c-ok:        #22c55e;
+  --c-ok-bg:     rgba(34,197,94,0.18);
+  --c-ok-bd:     rgba(34,197,94,0.45);
+  --c-warn:      #f59e0b;
+  --c-warn-bg:   rgba(245,158,11,0.18);
+  --c-warn-bd:   rgba(245,158,11,0.55);
+  --c-danger:    #ef4444;
+  --c-danger-bg: rgba(239,68,68,0.18);
+  --c-danger-bd: rgba(239,68,68,0.55);
+  --c-info:      #38bdf8;
+  --c-info-bg:   rgba(56,189,248,0.18);
+  --c-info-bd:   rgba(56,189,248,0.5);
+  --c-mute:      #64748b;
+  --c-mute-bg:   rgba(100,116,139,0.2);
+  --c-mute-bd:   rgba(100,116,139,0.4);
+}
+
+/* Base unificada para chips interactivos de filtros (notam-chip-btn,
+   tsa-chip). Anclamos radius/padding/font-size/transition; los
+   modificadores .is-active y los variants (red/green/amber) viven
+   donde estan. Evita drift entre las dos barras. */
+.notam-chip-btn,
+.tsa-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 4px var(--sp-3);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  font-family: 'Archivo', Arial, sans-serif;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.notam-chip-count,
+.tsa-chip-count {
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  min-width: 18px;
+  text-align: center;
 }
 
 * { box-sizing: border-box; }
@@ -205,6 +276,41 @@ h1, h2, h3, .ea-title {
 .filter-summary {
   font-size: 12px;
   color: var(--text-mute);
+}
+
+/* Chips de filtro rapido (work/transit/activas ahora) */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.tsa-chip {
+  background: rgba(255,255,255,0.04);
+  color: var(--ea-azul-palido);
+  border: 1px solid var(--border);
+}
+.tsa-chip:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: var(--ea-azul-claro);
+  color: #fff;
+}
+.tsa-chip.is-active {
+  background: var(--ea-amarillo);
+  color: #1a1200;
+  border-color: var(--ea-amarillo);
+}
+.tsa-chip-work.is-active    { background: #22c55e; color: #00200a; border-color: #22c55e; }
+.tsa-chip-transit.is-active { background: #ef4444; color: #fff;    border-color: #ef4444; }
+.tsa-chip-now.is-active     { background: #38bdf8; color: #0a1a22; border-color: #38bdf8; }
+.tsa-chip-count {
+  display: inline-block;
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+}
+.tsa-chip:not(.is-active) .tsa-chip-count {
+  background: rgba(255,255,255,0.12);
+  color: var(--ea-azul-cielo);
 }
 
 /* ── Main ─────────────────────────────────────────── */
@@ -2750,6 +2856,73 @@ body.welcome-open { overflow: hidden; }
   overflow-y: auto;
 }
 
+/* ── Barra de filtros sobre la lista de NOTAMs ── */
+.notam-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.notam-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.notam-filter-chips { gap: 6px; }
+.notam-chip-btn {
+  background: rgba(255,255,255,0.04);
+  color: var(--ea-azul-palido);
+  border: 1px solid var(--border);
+}
+.notam-chip-btn:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: var(--ea-azul-claro);
+  color: #fff;
+}
+.notam-chip-btn.is-active {
+  background: var(--ea-amarillo);
+  color: #1a1200;
+  border-color: var(--ea-amarillo);
+}
+.notam-chip-btn-red.is-active    { background: #ef4444; color: #fff; border-color: #ef4444; }
+.notam-chip-btn-green.is-active  { background: #22c55e; color: #00200a; border-color: #22c55e; }
+.notam-chip-btn-amber.is-active  { background: #f59e0b; color: #1a1200; border-color: #f59e0b; }
+.notam-chip-btn-grey.is-active   { background: #64748b; color: #fff; border-color: #64748b; }
+.notam-chip-count {
+  display: inline-block;
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+}
+.notam-chip-btn:not(.is-active) .notam-chip-count {
+  background: rgba(255,255,255,0.12);
+  color: var(--ea-azul-cielo);
+}
+.notam-filter-select {
+  background: var(--bg);
+  color: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.notam-filter-select:focus {
+  outline: none;
+  border-color: var(--ea-amarillo);
+  box-shadow: 0 0 0 2px rgba(250, 194, 0, 0.18);
+}
+
 /* ── Badge de categoria NOTAM (en notam-tag dentro del head) ── */
 .notam-cat-tag {
   background: rgba(255,255,255,0.08);
@@ -2814,12 +2987,12 @@ body.welcome-open { overflow: hidden; }
   font-family: 'Archivo', Arial, sans-serif;
   border: 1px solid transparent;
 }
-.notam-status-active  { background: rgba(34,197,94,0.18);  color: #86efac; border-color: rgba(34,197,94,0.45); }
-.notam-status-perm    { background: rgba(148,163,184,0.18); color: #cbd5e1; border-color: rgba(148,163,184,0.5); }
-.notam-status-soon    { background: rgba(250,204,21,0.18); color: #fde68a; border-color: rgba(250,204,21,0.55); }
-.notam-status-urgent  { background: rgba(239,68,68,0.18);  color: #fca5a5; border-color: rgba(239,68,68,0.55); }
-.notam-status-future  { background: rgba(56,189,248,0.18); color: #bae6fd; border-color: rgba(56,189,248,0.5); }
-.notam-status-expired { background: rgba(100,116,139,0.2); color: #cbd5e1; border-color: rgba(100,116,139,0.4); }
+.notam-status-active  { background: var(--c-ok-bg);     color: #86efac; border-color: var(--c-ok-bd); }
+.notam-status-perm    { background: var(--c-mute-bg);   color: #cbd5e1; border-color: var(--c-mute-bd); }
+.notam-status-soon    { background: var(--c-warn-bg);   color: #fde68a; border-color: var(--c-warn-bd); }
+.notam-status-urgent  { background: var(--c-danger-bg); color: #fca5a5; border-color: var(--c-danger-bd); }
+.notam-status-future  { background: var(--c-info-bg);   color: #bae6fd; border-color: var(--c-info-bd); }
+.notam-status-expired { background: var(--c-mute-bg);   color: #cbd5e1; border-color: var(--c-mute-bd); }
 
 /* Highlight de tokens dentro del cuerpo del NOTAM */
 .notam-body .hl-rwy {
@@ -3186,3 +3359,85 @@ body.welcome-open { overflow: hidden; }
 
 /* ── Utility ──────────────────────────────────────── */
 .hidden { display: none !important; }
+
+/* ── Responsive (tablet y movil) ─────────────────────
+   Breakpoint principal a 960px (tablets en landscape y abajo).
+   El objetivo es que la app sea utilizable en iPad/EFB en cabina
+   y briefing room. La columna de tabla de TSAs se hace scroll
+   horizontal en lugar de comprimir el contenido (mas legible). */
+@media (max-width: 960px) {
+  .tab-content { padding: 12px; gap: 12px; }
+
+  /* Filter bar: chips arriba, fechas debajo, acciones al final.
+     "filter-summary" se oculta para ahorrar altura. */
+  .filter-bar {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+  .filter-bar .filter-chips { width: 100%; }
+  .filter-bar .filter-group { width: 100%; }
+  .filter-bar .filter-actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: space-between;
+  }
+  .filter-bar label { font-size: 10px; flex: 1 1 calc(50% - 8px); min-width: 0; }
+  .filter-bar input { width: 100%; }
+  .filter-summary { display: none; }
+
+  /* Tabla de TSAs: scroll horizontal en lugar de comprimir. */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  #tsa-table { min-width: 760px; }
+  #tsa-table th, #tsa-table td { padding: 6px 8px; font-size: 12px; }
+
+  /* Mapa: ocupa toda la pantalla vertical disponible. */
+  #map { min-height: 420px; }
+
+  /* Modal KML: full width con margen lateral. */
+  .kml-modal-panel { max-width: calc(100vw - 24px); max-height: 92vh; }
+  .kml-modal-row { flex-direction: column; gap: 10px; }
+
+  /* NOTAMs filter bar: en tablet desactivamos sticky para no robar
+     altura util y dejamos que los chips fluyan. */
+  .notam-filter-bar { position: static; }
+  .notam-filter-bar .notam-filter-group { width: 100%; }
+  .notam-filter-select { flex: 1 1 calc(50% - 6px); min-width: 0; }
+
+  /* Wx board: scroll horizontal interno (las 6 columnas horarias
+     no se comprimen, se desplazan). */
+  #notam-wx-board { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .wx-board { min-width: 640px; }
+
+  /* Notam toolbar (input ICAOs + botones): apila los botones debajo. */
+  .notam-toolbar-row { flex-wrap: wrap; }
+  .notam-toolbar-buttons { width: 100%; justify-content: flex-end; }
+
+  /* Cabeceras de bucket NOTAM: nombre arriba, badges debajo. */
+  .notam-bucket-head { gap: 6px; }
+  .notam-bucket-head h3 { font-size: 14px; }
+
+  /* Cards de NOTAM: cabecera apilada (chips arriba, ventana debajo). */
+  .notam-card-head { flex-direction: column; align-items: stretch; }
+  .notam-card-window {
+    justify-content: flex-start;
+    padding-top: 4px;
+    border-top: 1px dashed rgba(255,255,255,0.08);
+  }
+
+  /* Tabs principales: scroll horizontal con snap suave. */
+  nav.tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  nav.tabs button { flex-shrink: 0; }
+}
+
+@media (max-width: 600px) {
+  .tab-content { padding: 10px; }
+  .filter-bar label { flex: 1 1 100%; }
+  .notam-filter-chips .notam-chip-btn { font-size: 10px; padding: 3px 8px; }
+  .kml-modal-panel { max-width: 100vw; border-radius: 0; max-height: 100vh; height: 100vh; }
+  .kml-windows .kml-window-row { flex-wrap: wrap; }
+  .kml-window-row input[type="datetime-local"] { flex: 1 1 100%; }
+}

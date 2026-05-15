@@ -212,6 +212,14 @@ window.TSAgestor.notamView = (function () {
     depTimeMs: 0,
     loading:   false,
     error:     null,
+    // Filtros: preset ∈ {all, closures, next24h, perm, expired-soon}
+    // category ∈ null | 'RWY' | 'TWY' | ... (ver classifyNotam)
+    // sort ∈ {time-desc, time-asc, cat, icao}
+    filter: {
+      preset:   'all',
+      category: '',
+      sort:     'time-desc',
+    },
   };
 
   function getWxLimits() {
@@ -724,6 +732,130 @@ window.TSAgestor.notamView = (function () {
     return false;
   }
 
+  // Categorias disponibles para el filtro (mismas que classifyNotam).
+  const NOTAM_FILTER_CATEGORIES = [
+    { id: 'RWY',  label: 'Pista' },
+    { id: 'TWY',  label: 'Calle de rodaje' },
+    { id: 'LGT',  label: 'Iluminación' },
+    { id: 'NAV',  label: 'Radioayudas' },
+    { id: 'GPS',  label: 'GNSS' },
+    { id: 'COMM', label: 'Comunicaciones' },
+    { id: 'ATC',  label: 'ATC' },
+    { id: 'OBST', label: 'Obstáculo' },
+    { id: 'FUEL', label: 'Combustible' },
+    { id: 'WIP',  label: 'Obras' },
+    { id: 'PROC', label: 'Procedimientos' },
+    { id: 'AIP',  label: 'AIP' },
+    { id: 'OTHER', label: 'Otros' },
+  ];
+
+  // Aplica el filtro/orden actual a una lista de NOTAMs. La filtracion
+  // es AND entre preset + categoria; el orden se aplica por separado.
+  function applyNotamFilter(list, nowMs) {
+    nowMs = nowMs || Date.now();
+    const f = _state.filter || { preset: 'all', category: '', sort: 'time-desc' };
+    const DAY = 24 * 3600 * 1000;
+    const filtered = list.filter(n => {
+      // Preset
+      if (f.preset === 'closures') {
+        if (!isClosureNotam(n)) return false;
+      } else if (f.preset === 'next24h') {
+        const st = notamTimeStatus(n, nowMs);
+        if (!st) return false;
+        if (st.kind === 'expired' || st.kind === 'future' || st.kind === 'perm') return false;
+        // Activo y termina antes de 24h => urgent o soon (cuando <3d).
+        // Para "proximas 24h" exigimos termina en <24h.
+        const toMs = Date.parse(n.toDate || n.endValidity || '');
+        if (Number.isNaN(toMs)) return false;
+        if (toMs - nowMs > DAY) return false;
+      } else if (f.preset === 'perm') {
+        const perm = !!n._isPermanent || /PERM/i.test(String(n.toDate || n.endValidity || ''));
+        if (!perm) return false;
+      } else if (f.preset === 'active-now') {
+        const st = notamTimeStatus(n, nowMs);
+        if (!st) return false;
+        if (st.kind === 'expired' || st.kind === 'future') return false;
+      }
+      // Categoria
+      if (f.category) {
+        if (classifyNotam(n).id !== f.category) return false;
+      }
+      return true;
+    });
+    // Sort
+    const tMs = n => Date.parse(n.fromDate || n.startValidity || '') || 0;
+    if (f.sort === 'time-asc') {
+      filtered.sort((a, b) => tMs(a) - tMs(b));
+    } else if (f.sort === 'cat') {
+      filtered.sort((a, b) => {
+        const ca = classifyNotam(a).id, cb = classifyNotam(b).id;
+        if (ca !== cb) return ca.localeCompare(cb);
+        return tMs(b) - tMs(a);
+      });
+    } else {
+      // default time-desc, pero cierres siempre arriba
+      filtered.sort((a, b) => {
+        const ca = isClosureNotam(a) ? 0 : 1, cb = isClosureNotam(b) ? 0 : 1;
+        if (ca !== cb) return ca - cb;
+        return tMs(b) - tMs(a);
+      });
+    }
+    return filtered;
+  }
+
+  // Cuenta NOTAMs por preset, para mostrar el numero en cada chip.
+  function countPresets(list, nowMs) {
+    nowMs = nowMs || Date.now();
+    const DAY = 24 * 3600 * 1000;
+    let closures = 0, next24h = 0, perm = 0, activeNow = 0;
+    for (const n of list) {
+      if (isClosureNotam(n)) closures++;
+      const isPerm = !!n._isPermanent || /PERM/i.test(String(n.toDate || n.endValidity || ''));
+      if (isPerm) perm++;
+      const st = notamTimeStatus(n, nowMs);
+      if (st && st.kind !== 'expired' && st.kind !== 'future') {
+        activeNow++;
+        if (!isPerm) {
+          const toMs = Date.parse(n.toDate || n.endValidity || '');
+          if (!Number.isNaN(toMs) && toMs - nowMs <= DAY) next24h++;
+        }
+      }
+    }
+    return { total: list.length, closures, next24h, perm, activeNow };
+  }
+
+  function renderNotamFilterBar(counts) {
+    const f = _state.filter;
+    const chip = (preset, label, count, extra) => {
+      const active = f.preset === preset ? ' is-active' : '';
+      const cls = 'notam-chip-btn' + active + (extra ? ' ' + extra : '');
+      return `<button type="button" class="${cls}" data-notam-filter-preset="${preset}">${escapeHTML(label)}<span class="notam-chip-count">${count}</span></button>`;
+    };
+    const catOpts = ['<option value="">— Todas las categorías —</option>']
+      .concat(NOTAM_FILTER_CATEGORIES.map(c =>
+        `<option value="${c.id}"${f.category === c.id ? ' selected' : ''}>${escapeHTML(c.label)}</option>`
+      )).join('');
+    const sortOpts = [
+      ['time-desc', 'Más reciente primero'],
+      ['time-asc',  'Más antiguo primero'],
+      ['cat',       'Agrupar por categoría'],
+    ].map(([v, l]) => `<option value="${v}"${f.sort === v ? ' selected' : ''}>${l}</option>`).join('');
+    return `
+      <div class="notam-filter-bar">
+        <div class="notam-filter-group notam-filter-chips">
+          ${chip('all',        'Todos',        counts.total)}
+          ${chip('closures',   'Cierres',      counts.closures,   'notam-chip-btn-red')}
+          ${chip('active-now', 'Activos',      counts.activeNow,  'notam-chip-btn-green')}
+          ${chip('next24h',    'Termina <24h', counts.next24h,    'notam-chip-btn-amber')}
+          ${chip('perm',       'PERM',         counts.perm,       'notam-chip-btn-grey')}
+        </div>
+        <div class="notam-filter-group">
+          <select class="notam-filter-select" data-notam-filter-cat>${catOpts}</select>
+          <select class="notam-filter-select" data-notam-filter-sort>${sortOpts}</select>
+        </div>
+      </div>`;
+  }
+
   function renderNotamList() {
     const root = $('#notam-results');
     if (!root) return;
@@ -748,24 +880,22 @@ window.TSAgestor.notamView = (function () {
       </div>`;
       return;
     }
-    // Agrupados por icaoLocation. Despues separamos por tipo (aerodromo
-    // o FIR) para renderizar en dos bloques distintos.
+
+    const nowMs = Date.now();
+    const counts = countPresets(_state.notams, nowMs);
+    const filterBarHtml = renderNotamFilterBar(counts);
+
+    // Agrupados por icaoLocation tras filtrar. Cada bucket aplica el
+    // mismo filtro/orden.
+    const filtered = applyNotamFilter(_state.notams, nowMs);
     const byIcao = {};
-    for (const n of _state.notams) {
+    for (const n of filtered) {
       const k = String(n.icaoLocation || n.location || '?').toUpperCase();
       (byIcao[k] = byIcao[k] || []).push(n);
     }
-
-    const sortFn = (a, b) => {
-      const ca = isClosureNotam(a) ? 0 : 1, cb = isClosureNotam(b) ? 0 : 1;
-      if (ca !== cb) return ca - cb;
-      const ta = new Date(a.fromDate || a.startValidity || 0).getTime();
-      const tb = new Date(b.fromDate || b.startValidity || 0).getTime();
-      return tb - ta;
-    };
+    const totalShown = filtered.length;
 
     const renderSection = (icao, list, opts) => {
-      list = list.slice().sort(sortFn);
       const closures = list.filter(isClosureNotam).length;
       const areas    = list.filter(isAreaNotam).length;
       const badges = [
@@ -784,7 +914,7 @@ window.TSAgestor.notamView = (function () {
             <div class="notam-bucket-badges">${badges}</div>
           </header>
           <div class="notam-bucket-body">
-            ${list.length ? list.map(renderNotamCard).join('') : '<div class="notam-empty notam-empty-mini">Sin NOTAMs activos</div>'}
+            ${list.length ? list.map(renderNotamCard).join('') : '<div class="notam-empty notam-empty-mini">Sin NOTAMs con este filtro</div>'}
           </div>
         </section>`;
     };
@@ -801,7 +931,39 @@ window.TSAgestor.notamView = (function () {
         firsWithData.map(fir => renderSection(fir, byIcao[fir], { firLabel: true })).join('')
       : '';
 
-    root.innerHTML = adSections + firSections;
+    const empty = totalShown === 0
+      ? `<div class="notam-empty hint">
+           <div class="notam-empty-icon">🔍</div>
+           <div>Ningún NOTAM coincide con el filtro actual. Pulsa <b>Todos</b> para verlos.</div>
+         </div>`
+      : '';
+
+    root.innerHTML = filterBarHtml + empty + adSections + firSections;
+  }
+
+  // Delegacion: clicks/cambios sobre la barra de filtros re-renderizan
+  // sin volver a pedir datos al backend.
+  function wireNotamFilterDelegation() {
+    const root = $('#notam-results');
+    if (!root || root._notamFilterWired) return;
+    root._notamFilterWired = true;
+    root.addEventListener('click', (e) => {
+      const btn = e.target.closest && e.target.closest('[data-notam-filter-preset]');
+      if (!btn) return;
+      e.preventDefault();
+      _state.filter.preset = btn.dataset.notamFilterPreset;
+      renderNotamList();
+    });
+    root.addEventListener('change', (e) => {
+      const t = e.target;
+      if (t && t.matches && t.matches('[data-notam-filter-cat]')) {
+        _state.filter.category = t.value || '';
+        renderNotamList();
+      } else if (t && t.matches && t.matches('[data-notam-filter-sort]')) {
+        _state.filter.sort = t.value;
+        renderNotamList();
+      }
+    });
   }
 
   function render() {
@@ -937,6 +1099,7 @@ window.TSAgestor.notamView = (function () {
 
   function onTabOpen() {
     _wireUI();
+    wireNotamFilterDelegation();
     const planIcaos = getCurrentPlanIcaos();
     const input = $('#notam-icaos');
     if (input && !input.value && planIcaos.length) {

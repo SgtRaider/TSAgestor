@@ -961,11 +961,17 @@
   // ── Filtro ───────────────────────────────────────────────────────────
 
   function readFilter() {
+    // El chip activo se guarda en data-active-tsa-filter del contenedor.
+    // Defaults: 'all' (sin discriminacion tipo + sin filtro de tiempo).
+    const chipsCont = $('#tsa-filter-chips');
+    const chip = chipsCont && chipsCont.dataset.activeTsaFilter || 'all';
     return {
-      dateFrom: $('#filter-date-from').value,
-      dateTo:   $('#filter-date-to').value,
-      timeFrom: $('#filter-time-from').value,
-      timeTo:   $('#filter-time-to').value,
+      tsaType:   chip === 'work' ? 'work' : (chip === 'transit' ? 'transit' : null),
+      activeNow: chip === 'active-now',
+      dateFrom:  $('#filter-date-from').value,
+      dateTo:    $('#filter-date-to').value,
+      timeFrom:  $('#filter-time-from').value,
+      timeTo:    $('#filter-time-to').value,
     };
   }
 
@@ -979,6 +985,14 @@
     $('#filter-date-to').value = '';
     $('#filter-time-from').value = '';
     $('#filter-time-to').value = '';
+    // Reset chip selector a 'all'
+    const chipsCont = $('#tsa-filter-chips');
+    if (chipsCont) {
+      chipsCont.dataset.activeTsaFilter = 'all';
+      chipsCont.querySelectorAll('.tsa-chip').forEach(b => {
+        b.classList.toggle('is-active', b.dataset.tsaFilter === 'all');
+      });
+    }
 
     // Limpiar también descarga el NOTAM: vacía TSAs, oculta la barra de filtro
     // y la tabla, y limpia el estado y el mapa.
@@ -988,6 +1002,48 @@
     $('#filter-bar').classList.add('hidden');
     setStatus('', 'info');
     renderAll();
+  }
+
+  // Actualiza los contadores de cada chip de TSA segun state.tsas.
+  function refreshTsaChipCounts() {
+    const chipsCont = $('#tsa-filter-chips');
+    if (!chipsCont) return;
+    const all = state.tsas || [];
+    const now = Date.now();
+    const isActiveNow = t => (t.schedules || []).some(s => {
+      const a = s.startUTC instanceof Date ? s.startUTC.getTime() : Date.parse(s.startUTC);
+      const b = s.endUTC   instanceof Date ? s.endUTC.getTime()   : Date.parse(s.endUTC);
+      return Number.isFinite(a) && Number.isFinite(b) && a <= now && now < b;
+    });
+    const counts = {
+      'all':        all.length,
+      'work':       all.filter(t => t._isWorkArea === true).length,
+      'transit':    all.filter(t => t._isWorkArea === false).length,
+      'active-now': all.filter(isActiveNow).length,
+    };
+    for (const [key, val] of Object.entries(counts)) {
+      const span = chipsCont.querySelector(`[data-count="${key}"]`);
+      if (span) span.textContent = String(val);
+    }
+  }
+
+  function wireTsaFilterChips() {
+    const chipsCont = $('#tsa-filter-chips');
+    if (!chipsCont || chipsCont._wired) return;
+    chipsCont._wired = true;
+    if (!chipsCont.dataset.activeTsaFilter) chipsCont.dataset.activeTsaFilter = 'all';
+    chipsCont.addEventListener('click', (e) => {
+      const btn = e.target.closest && e.target.closest('.tsa-chip');
+      if (!btn) return;
+      e.preventDefault();
+      chipsCont.dataset.activeTsaFilter = btn.dataset.tsaFilter;
+      chipsCont.querySelectorAll('.tsa-chip').forEach(b => {
+        b.classList.toggle('is-active', b === btn);
+      });
+      state.filter = readFilter();
+      renderAll();
+      if (state.mapReady && mapView.render) mapView.render(getVisible());
+    });
   }
 
   // ── Mapa ─────────────────────────────────────────────────────────────
@@ -2593,6 +2649,7 @@
     renderTable();
     renderViews();
     refreshKMLCounter();
+    refreshTsaChipCounts();
   }
 
   // ── Bootstrap ────────────────────────────────────────────────────────
@@ -2681,6 +2738,7 @@
     wireActions();
     wireSelection();
     wireKMLEditor();
+    wireTsaFilterChips();
     refreshExportUI();
     console.log('[TSAgestor] listo.');
   });
