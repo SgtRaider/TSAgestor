@@ -782,7 +782,82 @@ window.TSAgestor.meteoApi = (function () {
       console.info(`[notam] Autorouter devolvio 0 NOTAMs para itemas=${itemas}` +
                    (total != null ? ` (total reportado=${total})` : ''));
     }
-    return all;
+    // Normalizamos cada NOTAM al shape que el resto del codigo espera:
+    // {notamId, icaoLocation, fromDate, toDate, text, raw}. Autorouter
+    // devuelve los datos descompuestos por campo (series, number, year,
+    // itema, iteme, code23, code45, traffic, lower, upper, lat, lon,
+    // radius, startvalidity, endvalidity). Reconstruimos el formato
+    // ICAO clasico ("Q) FIR/QXXYY/T/P/S/LOW/UP/LATLONRAD\nA) ICAO\n
+    // E) body...") para que las regex de Q-line y de palabras clave
+    // (RMK, EXC CONTROLLED AIRSPACE, ...) sigan funcionando.
+    return all.map(normalizeAutorouterNotam);
+  }
+
+  function normalizeAutorouterNotam(n) {
+    if (!n || typeof n !== 'object') return n;
+    const series = n.series || '';
+    const num = (n.number != null) ? String(n.number).padStart(4, '0') : '';
+    const yr  = (n.year != null) ? String(n.year).slice(-2).padStart(2, '0') : '';
+    const notamId = (series && num && yr) ? `${series}${num}/${yr}` : '';
+
+    // Item A): ICAO afectado. Autorouter pone el aerodromo o la FIR aqui.
+    const icaoLocation = String(n.itema || n.fir || '').trim().toUpperCase();
+
+    // Reconstruccion del header Q-line si tenemos code23 + code45.
+    // Formato: Q) FIR/QXXYY/Traffic/Purpose/Scope/Lower/Upper/<coord+rad>
+    let qLine = '';
+    if (n.code23 && n.code45) {
+      const pad3 = v => (v == null ? '999' : String(v).padStart(3, '0'));
+      const lat = n.lat, lon = n.lon, rad = n.radius;
+      // Convertimos lat/lon decimal a formato ICAO compacto DDMMN/DDDMME.
+      const fmtLat = (v) => {
+        if (v == null || !Number.isFinite(v)) return '';
+        const hem = v >= 0 ? 'N' : 'S';
+        const a = Math.abs(v);
+        const d = Math.floor(a);
+        const m = Math.round((a - d) * 60);
+        return `${String(d).padStart(2, '0')}${String(m).padStart(2, '0')}${hem}`;
+      };
+      const fmtLon = (v) => {
+        if (v == null || !Number.isFinite(v)) return '';
+        const hem = v >= 0 ? 'E' : 'W';
+        const a = Math.abs(v);
+        const d = Math.floor(a);
+        const m = Math.round((a - d) * 60);
+        return `${String(d).padStart(3, '0')}${String(m).padStart(2, '0')}${hem}`;
+      };
+      const coord = (fmtLat(lat) + fmtLon(lon)).slice(0, 11);
+      const radStr = (rad != null && Number.isFinite(rad)) ? String(Math.round(rad)).padStart(3, '0') : '';
+      qLine = `Q) ${n.fir || ''}/Q${n.code23}${n.code45}/${n.traffic || 'IV'}/${n.purpose || ''}/${n.scope || ''}/${pad3(n.lower)}/${pad3(n.upper)}/${coord}${radStr}`;
+    }
+
+    const parts = [];
+    if (qLine) parts.push(qLine);
+    if (n.itema) parts.push(`A) ${n.itema}`);
+    // Validez B)/C): usamos startvalidity/endvalidity epoch.
+    const epochToStr = (sec) => {
+      if (sec == null || !Number.isFinite(sec)) return '';
+      const d = new Date(sec * 1000);
+      if (isNaN(d.getTime())) return '';
+      const pad = x => String(x).padStart(2, '0');
+      return `${String(d.getUTCFullYear()).slice(-2)}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}`;
+    };
+    if (n.startvalidity != null) parts.push(`B) ${epochToStr(n.startvalidity)}`);
+    if (n.endvalidity != null)   parts.push(`C) ${epochToStr(n.endvalidity)}`);
+    if (n.itemd) parts.push(`D) ${n.itemd}`);
+    if (n.iteme) parts.push(`E) ${n.iteme}`);
+    if (n.itemf) parts.push(`F) ${n.itemf}`);
+    if (n.itemg) parts.push(`G) ${n.itemg}`);
+
+    const text = parts.join('\n');
+    return Object.assign({}, n, {
+      notamId,
+      icaoLocation,
+      fromDate: n.startvalidity != null ? new Date(n.startvalidity * 1000).toISOString() : null,
+      toDate:   n.endvalidity   != null ? new Date(n.endvalidity   * 1000).toISOString() : null,
+      text,
+      raw: text,
+    });
   }
 
   // SIGMETs internacionales (AWC iSIGMET).
