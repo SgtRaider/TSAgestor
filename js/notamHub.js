@@ -575,11 +575,15 @@ window.TSAgestor.notamHub = (function () {
         continue;
       }
       if (cls === 'area-mil') stats.mil++; else stats.area++;
-      // Geometria: preferimos el bbox de Autorouter (nelat/nelon/swlat/
-      // swlon, escalados x10^7) cuando esta acotado y es razonable,
-      // porque suele estar mas pegado al area real que el Q-line center
-      // + radius (que a veces es FIR-wide). Si bbox no es valido o es
-      // gigante, caemos al parser tradicional (Q-line / cuerpo).
+      // Geometria: SOLO aceptamos AREAS reales (poligonos con vertices
+      // explicitos). No dibujamos puntos ni circulos: los Q-line
+      // circles tienden a ser FIR-wide o un fix de referencia, no el
+      // area real, asi que mejor descartar que dibujar algo enganyoso.
+      // Orden:
+      //   1) bbox compacto de Autorouter (nelat/nelon/swlat/swlon)
+      //      -> rectangulo de 4 vertices.
+      //   2) poligono explicito en el cuerpo del NOTAM (WI N4040 ...)
+      //   Si solo hay circulo (Q-line center+radius), descartamos.
       let polygon = null;
       let geomSource = '';
       const bbox = tryBboxFromAutorouter(n);
@@ -598,17 +602,15 @@ window.TSAgestor.notamHub = (function () {
         const geom = meteo.parseNotamGeometry(raw);
         if (geom && geom.kind === 'poly') {
           polygon = geom.latlngs;
-        } else if (geom && geom.kind === 'circle') {
-          polygon = circleToPolygon(geom.center[0], geom.center[1], geom.radiusM / 1852);
+          geomSource = geom.source || 'body-poly';
+          stats.sourceBody++;
         }
-        if (geom && /^q-/.test(geom.source || '')) stats.sourceQline++;
-        else if (geom) stats.sourceBody++;
-        geomSource = geom ? geom.source : '';
+        // geom.kind === 'circle' se IGNORA a proposito: no son areas.
       }
       if (!polygon || polygon.length < 3) {
         stats.polyFail++;
         if (stats.polyFail <= 3) {
-          console.warn('[notamHub] NOTAM area sin geometria parseable:', id, raw.slice(0, 200));
+          console.warn('[notamHub] NOTAM sin area (poligono) - descartado:', id, raw.slice(0, 200));
         }
         continue;
       }
