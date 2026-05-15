@@ -525,25 +525,38 @@
 
     <!-- NOTAMs -->
     <section id="tab-notams" class="tab-content">
-      <div class="notam-toolbar">
-        <div class="notam-toolbar-left">
-          <label class="notam-input-label">Aeródromos (ICAO, separados por espacio)
+      <div class="notam-toolbar-card">
+        <div class="notam-toolbar-row">
+          <label class="notam-input-label">
+            <span>Aeródromos <span class="dim">(ICAO, separados por espacio)</span></span>
             <input type="text" id="notam-icaos" placeholder="LEMD LEBL" autocomplete="off" spellcheck="false">
           </label>
-          <button id="btn-notam-load" class="btn btn-primary" type="button">Consultar</button>
-          <button id="btn-notam-from-plan" class="btn" type="button" title="Usa origen y destino del plan de vuelo actual">Origen + destino del plan</button>
+          <div class="notam-toolbar-buttons">
+            <button id="btn-notam-load" class="btn btn-primary" type="button">🔍 Consultar</button>
+            <button id="btn-notam-from-plan" class="btn" type="button" title="Usa origen y destino del plan de vuelo actual">Origen + destino del plan</button>
+          </div>
         </div>
-        <div id="notam-status" class="status"></div>
+        <div id="notam-status" class="status notam-status-bar"></div>
       </div>
 
-      <h2 class="notam-section-title">Weather Hold <span class="dim">(METAR · TAF vs mínimos de Ajustes)</span></h2>
-      <p class="dim notam-hint">Verde = sin limitaciones · Amarillo = próximo a marginal · Rojo = no es posible despegar.
-        Pasa el cursor por cada celda para ver el METAR/TAF fuente. Configura los mínimos en <b>Ajustes → Mínimos meteorológicos</b>.</p>
-      <div id="notam-wx-board"></div>
+      <section class="notam-section">
+        <header class="notam-section-header">
+          <h2 class="notam-section-title"><span class="notam-section-icon">⛅</span> Weather Hold</h2>
+          <p class="notam-section-sub">METAR / TAF vs mínimos configurados en <b>Ajustes → Mínimos meteorológicos</b>.
+            <span class="legend-pill legend-pill-green">Verde · sin limitaciones</span>
+            <span class="legend-pill legend-pill-yellow">Amarillo · marginal</span>
+            <span class="legend-pill legend-pill-red">Rojo · no go</span></p>
+        </header>
+        <div id="notam-wx-board"></div>
+      </section>
 
-      <h2 class="notam-section-title">NOTAMs del aeródromo</h2>
-      <p class="dim notam-hint">Lista completa de NOTAMs activos. Los <span class="notam-tag-inline">CIERRE</span> de aeródromo / pista se destacan al inicio. Fuente: Autorouter.aero.</p>
-      <div id="notam-results"></div>
+      <section class="notam-section">
+        <header class="notam-section-header">
+          <h2 class="notam-section-title"><span class="notam-section-icon">📋</span> NOTAMs del aeródromo</h2>
+          <p class="notam-section-sub">Lista de NOTAMs operativos publicados en ICARO XXI para los aeródromos consultados. <span class="dim">Apartados de áreas / espacio aéreo segregado omitidos automáticamente.</span> Fuente: <b>NotamHub</b>.</p>
+        </header>
+        <div id="notam-results"></div>
+      </section>
     </section>
 
     <!-- EXPORTAR -->
@@ -716,9 +729,9 @@
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
 <script src="js/filters.js"></script>
-<script src="js/notamHub.js?v=132"></script>
-<script src="js/notamView.js?v=132"></script>
-<script src="js/mapView.js?v=132"></script>
+<script src="js/notamHub.js?v=133"></script>
+<script src="js/notamView.js?v=133"></script>
+<script src="js/mapView.js?v=133"></script>
 <script src="js/crossSection.js"></script>
 <script src="js/flightPlan.js"></script>
 <script src="js/pdfExport.js"></script>

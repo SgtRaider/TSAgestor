@@ -2229,37 +2229,107 @@ body.welcome-open { overflow: hidden; }
 }
 
 /* ── Pestanya NOTAMs + Weather Hold ───────────────── */
-.notam-section-title {
-  font-size: 16px;
-  margin: 18px 0 4px;
-  color: var(--ea-amarillo);
+
+/* Toolbar superior: tarjeta con campo + botones + status */
+.notam-toolbar-card {
+  background: linear-gradient(180deg, rgba(14,165,233,0.12) 0%, rgba(0,55,100,0.35) 100%);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 18px;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.15);
 }
-.notam-tag {
+.notam-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 8px;
+}
+.notam-toolbar-row .notam-input-label {
+  flex: 1 1 280px;
+  min-width: 220px;
+}
+.notam-toolbar-row .notam-input-label > span {
+  font-size: 12px;
+  color: var(--ea-azul-palido);
+  font-weight: 600;
+}
+.notam-toolbar-row .notam-input-label input {
+  margin-top: 4px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: #fff;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 14px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  width: 100%;
+}
+.notam-toolbar-row .notam-input-label input:focus {
+  outline: none;
+  border-color: var(--ea-amarillo);
+  box-shadow: 0 0 0 2px rgba(250, 194, 0, 0.2);
+}
+.notam-toolbar-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.notam-status-bar { margin: 0; padding: 6px 0 0; font-size: 12px; }
+
+/* Sección con cabecera estructurada */
+.notam-section { margin-bottom: 24px; }
+.notam-section-header {
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+}
+.notam-section-title {
+  font-size: 18px;
+  margin: 0 0 6px;
+  color: var(--ea-amarillo);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+.notam-section-icon { font-size: 22px; line-height: 1; }
+.notam-section-sub {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ea-azul-palido);
+  line-height: 1.6;
+}
+.notam-section-sub .legend-pill {
   display: inline-block;
-  padding: 1px 6px;
-  border-radius: 3px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-left: 6px;
+  color: #fff;
+  white-space: nowrap;
+}
+.legend-pill-green  { background: #16a34a; }
+.legend-pill-yellow { background: #fbbf24; color: #1a1a1a; }
+.legend-pill-red    { background: #dc2626; }
+
+/* Tags / chips para NOTAM cards */
+.notam-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
   font-size: 10px;
   font-weight: 700;
   background: var(--ea-rojo);
   color: #fff;
   letter-spacing: 0.5px;
 }
-.notam-tag-area {
-  background: var(--ea-amarillo);
-  color: #1a1a1a;
-}
-.badge-amber {
-  background: var(--ea-amarillo) !important;
-  color: #1a1a1a !important;
-}
-.notam-card-area {
-  border-left-color: var(--ea-amarillo);
-  background: rgba(250, 194, 0, 0.04);
-}
-.notam-bucket-fir {
-  border-left: 3px solid var(--ea-azul-cielo);
-}
-.notam-bucket-fir h3 { color: var(--ea-azul-cielo); }
+.notam-tag-red    { background: var(--ea-rojo); color: #fff; }
+.notam-tag-amber  { background: var(--ea-amarillo); color: #1a1a1a; }
+.notam-tag-grey   { background: #475569; color: #e2e8f0; }
+.notam-tag-area   { background: var(--ea-amarillo); color: #1a1a1a; }
 .notam-tag-inline {
   display: inline-block;
   padding: 0 5px;
@@ -2269,9 +2339,181 @@ body.welcome-open { overflow: hidden; }
   background: var(--ea-rojo);
   color: #fff;
 }
-.badge-red {
-  background: var(--ea-rojo) !important;
-  color: #fff !important;
+.badge-red   { background: var(--ea-rojo) !important; color: #fff !important; }
+.badge-amber { background: var(--ea-amarillo) !important; color: #1a1a1a !important; }
+
+/* Chips de metadata en la cabecera del card */
+.notam-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(255,255,255,0.08);
+  color: var(--ea-azul-palido);
+  border: 1px solid var(--border);
+}
+.notam-chip-icao {
+  background: var(--ea-amarillo);
+  color: #1a1a1a;
+  border-color: var(--ea-amarillo);
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  letter-spacing: 0.5px;
+}
+.notam-chip-series {
+  background: rgba(14, 165, 233, 0.18);
+  color: var(--ea-azul-cielo);
+  border-color: rgba(14, 165, 233, 0.4);
+}
+
+/* Bucket por ICAO con cabecera y body */
+.notam-bucket {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.notam-bucket-fir { border-left: 4px solid var(--ea-azul-cielo); }
+.notam-bucket-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(0,0,0,0.05));
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.notam-bucket-head h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  letter-spacing: 1px;
+}
+.notam-bucket-prefix {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(14, 165, 233, 0.18);
+  color: var(--ea-azul-cielo);
+  letter-spacing: 0.5px;
+  font-family: 'Archivo', Arial, sans-serif;
+}
+.notam-bucket-fir .notam-bucket-prefix {
+  background: rgba(141, 198, 232, 0.2);
+  color: var(--ea-azul-cielo);
+}
+.notam-bucket-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.notam-bucket-body { padding: 10px 14px 12px; }
+
+/* Card individual de NOTAM */
+.notam-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.notam-card:hover { border-color: var(--ea-azul-claro); }
+.notam-card:last-child { margin-bottom: 0; }
+.notam-card-closure {
+  border-left-color: var(--ea-rojo);
+  background: rgba(173, 46, 28, 0.06);
+}
+.notam-card-area {
+  border-left-color: var(--ea-amarillo);
+  background: rgba(250, 194, 0, 0.04);
+}
+.notam-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.notam-card-head-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.notam-id {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+.notam-card-window {
+  font-size: 11px;
+  color: var(--ea-azul-palido);
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  white-space: nowrap;
+}
+.notam-window-label {
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  color: var(--ea-azul-claro);
+  margin-right: 2px;
+}
+.notam-window-arrow {
+  color: var(--ea-azul-claro);
+  margin: 0 4px;
+}
+.notam-body {
+  margin: 4px 0 0;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 8px 10px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #e2e8f0;
+  border: 1px solid rgba(255,255,255,0.04);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+/* Empty / loading / error states */
+.notam-empty {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  border-radius: 8px;
+  background: var(--bg-panel);
+  border: 1px dashed var(--border);
+  color: var(--ea-azul-palido);
+  font-size: 13px;
+}
+.notam-empty.hint    { border-color: rgba(14,165,233,0.4); }
+.notam-empty.loading { border-color: var(--ea-amarillo); }
+.notam-empty.error   { border-color: var(--ea-rojo); color: #fecaca; background: rgba(173,46,28,0.08); }
+.notam-empty-icon { font-size: 28px; line-height: 1; }
+.notam-empty-mini {
+  padding: 8px 10px;
+  font-size: 12px;
+  font-style: italic;
+  text-align: center;
 }
 
 /* Weather Hold table */
@@ -2478,129 +2720,10 @@ body.welcome-open { overflow: hidden; }
   overflow: auto;
 }
 
-.notam-toolbar {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.notam-toolbar-left {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: end;
-}
-.notam-input-label {
-  display: flex;
-  flex-direction: column;
-  font-size: 12px;
-  color: var(--ea-azul-palido);
-  font-weight: 600;
-  flex: 1 1 280px;
-  min-width: 220px;
-}
-.notam-input-label input {
-  margin-top: 4px;
-  padding: 8px 10px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: #fff;
-  font-family: 'Archivo', Arial, sans-serif;
-  font-size: 14px;
-  text-transform: uppercase;
-}
-.notam-hint {
-  font-size: 12px;
-  margin: 4px 0 12px;
-}
+/* Legacy NOTAMs CSS reemplazado por el bloque rediseñado al inicio
+   de esta sección. Mantenemos solo unas reglas de utilidad: */
 #notam-results { display: flex; flex-direction: column; gap: 14px; }
-.notam-empty {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 18px;
-  text-align: center;
-  color: var(--ea-azul-palido);
-}
-.notam-empty.error {
-  border-color: var(--ea-rojo);
-  color: #fecaca;
-  text-align: left;
-}
-.notam-bucket {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px 12px;
-}
-.notam-bucket h3 {
-  margin: 0 0 8px;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.notam-bucket h3 .badge {
-  background: var(--bg-elev);
-  color: #fff;
-  padding: 1px 8px;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 700;
-}
-.notam-bucket-showstopper { border-color: var(--ea-rojo); }
-.notam-bucket-showstopper h3 { color: #fecaca; }
-.notam-bucket-warning     { border-color: var(--ea-amarillo); }
-.notam-bucket-warning h3  { color: #fde68a; }
-.notam-bucket-info        { border-color: var(--border); }
-
-.notam-card {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-left: 4px solid var(--border);
-  border-radius: 4px;
-  padding: 8px 10px;
-  margin-bottom: 6px;
-  font-size: 12px;
-}
-.notam-card:last-child { margin-bottom: 0; }
-.notam-card-showstopper { border-left-color: var(--ea-rojo); background: rgba(173, 46, 28, 0.08); }
-.notam-card-warning     { border-left-color: var(--ea-amarillo); background: rgba(250, 194, 0, 0.05); }
-.notam-card-info        { border-left-color: var(--ea-azul-claro); }
-.notam-head {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: baseline;
-  margin-bottom: 4px;
-}
-.notam-id { font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 13px; }
-.notam-ad { color: var(--ea-amarillo); font-weight: 700; }
-.notam-window { color: var(--ea-azul-palido); font-size: 11px; margin-left: auto; }
-.notam-reasons { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
-.notam-reason {
-  display: inline-block;
-  padding: 1px 6px;
-  border-radius: 3px;
-  font-size: 11px;
-  font-weight: 600;
-  background: var(--ea-rojo);
-  color: #fff;
-}
-.notam-card-warning .notam-reason { background: var(--ea-amarillo); color: #1a1a1a; }
-.notam-body {
-  white-space: pre-wrap;
-  font-family: 'JetBrains Mono', 'Consolas', monospace;
-  font-size: 11px;
-  line-height: 1.4;
-  color: #e2e8f0;
-  background: rgba(0, 0, 0, 0.2);
-  padding: 4px 6px;
-  border-radius: 3px;
-  max-height: 200px;
-  overflow-y: auto;
-}
+.notam-hint { font-size: 12px; margin: 4px 0 12px; }
 .notam-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 .notam-meta-chip {
   display: inline-block;

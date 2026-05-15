@@ -495,19 +495,50 @@ window.TSAgestor.notamView = (function () {
     const raw = String(n.text || n.raw || '');
     const closure = isClosureNotam(n);
     const isArea  = isAreaNotam(n);
+    const id = String(n.notamId || n.id || '—');
+    const series = id.match(/^([A-Z])/) ? id[0] : '';
+    const seriesLabel = ({
+      A: 'AD intl', B: 'AD reg', C: 'COMM', D: 'Danger',
+      E: 'En-route', G: 'GPS',   M: 'Mil',  W: 'Warning',
+      L: 'Lighting', R: 'Restrict',
+    })[series] || '';
+    const fromIso = n.fromDate || n.startValidity;
+    const toIso   = n.toDate   || n.endValidity;
+    const perm = n._isPermanent || (toIso && /PERM/i.test(String(toIso)));
     const tags = [];
-    if (closure) tags.push('<span class="notam-tag">CIERRE</span>');
-    if (isArea && !closure) tags.push('<span class="notam-tag notam-tag-area">ÁREA</span>');
+    if (closure) tags.push('<span class="notam-tag notam-tag-red">CIERRE</span>');
+    if (isArea && !closure) tags.push('<span class="notam-tag notam-tag-amber">ÁREA</span>');
+    if (perm) tags.push('<span class="notam-tag notam-tag-grey">PERM</span>');
+    if (n._isEstimate) tags.push('<span class="notam-tag notam-tag-grey" title="Validez estimada">EST</span>');
+
+    const cardClass = closure ? 'notam-card-closure'
+                   : (isArea ? 'notam-card-area' : '');
+
+    // Cabecera estructurada con chips de metadatos
+    const metaChips = [];
+    if (n.icaoLocation || n.location) {
+      metaChips.push(`<span class="notam-chip notam-chip-icao">${escapeHTML(n.icaoLocation || n.location)}</span>`);
+    }
+    if (seriesLabel) {
+      metaChips.push(`<span class="notam-chip notam-chip-series" title="Serie ICAO ${escapeHTML(series)}">${escapeHTML(series)} · ${escapeHTML(seriesLabel)}</span>`);
+    }
+
     return `
-      <div class="notam-card ${closure ? 'notam-card-closure' : (isArea ? 'notam-card-area' : '')}">
-        <div class="notam-head">
-          <span class="notam-id"><b>${escapeHTML(n.notamId || n.id || '—')}</b></span>
-          <span class="notam-ad">${escapeHTML(n.icaoLocation || n.location || '')}</span>
-          <span class="notam-window">${fmtDate(n.fromDate || n.startValidity)} → ${fmtDate(n.toDate || n.endValidity)}</span>
-          ${tags.join('')}
-        </div>
+      <article class="notam-card ${cardClass}">
+        <header class="notam-card-head">
+          <div class="notam-card-head-left">
+            <span class="notam-id">${escapeHTML(id)}</span>
+            ${metaChips.join('')}
+            ${tags.join('')}
+          </div>
+          <div class="notam-card-window">
+            <span class="notam-window-label">Desde</span> ${escapeHTML(fmtDate(fromIso))}
+            <span class="notam-window-arrow">→</span>
+            <span class="notam-window-label">Hasta</span> ${perm ? '<b>PERM</b>' : escapeHTML(fmtDate(toIso))}
+          </div>
+        </header>
         <pre class="notam-body">${escapeHTML(raw)}</pre>
-      </div>`;
+      </article>`;
   }
 
   // Devuelve las FIRs aplicables a una lista de aerodromos. Siempre
@@ -566,15 +597,24 @@ window.TSAgestor.notamView = (function () {
     const root = $('#notam-results');
     if (!root) return;
     if (_state.error) {
-      root.innerHTML = `<div class="notam-empty error"><b>Error al cargar NOTAMs:</b> ${escapeHTML(_state.error)}</div>`;
+      root.innerHTML = `<div class="notam-empty error">
+        <div class="notam-empty-icon">⚠</div>
+        <div><b>Error al cargar NOTAMs:</b><br>${escapeHTML(_state.error)}</div>
+      </div>`;
       return;
     }
     if (_state.loading) {
-      root.innerHTML = '<div class="notam-empty"><i>Cargando NOTAMs y METAR/TAF…</i></div>';
+      root.innerHTML = `<div class="notam-empty loading">
+        <div class="notam-empty-icon">⏳</div>
+        <div>Cargando NOTAMs y METAR/TAF…</div>
+      </div>`;
       return;
     }
     if (!_state.icaos.length) {
-      root.innerHTML = '';
+      root.innerHTML = `<div class="notam-empty hint">
+        <div class="notam-empty-icon">✈</div>
+        <div>Introduce uno o varios ICAOs y pulsa <b>Consultar</b>, o usa el botón <b>Origen + destino del plan</b>.</div>
+      </div>`;
       return;
     }
     // Agrupados por icaoLocation. Despues separamos por tipo (aerodromo
@@ -598,17 +638,23 @@ window.TSAgestor.notamView = (function () {
       const closures = list.filter(isClosureNotam).length;
       const areas    = list.filter(isAreaNotam).length;
       const badges = [
-        `<span class="badge">${list.length} NOTAMs</span>`,
+        `<span class="badge">${list.length}</span>`,
         closures ? `<span class="badge badge-red">${closures} cierre${closures > 1 ? 's' : ''}</span>` : '',
         areas    ? `<span class="badge badge-amber">${areas} área${areas > 1 ? 's' : ''}</span>` : '',
       ].filter(Boolean).join(' ');
-      const title = opts && opts.firLabel
-        ? `<span class="dim">FIR ·</span> ${escapeHTML(icao)}`
-        : escapeHTML(icao);
+      const isFirSection = !!(opts && opts.firLabel);
+      const icaoLabel = isFirSection
+        ? `<span class="notam-bucket-prefix">FIR</span>${escapeHTML(icao)}`
+        : `<span class="notam-bucket-prefix">AD</span>${escapeHTML(icao)}`;
       return `
-        <section class="notam-bucket ${opts && opts.firLabel ? 'notam-bucket-fir' : ''}">
-          <h3>${title} ${badges}</h3>
-          ${list.length ? list.map(renderNotamCard).join('') : '<div class="dim">Sin NOTAMs activos</div>'}
+        <section class="notam-bucket ${isFirSection ? 'notam-bucket-fir' : ''}">
+          <header class="notam-bucket-head">
+            <h3>${icaoLabel}</h3>
+            <div class="notam-bucket-badges">${badges}</div>
+          </header>
+          <div class="notam-bucket-body">
+            ${list.length ? list.map(renderNotamCard).join('') : '<div class="notam-empty notam-empty-mini">Sin NOTAMs activos</div>'}
+          </div>
         </section>`;
     };
 
