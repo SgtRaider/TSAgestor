@@ -531,6 +531,19 @@ window.TSAgestor.notamView = (function () {
   const FIR_ICAO_RE = /^(LECM|LECB|LPPC|GCCC|GMMM|LFFF|LFMM|EGTT|DAAA)$/;
   function isFir(icao) { return FIR_ICAO_RE.test(icao); }
 
+  // Decide si una `section` del NOTAM corresponde a un apartado de
+  // area / espacio aereo segregado / TSA. ICARO XXI usa los nombres
+  // "AREAS", "AREAS SEGREGADAS", "ESPACIO AEREO", etc.
+  function isAreaSection(section) {
+    if (!section) return false;
+    const s = String(section).toUpperCase();
+    return /\bAREAS?\b/.test(s) ||
+           /\bSEGREGAD/.test(s) ||
+           /\bTSA\b/.test(s) ||
+           /\bTRA\b/.test(s) ||
+           /\bESPACIO\s+AEREO\b/.test(s);
+  }
+
   function renderNotamList() {
     const root = $('#notam-results');
     if (!root) return;
@@ -655,12 +668,20 @@ window.TSAgestor.notamView = (function () {
       // Dedup defensivo por notamId por si NotamHub repite alguno entre
       // las consultas aerodromo+FIR (improbable pero seguro).
       const byId = new Map();
+      let droppedAreas = 0;
       for (const n of (Array.isArray(notamRes) ? notamRes : [])) {
         const id = String(n.notamId || '').trim();
         if (!id) continue;
+        // Omitir NOTAMs de apartados de area (areas segregadas, TSAs,
+        // corredores, military training). En ICARO XXI el campo
+        // section identifica el capitulo del boletin.
+        if (isAreaSection(n._section)) { droppedAreas++; continue; }
         if (!byId.has(id)) byId.set(id, n);
       }
       _state.notams = Array.from(byId.values());
+      if (droppedAreas > 0) {
+        console.info(`[notam] omitidos ${droppedAreas} NOTAMs de apartados de area/segregadas`);
+      }
     }
 
     _state.loading = false;
