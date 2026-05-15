@@ -368,10 +368,15 @@ window.TSAgestor.notamHub = (function () {
         if (!cur.includes(t._parentNotam)) cur.push(t._parentNotam);
         ex._parentNotam = cur.join(',');
       }
-      // is_work_area: si CUALQUIERA de las entradas fusionadas es work,
-      // la marcamos como work. Conservador: una TSA usada por militares
-      // en algun NOTAM se considera area de trabajo siempre.
-      if (t._isWorkArea) ex._isWorkArea = true;
+      // is_work_area: si CUALQUIERA de las entradas fusionadas (mismo
+      // name+vertical) tiene wa=false, la TSA es de transito. Razon:
+      // algunos NOTAM padre marcan por error TSAs de transito como
+      // work (visto en D1610/26 que pone wa=true a TODAS sus TSAs,
+      // incluidos PASILLO HUELVA, PASILLO ZAFRA, ESTRECHO 1E/1W,
+      // ANDEVALO, etc., que el resto de NOTAMs publican como
+      // transito). Cualquier NOTAM que la marque como transito tiene
+      // prioridad.
+      if (t._isWorkArea === false) ex._isWorkArea = false;
       ex._nSchedules = ex.schedules.length;
       mergedCount++;
     }
@@ -699,6 +704,93 @@ window.TSAgestor.notamHub = (function () {
     return null;
   }
 
+  // Extrae el sub-bloque de body correspondiente a una TSA. Cada NOTAM
+  // padre concatena varias TSAs separadas por una linea "TSA <NAME>";
+  // tomamos desde esa linea hasta la siguiente cabecera "TSA " o EOF.
+  // Devuelve null si no se encuentra el nombre.
+  function findTsaBlockInBody(body, name) {
+    if (!body || !name) return null;
+    const escName = String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Cabecera "TSA NAME" al inicio de linea, seguida de salto o whitespace.
+    const re = new RegExp('(^|\\n)' + escName + '\\s*\\r?\\n', 'i');
+    const m = re.exec(body);
+    if (!m) return null;
+    const startIdx = m.index + (m[1] ? 1 : 0);
+    const after = startIdx + name.length;
+    const next = body.indexOf('\nTSA ', after);
+    return body.slice(startIdx, next > 0 ? next : body.length);
+  }
+
+  function blockHasRmk(block) {
+    if (!block) return false;
+    return /\bRMK\s*:/i.test(block);
+  }
+
+  // Re-clasifica work/transit consultando el texto de los NOTAM padre.
+  // La API NotamHub publica is_work_area=true para TSAs que el boletin
+  // PDF marca como transito (con RMK de coordinacion ECAO/APP). Para
+  // alinear API con PDF, traemos el body del NOTAM padre, localizamos
+  // el sub-bloque de la TSA y, si tiene "RMK:", forzamos
+  // _isWorkArea=false. La regla es "any-false wins" cruzando todos los
+  // parents (igual que la dedup): basta con que UN parent traiga la
+  // TSA con RMK para marcarla transito.
+  //
+  // Hace fetch en paralelo de las 3 FIRs espanolas (LECM/LECB/GCCC).
+  // Si alguna falla, sigue con las que respondieron. No crashea el
+  // flujo principal: ante cualquier error devuelve las TSAs sin tocar.
+  async function refineWorkAreaByParentRmk(tsas, params) {
+    if (!Array.isArray(tsas) || !tsas.length) return tsas;
+    params = params || {};
+    const firs = ['LECM', 'LECB', 'GCCC'];
+    const bodyByNotam = new Map();
+    const results = await Promise.all(firs.map(fir =>
+      fetchNotamsByFIR(fir, { at: params.at, includeRefs: false })
+        .catch((e) => {
+          console.warn('[notamHub] refine: fallo fetch FIR ' + fir + ':', e.message);
+          return null;
+        })
+    ));
+    for (const arr of results) {
+      if (!Array.isArray(arr)) continue;
+      for (const n of arr) {
+        if (n && n.notam_id && typeof n.body === 'string') {
+          bodyByNotam.set(n.notam_id, n.body);
+        }
+      }
+    }
+    if (!bodyByNotam.size) {
+      console.warn('[notamHub] refine: 0 NOTAMs disponibles, sin override');
+      return tsas;
+    }
+    let overrideCount = 0;
+    let parentsNotFound = 0;
+    let workChecked = 0;
+    for (const t of tsas) {
+      if (t._isWorkArea !== true) continue; // solo intentamos bajar de work->transito
+      workChecked++;
+      const parents = String(t._parentNotam || '').split(',').filter(Boolean);
+      let anyRmk = false;
+      let anyFound = false;
+      for (const pid of parents) {
+        const body = bodyByNotam.get(pid);
+        if (!body) continue;
+        anyFound = true;
+        const block = findTsaBlockInBody(body, t.name);
+        if (blockHasRmk(block)) { anyRmk = true; break; }
+      }
+      if (!anyFound) parentsNotFound++;
+      if (anyRmk) {
+        t._isWorkArea = false;
+        t._workAreaOverride = 'parent-rmk';
+        overrideCount++;
+      }
+    }
+    console.info('[notamHub] refine: ' + workChecked + ' TSAs eran work segun API · ' +
+      overrideCount + ' bajadas a transito por RMK en NOTAM padre · ' +
+      parentsNotFound + ' TSAs cuyo parent no estaba en FIRs cacheadas');
+    return tsas;
+  }
+
   return {
     BASE,
     ping,
@@ -707,6 +799,7 @@ window.TSAgestor.notamHub = (function () {
     fetchNotamsByAerodrome,
     fetchBulletins,
     convertTSAsToInternal,
+    refineWorkAreaByParentRmk,
     convertAutorouterNotamsToTSAs,
     fetchAllNotamsFor, normalizeNotam,
     getStoredToken, setStoredToken, clearStoredToken,

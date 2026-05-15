@@ -486,6 +486,17 @@
         return;
       }
       const tsas = nh.convertTSAsToInternal(apiList, atDate);
+      // La API NotamHub publica is_work_area=true para algunas TSAs
+      // (CORREDOR SUR, GOLFO...) que el boletin PDF clasifica como
+      // transito porque traen RMK ECAO en el NOTAM padre. Re-clasifico
+      // consultando el texto crudo del parent NOTAM para alinear con
+      // el PDF. Es opcional: si falla, las TSAs se quedan como vino del
+      // /tsas/active (sin bloquear el flujo principal).
+      try {
+        if (nh.refineWorkAreaByParentRmk) await nh.refineWorkAreaByParentRmk(tsas, queryParams);
+      } catch (refineErr) {
+        console.warn('[notamhub] refine RMK fallo (no critico):', refineErr);
+      }
       state.tsas = tsas;
       sortTSAsByOriginProximity();
       state.selected = new Set(state.tsas.map(t => t.id));
@@ -599,22 +610,95 @@
 
   let _kmlEditTargetId = null;
 
+  // Convierte una label de altitud ("FL245", "5000FT AMSL", "GND"...) a
+  // par {value, unit} para los inputs del editor. Unit ∈ GND/FT_AMSL/
+  // FT_AGL/FL/UNL. Si la label es vacia o no parsea, devuelve UNL/GND
+  // segun el rol (fallback decidido por el caller).
+  function labelToValueUnit(label) {
+    const s = String(label || '').trim().toUpperCase();
+    if (!s || s === 'GND' || s === 'SFC' || s === 'GROUND') return { value: null, unit: 'GND' };
+    if (s === 'UNL' || s === 'UNLIMITED') return { value: null, unit: 'UNL' };
+    let m = s.match(/^FL\s*0*(\d{1,3})$/);
+    if (m) return { value: parseInt(m[1], 10), unit: 'FL' };
+    m = s.match(/^(\d+)\s*FT?\s*AGL$/);
+    if (m) return { value: parseInt(m[1], 10), unit: 'FT_AGL' };
+    m = s.match(/^(\d+)\s*FT?\s*(?:AMSL|MSL)?$/);
+    if (m) return { value: parseInt(m[1], 10), unit: 'FT_AMSL' };
+    m = s.match(/^(\d+)$/);
+    if (m) return { value: parseInt(m[1], 10), unit: 'FT_AMSL' };
+    return { value: null, unit: 'GND' };
+  }
+
+  // Construye una label canonica desde value/unit. FL se pad a 3 cifras
+  // (FL085) para que parser.parseAltitudeToken la reconozca igual que
+  // las del AIP.
+  function valueUnitToLabel(value, unit) {
+    if (unit === 'GND') return 'GND';
+    if (unit === 'UNL') return 'UNL';
+    const v = Number(value);
+    if (!Number.isFinite(v) || v < 0) {
+      return unit === 'FL' ? 'FL000' : '0FT AMSL';
+    }
+    if (unit === 'FL')      return `FL${String(Math.round(v)).padStart(3, '0')}`;
+    if (unit === 'FT_AGL')  return `${Math.round(v)}FT AGL`;
+    return `${Math.round(v)}FT AMSL`;
+  }
+
+  // Date -> string para <input type="datetime-local"> en UTC.
+  // El input datetime-local no maneja timezone, asi que mostramos los
+  // componentes UTC tal cual y al releer los re-interpretamos como UTC.
+  function dateToInputValue(d) {
+    const x = d instanceof Date ? d : new Date(d);
+    if (!x || isNaN(x.getTime())) return '';
+    const pad = n => String(n).padStart(2, '0');
+    return `${x.getUTCFullYear()}-${pad(x.getUTCMonth()+1)}-${pad(x.getUTCDate())}T${pad(x.getUTCHours())}:${pad(x.getUTCMinutes())}`;
+  }
+
+  function inputValueToDate(v) {
+    if (!v) return null;
+    const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+    if (!m) return null;
+    const d = new Date(Date.UTC(+m[1], +m[2]-1, +m[3], +m[4], +m[5], 0));
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  function addWindowRow(start, end) {
+    const cont = $('#kml-edit-windows');
+    if (!cont) return;
+    const row = document.createElement('div');
+    row.className = 'kml-window-row';
+    row.innerHTML = `
+      <input type="datetime-local" class="kml-win-start" step="60">
+      <span class="kml-win-sep">→</span>
+      <input type="datetime-local" class="kml-win-end" step="60">
+      <button type="button" class="btn-kml-win-del" title="Eliminar ventana" aria-label="Eliminar">×</button>
+    `;
+    row.querySelector('.kml-win-start').value = dateToInputValue(start);
+    row.querySelector('.kml-win-end').value   = dateToInputValue(end);
+    cont.appendChild(row);
+  }
+
   function openKMLEditor(tsaId) {
     const t = state.tsas.find(x => x.id === tsaId);
     if (!t) return;
     _kmlEditTargetId = tsaId;
-    $('#kml-edit-name').value  = t.name || '';
-    $('#kml-edit-lower').value = (t.vertical && t.vertical.lowerLabel) || 'GND';
-    $('#kml-edit-upper').value = (t.vertical && t.vertical.upperLabel) || 'UNL';
-    $('#kml-edit-schedules').value = (t.schedules || []).map(s => {
-      const fmt = d => {
-        const x = d instanceof Date ? d : new Date(d);
-        if (isNaN(x.getTime())) return '';
-        const pad = n => String(n).padStart(2, '0');
-        return `${x.getUTCFullYear()}-${pad(x.getUTCMonth()+1)}-${pad(x.getUTCDate())} ${pad(x.getUTCHours())}:${pad(x.getUTCMinutes())}`;
-      };
-      return `${fmt(s.startUTC)} -> ${fmt(s.endUTC)}`;
-    }).join('\n');
+    $('#kml-edit-name').value = t.name || '';
+    const lowerLab = (t.vertical && t.vertical.lowerLabel) || 'GND';
+    const upperLab = (t.vertical && t.vertical.upperLabel) || 'UNL';
+    const lo = labelToValueUnit(lowerLab);
+    const up = labelToValueUnit(upperLab);
+    $('#kml-edit-lower-val').value  = lo.value == null ? '' : String(lo.value);
+    $('#kml-edit-lower-unit').value = lo.unit;
+    $('#kml-edit-upper-val').value  = up.value == null ? '' : String(up.value);
+    $('#kml-edit-upper-unit').value = up.unit;
+    const cont = $('#kml-edit-windows');
+    if (cont) cont.innerHTML = '';
+    const scheds = Array.isArray(t.schedules) ? t.schedules : [];
+    if (scheds.length) {
+      scheds.forEach(s => addWindowRow(s.startUTC, s.endUTC));
+    } else {
+      addWindowRow(null, null);
+    }
     $('#kml-edit-modal').classList.remove('hidden');
   }
 
@@ -627,26 +711,28 @@
     if (!_kmlEditTargetId) return closeKMLEditor();
     const t = state.tsas.find(x => x.id === _kmlEditTargetId);
     if (!t) return closeKMLEditor();
-    const newName  = $('#kml-edit-name').value.trim() || t.name;
-    const lowerLab = $('#kml-edit-lower').value.trim() || 'GND';
-    const upperLab = $('#kml-edit-upper').value.trim() || 'UNL';
+    const newName = $('#kml-edit-name').value.trim() || t.name;
+    const lowerLab = valueUnitToLabel($('#kml-edit-lower-val').value, $('#kml-edit-lower-unit').value);
+    const upperLab = valueUnitToLabel($('#kml-edit-upper-val').value, $('#kml-edit-upper-unit').value);
     const lowerP = (parser && parser.parseAltitudeToken) ? parser.parseAltitudeToken(lowerLab) : { ft: 0, label: lowerLab };
     const upperP = (parser && parser.parseAltitudeToken) ? parser.parseAltitudeToken(upperLab) : { ft: 99999, label: upperLab };
-    // Parse schedules: cada linea "YYYY-MM-DD HH:MM -> YYYY-MM-DD HH:MM"
-    // (acepta tambien "→" o "-"). Las horas se interpretan como UTC.
-    const lines = $('#kml-edit-schedules').value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+    // Recoge cada ventana del DOM y valida start < end. Las filas con
+    // ambos campos vacios se ignoran silenciosamente; las que tienen
+    // solo uno o un rango invalido tambien se descartan.
+    const rows = Array.from(document.querySelectorAll('#kml-edit-windows .kml-window-row'));
     const newSchedules = [];
-    for (const line of lines) {
-      const m = line.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s*(?:->|→|—|-)\s*(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})$/);
-      if (!m) continue;
-      const start = new Date(`${m[1]}T${m[2]}:00Z`);
-      const end   = new Date(`${m[3]}T${m[4]}:00Z`);
-      if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) continue;
-      newSchedules.push({ startUTC: start, endUTC: end, raw: `KML manual · ${m[1]} ${m[2]}Z → ${m[3]} ${m[4]}Z` });
+    for (const row of rows) {
+      const start = inputValueToDate(row.querySelector('.kml-win-start').value);
+      const end   = inputValueToDate(row.querySelector('.kml-win-end').value);
+      if (!start || !end || end <= start) continue;
+      const pad = n => String(n).padStart(2, '0');
+      const fmt = d => `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}Z`;
+      newSchedules.push({ startUTC: start, endUTC: end, raw: `KML manual · ${fmt(start)} → ${fmt(end)}` });
     }
     if (!newSchedules.length) {
-      // Si el usuario borró todo, conservamos al menos una ventana
-      // sintética para que la TSA no se quede sin schedule (rompe filtros).
+      // Si el usuario dejo el editor sin ventanas validas, sintetizamos
+      // una de 30 dias para que la TSA siga siendo seleccionable y no
+      // rompa filtros que asumen al menos un schedule.
       const now = new Date();
       const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
       newSchedules.push({ startUTC: start, endUTC: new Date(start.getTime() + 30 * 86400000), raw: 'KML manual · sin horario' });
@@ -672,7 +758,19 @@
     $('#btn-kml-edit-save').addEventListener('click', saveKMLEditor);
     modal.querySelector('.kml-modal-close').addEventListener('click', closeKMLEditor);
     modal.querySelector('.kml-modal-backdrop').addEventListener('click', closeKMLEditor);
-    // Delegacion: cualquier .btn-kml-edit dentro de la tabla abre el modal.
+    const btnAdd = $('#btn-kml-add-window');
+    if (btnAdd) btnAdd.addEventListener('click', () => addWindowRow(null, null));
+    // Delegacion para eliminar ventanas dentro del modal.
+    const winsCont = $('#kml-edit-windows');
+    if (winsCont) {
+      winsCont.addEventListener('click', (e) => {
+        const del = e.target.closest && e.target.closest('.btn-kml-win-del');
+        if (!del) return;
+        const row = del.closest('.kml-window-row');
+        if (row) row.remove();
+      });
+    }
+    // Delegacion global: cualquier .btn-kml-edit en la tabla abre el modal.
     document.addEventListener('click', (e) => {
       const btn = e.target.closest && e.target.closest('.btn-kml-edit');
       if (btn) {

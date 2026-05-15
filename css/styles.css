@@ -2370,6 +2370,85 @@ body.welcome-open { overflow: hidden; }
   border-top: 1px solid var(--border);
   background: rgba(0, 0, 0, 0.15);
 }
+/* Altitudes: valor numerico + selector de unidad */
+.kml-alt-row {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.kml-alt-val {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.kml-alt-unit {
+  flex: 0 0 auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: #fff;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  padding: 6px 8px;
+  min-width: 92px;
+}
+.kml-alt-unit:focus {
+  outline: none;
+  border-color: var(--ea-amarillo);
+  box-shadow: 0 0 0 2px rgba(250, 194, 0, 0.18);
+}
+/* Ventanas horarias */
+.kml-windows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.kml-window-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.kml-window-row input[type="datetime-local"] {
+  flex: 1 1 0;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: #fff;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  padding: 6px 8px;
+  color-scheme: dark;
+}
+.kml-window-row input[type="datetime-local"]:focus {
+  outline: none;
+  border-color: var(--ea-amarillo);
+  box-shadow: 0 0 0 2px rgba(250, 194, 0, 0.18);
+}
+.kml-win-sep {
+  color: var(--ea-azul-palido);
+  font-weight: 700;
+  user-select: none;
+}
+.btn-kml-win-del {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--ea-azul-palido);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 8px;
+}
+.btn-kml-win-del:hover {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+.kml-add-window {
+  align-self: flex-start;
+  margin-top: 2px;
+}
 
 /* ── Pestanya NOTAMs + Weather Hold ───────────────── */
 

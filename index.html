@@ -741,10 +741,10 @@
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
 <script src="js/filters.js"></script>
-<script src="js/notamHub.js?v=147"></script>
-<script src="js/kmlIO.js?v=147"></script>
-<script src="js/notamView.js?v=147"></script>
-<script src="js/mapView.js?v=147"></script>
+<script src="js/notamHub.js?v=151"></script>
+<script src="js/kmlIO.js?v=151"></script>
+<script src="js/notamView.js?v=151"></script>
+<script src="js/mapView.js?v=151"></script>
 <script src="js/crossSection.js"></script>
 <script src="js/flightPlan.js"></script>
 <script src="js/pdfExport.js"></script>
@@ -785,19 +785,38 @@
         <input type="text" id="kml-edit-name" autocomplete="off">
       </label>
       <div class="kml-modal-row">
-        <label class="kml-modal-field">
+        <div class="kml-modal-field">
           <span>Límite inferior</span>
-          <input type="text" id="kml-edit-lower" placeholder="GND, FL080, 2500FT AMSL" autocomplete="off">
-        </label>
-        <label class="kml-modal-field">
+          <div class="kml-alt-row">
+            <input type="number" id="kml-edit-lower-val" placeholder="0" min="0" step="100" class="kml-alt-val">
+            <select id="kml-edit-lower-unit" class="kml-alt-unit">
+              <option value="GND">GND</option>
+              <option value="FT_AMSL">ft AMSL</option>
+              <option value="FT_AGL">ft AGL</option>
+              <option value="FL">FL</option>
+              <option value="UNL">UNL</option>
+            </select>
+          </div>
+        </div>
+        <div class="kml-modal-field">
           <span>Límite superior</span>
-          <input type="text" id="kml-edit-upper" placeholder="UNL, FL245, 10000FT AMSL" autocomplete="off">
-        </label>
+          <div class="kml-alt-row">
+            <input type="number" id="kml-edit-upper-val" placeholder="245" min="0" step="100" class="kml-alt-val">
+            <select id="kml-edit-upper-unit" class="kml-alt-unit">
+              <option value="GND">GND</option>
+              <option value="FT_AMSL">ft AMSL</option>
+              <option value="FT_AGL">ft AGL</option>
+              <option value="FL" selected>FL</option>
+              <option value="UNL">UNL</option>
+            </select>
+          </div>
+        </div>
       </div>
-      <label class="kml-modal-field">
-        <span>Ventanas horarias <span class="dim">(una por línea, formato <code>YYYY-MM-DD HH:MM → YYYY-MM-DD HH:MM</code> UTC)</span></span>
-        <textarea id="kml-edit-schedules" rows="6" spellcheck="false" placeholder="2026-05-14 06:00 -> 2026-05-14 18:00&#10;2026-05-15 06:00 -> 2026-05-15 18:00"></textarea>
-      </label>
+      <div class="kml-modal-field">
+        <span>Ventanas horarias <span class="dim">(UTC, calendario)</span></span>
+        <div id="kml-edit-windows" class="kml-windows"></div>
+        <button type="button" id="btn-kml-add-window" class="btn btn-sm kml-add-window">+ Añadir ventana</button>
+      </div>
       <p class="dim kml-modal-hint">Los cambios se aplican inmediatamente al mapa, la tabla y los filtros. Para conservarlos entre sesiones, exporta el KML.</p>
     </div>
     <footer class="kml-modal-foot">

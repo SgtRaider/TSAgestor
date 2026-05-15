@@ -947,10 +947,16 @@ window.TSAgestor.parser = (function () {
       if (t.vertical.lowerLabel.length > acc.vertical.lowerLabel.length) acc.vertical.lowerLabel = t.vertical.lowerLabel;
       if (t.vertical.upperLabel.length > acc.vertical.upperLabel.length) acc.vertical.upperLabel = t.vertical.upperLabel;
       acc.verticalIsFallback = !!(acc.verticalIsFallback && t.verticalIsFallback);
-      // _isWorkArea: criterio conservador igual que en notamHub. Si
-      // CUALQUIER copia es work, la merged queda como work. Asi una TSA
-      // que aparece sin RMK en algun NOTAM padre se considera trabajo.
-      if (t._isWorkArea) acc._isWorkArea = true;
+      // _isWorkArea: criterio "any-false wins" igual que en notamHub.
+      // Si CUALQUIER bloque del boletin publica esta TSA con RMK
+      // (=> _isWorkArea=false, area de transito coordinable), la
+      // merged queda marcada como transito. Razon: algunos NOTAMs
+      // omiten el bloque RMK aunque la TSA si tenga coordinacion
+      // documentada en otro bloque del mismo boletin (visto en TSA
+      // PASILLO HUELVA, TSA PASILLO ZAFRA, TSA ESTRECHO 1E/1W,
+      // TSA ANDEVALO que aparecen como work sin RMK en algun NOTAM y
+      // como transito con RMK ECAO en otro).
+      if (t._isWorkArea === false) acc._isWorkArea = false;
       for (const s of t.schedules) acc.schedules.push(s);
     }
 
