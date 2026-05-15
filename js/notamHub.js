@@ -151,6 +151,33 @@ window.TSAgestor.notamHub = (function () {
     const out = [];
     const skipped = { noName: 0, badPolygon: 0, noSchedules: 0 };
     let synthCount = 0;
+
+    // Diagnostico is_work_area: cuenta true/false/undefined/otros antes
+    // de convertir nada, para detectar si el API esta mandando el campo
+    // con otro nombre (isWorkArea, work_area...) o no lo manda.
+    if (apiList.length > 0) {
+      const wHist = { true: 0, false: 0, undefined: 0, otherKey: 0 };
+      let alternativeKey = null;
+      for (const t of apiList) {
+        if (typeof t.is_work_area === 'boolean') {
+          wHist[String(t.is_work_area)]++;
+        } else {
+          wHist.undefined++;
+          if (!alternativeKey) {
+            // Busca cualquier clave parecida en el primer NOTAM que no tenga is_work_area.
+            for (const k of Object.keys(t || {})) {
+              if (/work|area|type|kind/i.test(k) && k !== 'is_work_area') {
+                alternativeKey = k + '=' + JSON.stringify(t[k]).slice(0, 40);
+                break;
+              }
+            }
+          }
+        }
+      }
+      console.info('[notamHub] is_work_area distribucion: ' + JSON.stringify(wHist) +
+        (alternativeKey ? ` · posible campo alternativo: ${alternativeKey}` : '') +
+        ` · claves del primer item: ${JSON.stringify(Object.keys(apiList[0]))}`);
+    }
     for (let i = 0; i < apiList.length; i++) {
       const t = apiList[i];
       if (!t || !t.name) { skipped.noName++; continue; }
