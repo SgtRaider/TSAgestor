@@ -441,6 +441,10 @@ window.TSAgestor.notamHub = (function () {
     if (/^M\d/.test(id)) return 'area-mil';
     if (/\bLP[RDT]\d+\b/i.test(raw)) return 'area-mil';  // areas portuguesas
     if (/\b(MIL\s+OPS|MILITARY\s+EXERCISE|TRG\s+AREA|TRAINING\s+AREA|EXERCISE\s+AREA)\b/i.test(raw)) return 'area-mil';
+    // Patron LPPC: "EXC CONTROLLED AIRSPACE" / "EXCLUDING CONTROLLED
+    // AIRSPACE" significa que la activacion segrega un area dejando
+    // fuera el CTA -> es una TSA militar en la practica.
+    if (/\bEXC(?:LUDING)?\s+CONTROLLED\s+AIRSPACE\b/i.test(raw)) return 'area-mil';
     if (/\b(AREA|CORRIDOR|CORREDOR|TRA|TSA|TEMPORARY\s+RESERVED|RESTRICTED\s+AREA|DANGER\s+AREA|PROHIBITED\s+AREA)\b/i.test(raw)) return 'area';
     return null;
   }
