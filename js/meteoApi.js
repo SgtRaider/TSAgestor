@@ -805,13 +805,27 @@ window.TSAgestor.meteoApi = (function () {
 
     // Reconstruccion del header Q-line si tenemos code23 + code45.
     // Formato: Q) FIR/QXXYY/Traffic/Purpose/Scope/Lower/Upper/<coord+rad>
+    //
+    // Autorouter entrega lat/lon como NUMERO decimal en grados (positivo
+    // norte/este, negativo sur/oeste). radius en NM. Convertimos a
+    // formato ICAO compacto DDMMN/DDDMME para que parseNotamQLineGeometry
+    // pueda extraer centro+radio.
     let qLine = '';
     if (n.code23 && n.code45) {
       const pad3 = v => (v == null ? '999' : String(v).padStart(3, '0'));
-      const lat = n.lat, lon = n.lon, rad = n.radius;
-      // Convertimos lat/lon decimal a formato ICAO compacto DDMMN/DDDMME.
+      // Acepta number (decimal) o string ("44.5", "44"). Si vienen ya
+      // formateados ("4438N"), Number() devuelve NaN y dejamos pasar.
+      const toNum = (v) => {
+        if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+        if (typeof v === 'string') {
+          const x = Number(v);
+          return Number.isFinite(x) ? x : null;
+        }
+        return null;
+      };
+      const lat = toNum(n.lat), lon = toNum(n.lon), rad = toNum(n.radius);
       const fmtLat = (v) => {
-        if (v == null || !Number.isFinite(v)) return '';
+        if (v == null) return '';
         const hem = v >= 0 ? 'N' : 'S';
         const a = Math.abs(v);
         const d = Math.floor(a);
@@ -819,16 +833,24 @@ window.TSAgestor.meteoApi = (function () {
         return `${String(d).padStart(2, '0')}${String(m).padStart(2, '0')}${hem}`;
       };
       const fmtLon = (v) => {
-        if (v == null || !Number.isFinite(v)) return '';
+        if (v == null) return '';
         const hem = v >= 0 ? 'E' : 'W';
         const a = Math.abs(v);
         const d = Math.floor(a);
         const m = Math.round((a - d) * 60);
         return `${String(d).padStart(3, '0')}${String(m).padStart(2, '0')}${hem}`;
       };
-      const coord = (fmtLat(lat) + fmtLon(lon)).slice(0, 11);
-      const radStr = (rad != null && Number.isFinite(rad)) ? String(Math.round(rad)).padStart(3, '0') : '';
-      qLine = `Q) ${n.fir || ''}/Q${n.code23}${n.code45}/${n.traffic || 'IV'}/${n.purpose || ''}/${n.scope || ''}/${pad3(n.lower)}/${pad3(n.upper)}/${coord}${radStr}`;
+      const coordOnly = fmtLat(lat) + fmtLon(lon);   // sin slice, llevamos letras
+      const radStr = (rad != null) ? String(Math.round(rad)).padStart(3, '0') : '';
+      qLine = `Q) ${n.fir || ''}/Q${n.code23}${n.code45}/${n.traffic || 'IV'}/${n.purpose || ''}/${n.scope || ''}/${pad3(n.lower)}/${pad3(n.upper)}/${coordOnly}${radStr}`;
+
+      // Diagnostico: dump de las primeras areas (Q-subject = RA / RR /
+      // RT / RD) para verificar que lat/lon/radius llegan como esperamos.
+      if (!normalizeAutorouterNotam._debugCount) normalizeAutorouterNotam._debugCount = 0;
+      if (normalizeAutorouterNotam._debugCount < 3 && /^R/.test(n.code23)) {
+        normalizeAutorouterNotam._debugCount++;
+        console.info(`[notam-debug] ${series}${num}/${yr}  lat=${JSON.stringify(n.lat)} lon=${JSON.stringify(n.lon)} rad=${JSON.stringify(n.radius)}  -> fmt=${JSON.stringify(coordOnly)}  qLine="${qLine}"`);
+      }
     }
 
     const parts = [];
