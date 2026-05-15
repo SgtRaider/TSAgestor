@@ -224,10 +224,6 @@ window.TSAgestor.notamHub = (function () {
         schedules = [{ startUTC, endUTC, raw: 'sintético 24h (API sin schedules)' }];
       }
 
-      // is_work_area: campo nuevo del API. true = area de trabajo
-      // (operativo), false = tránsito. Lo capturamos para que mapView
-      // pueda colorear y la leyenda diferenciar.
-      const isWorkArea = (t.is_work_area === true);
       out.push({
         id: 'NH_' + (t.parent_notam_id || i) + '_' + i,
         name: t.name,
@@ -242,13 +238,15 @@ window.TSAgestor.notamHub = (function () {
         schedules,
         rawBlock: `TSA ${t.name}\nNOTAM ${t.parent_notam_id || '?'}\n` +
                   `${lowerLabel} / ${upperLabel}\n` +
-                  `${schedules.length} ventana(s) horaria(s).` +
-                  `\nTipo: ${isWorkArea ? 'Área de trabajo' : 'Área de tránsito'}`,
+                  `${schedules.length} ventana(s) horaria(s).`,
         _source: 'notamhub',
         _parentNotam: t.parent_notam_id,
         _nSchedules: schedules.length,
         _isCircle: !!t.is_circle,
-        _isWorkArea: isWorkArea,
+        // is_work_area: true -> area de trabajo (verde), false -> transito
+        // (rojo). undefined si la API aun no lo expone -> tratamos como
+        // transito (default conservador).
+        _isWorkArea: t.is_work_area === true,
       });
     }
 
@@ -283,6 +281,10 @@ window.TSAgestor.notamHub = (function () {
         if (!cur.includes(t._parentNotam)) cur.push(t._parentNotam);
         ex._parentNotam = cur.join(',');
       }
+      // is_work_area: si CUALQUIERA de las entradas fusionadas es work,
+      // la marcamos como work. Conservador: una TSA usada por militares
+      // en algun NOTAM se considera area de trabajo siempre.
+      if (t._isWorkArea) ex._isWorkArea = true;
       ex._nSchedules = ex.schedules.length;
       mergedCount++;
     }

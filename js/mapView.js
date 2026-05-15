@@ -40,19 +40,23 @@ window.TSAgestor.mapView = (function () {
     high: '#ef4444',
   };
 
-  // Nuevo esquema basado en is_work_area (NotamHub).
-  //   true  -> area de trabajo (operativa) -> VERDE
-  //   false -> area de transito           -> ROJO
-  //   indef -> fallback a band colors (caso parser PDF que no trae el flag)
+  // Colores por tipo de area (NotamHub is_work_area):
+  //   - work    = area de trabajo activo -> verde
+  //   - transit = area de transito       -> rojo
+  // TSAs sin el flag (parser PDF, p.ej.) caen al esquema antiguo
+  // BAND_COLORS basado en la banda vertical.
   const AREA_COLORS = {
-    work:    '#16a34a',   // verde
-    transit: '#dc2626',   // rojo
+    work:    '#22c55e',
+    transit: '#ef4444',
   };
+
+  // Decide el color de una TSA: si tiene el flag _isWorkArea
+  // (NotamHub), usa AREA_COLORS. Si no, fallback a la banda vertical.
   function tsaColor(tsa) {
-    if (tsa && tsa._isWorkArea === true)  return AREA_COLORS.work;
-    if (tsa && tsa._isWorkArea === false) return AREA_COLORS.transit;
-    // Fallback (parser PDF, sin info de tipo): usamos el viejo color por banda.
-    const band = geom.altitudeBand(tsa.vertical.upperFt);
+    if (tsa && typeof tsa._isWorkArea === 'boolean') {
+      return tsa._isWorkArea ? AREA_COLORS.work : AREA_COLORS.transit;
+    }
+    const band = geom.altitudeBand((tsa && tsa.vertical && tsa.vertical.upperFt) || 0);
     return BAND_COLORS[band];
   }
 
