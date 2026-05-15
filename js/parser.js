@@ -657,6 +657,13 @@ window.TSAgestor.parser = (function () {
           format: 'AIP',
           remarks: rmkM ? rmkM[1].trim() : '',
           rawBlock: block.slice(0, 2000),
+          // Convención boletín ENAIRE: las TSAs SIN bloque RMK son
+          // áreas de trabajo militar puro (no aprovechables por otro
+          // tráfico). Las que llevan RMK suelen indicar coordinación
+          // con APP/TWR/ECAO -> área de tránsito utilizable. Coherente
+          // con el flag is_work_area que NotamHub publica para los
+          // mismos NOTAMs.
+          _isWorkArea: !rmkM,
         });
       }
     }
@@ -771,6 +778,8 @@ window.TSAgestor.parser = (function () {
         format: 'ICAO',
         remarks: parsed.remarks || '',
         rawBlock: block.slice(0, 2000),
+        // Sin RMK -> area de trabajo (verde). Con RMK -> transito (rojo).
+        _isWorkArea: !parsed.remarks,
       });
     }
     return tsas;
@@ -872,6 +881,7 @@ window.TSAgestor.parser = (function () {
 
       if (polygon.length < 3 || schedules.length === 0) continue;
 
+      // RFC son solicitudes militares directas -> siempre area de trabajo.
       out.push({
         id: `tsa-${out.length + 1}`,
         name,
@@ -882,6 +892,7 @@ window.TSAgestor.parser = (function () {
         format: 'RFC',
         remarks: '',
         rawBlock: block.slice(0, 2000),
+        _isWorkArea: true,
       });
     }
     return out;
@@ -936,6 +947,10 @@ window.TSAgestor.parser = (function () {
       if (t.vertical.lowerLabel.length > acc.vertical.lowerLabel.length) acc.vertical.lowerLabel = t.vertical.lowerLabel;
       if (t.vertical.upperLabel.length > acc.vertical.upperLabel.length) acc.vertical.upperLabel = t.vertical.upperLabel;
       acc.verticalIsFallback = !!(acc.verticalIsFallback && t.verticalIsFallback);
+      // _isWorkArea: criterio conservador igual que en notamHub. Si
+      // CUALQUIER copia es work, la merged queda como work. Asi una TSA
+      // que aparece sin RMK en algun NOTAM padre se considera trabajo.
+      if (t._isWorkArea) acc._isWorkArea = true;
       for (const s of t.schedules) acc.schedules.push(s);
     }
 
