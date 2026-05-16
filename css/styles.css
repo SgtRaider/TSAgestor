@@ -91,8 +91,13 @@
   font-family: 'Archivo', Arial, sans-serif;
   letter-spacing: 0.2px;
   cursor: pointer;
-  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  transition: background-color 0.12s ease, border-color 0.12s ease,
+              color 0.12s ease, transform 0.08s ease, box-shadow 0.12s ease;
 }
+.notam-chip-btn:active,
+.tsa-chip:active { transform: translateY(1px); }
+.notam-chip-btn.is-active,
+.tsa-chip.is-active { box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
 .notam-chip-count,
 .tsa-chip-count {
   padding: 1px 7px;
@@ -523,6 +528,63 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Time scrubber del mapa: slider 0-23h UTC para previsualizar
+   que TSAs estan activas a esa hora hoy. Hour=-1 = "sin scrub". */
+.map-scrubber {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding: 4px 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-sm);
+  color: var(--ea-azul-palido);
+}
+.map-scrubber-label {
+  font-weight: 600;
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--ea-azul-cielo);
+}
+.map-scrubber input[type="range"] {
+  width: 140px;
+  accent-color: var(--ea-amarillo);
+  cursor: pointer;
+  background: transparent;
+}
+.map-scrubber output {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-weight: 700;
+  font-size: var(--fs-md);
+  color: #fff;
+  min-width: 50px;
+  text-align: center;
+}
+.btn-icon-mini {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ea-azul-palido);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: var(--r-sm);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-icon-mini:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: var(--border);
+  color: #fff;
 }
 
 /* ── Map ──────────────────────────────────────────── */
@@ -3355,6 +3417,116 @@ body.welcome-open { overflow: hidden; }
   padding: 4px 6px;
   border-radius: 3px;
   color: #1e293b;
+}
+
+/* ── Accesibilidad: focus visible ──────────────────
+   Anillo amarillo institucional alrededor de cualquier elemento
+   focado con teclado (Tab). Solo se aplica con :focus-visible,
+   asi no aparece al hacer click con el raton — evita ruido
+   visual y mejora la navegacion por teclado de pilotos en EFB
+   con teclado externo. */
+:focus-visible {
+  outline: 2px solid var(--ea-amarillo);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+button:focus-visible,
+.btn:focus-visible,
+.notam-chip-btn:focus-visible,
+.tsa-chip:focus-visible,
+.btn-kml-edit:focus-visible,
+.btn-kml-win-del:focus-visible,
+.kml-modal-close:focus-visible {
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--ea-amarillo);
+}
+/* Para inputs y textarea, el box-shadow existente ya hace de
+   ring; preservamos su estetica. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
+/* ── Skeletons (loading placeholders) ───────────────
+   Bloques pulsantes que ocupan el sitio real del contenido
+   final, para evitar layout jump cuando el fetch termina y
+   dar sensacion de progreso continuo. */
+@keyframes skel-shimmer {
+  0%   { background-position: -200px 0; }
+  100% { background-position: calc(200px + 100%) 0; }
+}
+.skel-bar,
+.skel-block {
+  display: inline-block;
+  background-color: rgba(255,255,255,0.06);
+  background-image: linear-gradient(90deg,
+    rgba(255,255,255,0)    0%,
+    rgba(255,255,255,0.10) 50%,
+    rgba(255,255,255,0)   100%);
+  background-size: 200px 100%;
+  background-repeat: no-repeat;
+  border-radius: var(--r-sm);
+  animation: skel-shimmer 1.4s ease-in-out infinite;
+  vertical-align: middle;
+}
+.skel-block {
+  display: block;
+  width: 100%;
+  height: 64px;
+  border-radius: var(--r-md);
+  margin-top: 8px;
+}
+.skel-bar-id     { width: 78px;  height: 14px; }
+.skel-bar-chip   { width: 60px;  height: 12px; border-radius: var(--r-pill); }
+.skel-bar-window { width: 180px; height: 12px; margin-left: auto; }
+.skel-bar-title  { width: 140px; height: 18px; }
+.skel-bar-badge  { width: 36px;  height: 14px; border-radius: var(--r-pill); }
+.skel-bar-wxcell { display: block; width: 100%; height: 28px; border-radius: var(--r-sm); }
+.skel-bar-sm     { width: 40px;  height: 10px; }
+
+.notam-skeleton { display: block; }
+.skel-bucket {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.skel-bucket-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.skel-bucket-body { padding: 10px 14px; }
+.skel-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.skel-card:last-child { margin-bottom: 0; }
+.skel-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.wx-board-skeleton th,
+.wx-board-skeleton td {
+  background: transparent !important;
+}
+
+/* Solo accesible para lectores de pantalla */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0);
+  white-space: nowrap; border: 0;
 }
 
 /* ── Utility ──────────────────────────────────────── */

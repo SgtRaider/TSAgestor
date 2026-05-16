@@ -276,6 +276,23 @@ window.TSAgestor.notamView = (function () {
       root.innerHTML = '';
       return;
     }
+    if (_state.loading) {
+      // Skeleton de la matriz: filas con celdas pulsantes (1 fila por
+      // ICAO). El layout coincide con el wx-board final para evitar
+      // jump visual al cambiar de skeleton a tabla real.
+      const cells = Array.from({length: WX_HOURS}, () => '<td><span class="skel-bar skel-bar-wxcell"></span></td>').join('');
+      const rows = _state.icaos.map(icao => `
+        <tr>
+          <td class="wx-icao">${escapeHTML(icao)}</td>
+          ${cells}
+        </tr>`).join('');
+      root.innerHTML = `
+        <table class="wx-board wx-board-skeleton" aria-busy="true">
+          <thead><tr><th></th>${Array.from({length: WX_HOURS}, () => '<th><span class="skel-bar skel-bar-sm"></span></th>').join('')}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+      return;
+    }
     const limits = getWxLimits();
     const depMs = _state.depTimeMs;
     // Alineamos a la hora exacta y empezamos 1h antes de la salida.
@@ -867,10 +884,29 @@ window.TSAgestor.notamView = (function () {
       return;
     }
     if (_state.loading) {
-      root.innerHTML = `<div class="notam-empty loading">
-        <div class="notam-empty-icon">⏳</div>
-        <div>Cargando NOTAMs y METAR/TAF…</div>
-      </div>`;
+      // Skeleton placeholder: simula 1 bucket + 3 cards mientras el
+      // fetch va. Da sensacion de progreso en los 3-4 s de NotamHub.
+      const skelCard = `
+        <div class="skel-card" aria-hidden="true">
+          <div class="skel-card-head">
+            <span class="skel-bar skel-bar-id"></span>
+            <span class="skel-bar skel-bar-chip"></span>
+            <span class="skel-bar skel-bar-chip"></span>
+            <span class="skel-bar skel-bar-window"></span>
+          </div>
+          <div class="skel-block"></div>
+        </div>`;
+      root.innerHTML = `
+        <div class="notam-skeleton" role="status" aria-live="polite" aria-busy="true">
+          <div class="skel-bucket">
+            <div class="skel-bucket-head">
+              <span class="skel-bar skel-bar-title"></span>
+              <span class="skel-bar skel-bar-badge"></span>
+            </div>
+            <div class="skel-bucket-body">${skelCard}${skelCard}${skelCard}</div>
+          </div>
+          <span class="visually-hidden">Cargando NOTAMs y METAR/TAF…</span>
+        </div>`;
       return;
     }
     if (!_state.icaos.length) {

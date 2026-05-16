@@ -1393,12 +1393,53 @@ window.TSAgestor.mapView = (function () {
           .openOn(map);
       });
       poly.bindTooltip(tsa.name, { direction: 'center', className: 'tsa-tooltip' });
+      // Adjuntamos la TSA fuente al poligono para que setScrubMs pueda
+      // luego decidir si la TSA esta activa a la hora elegida sin
+      // depender del orden de iteracion ni del cierre.
+      poly._tsa = tsa;
+      poly._baseOpacity = tsaOpacity;
       poly.addTo(layerGroup);
       for (const pt of tsa.polygon) allLatLngs.push(pt);
     }
     if (allLatLngs.length) {
       map.fitBounds(L.latLngBounds(allLatLngs), { padding: [30, 30] });
     }
+    // Re-aplica el scrub si el usuario lo dejo activo entre renders.
+    if (_scrubMs !== null) applyScrubVisuals();
+  }
+
+  // Estado del scrubber: ms UTC del momento a previsualizar, o null
+  // si esta desactivado. Solo afecta opacidad visual, no toca el
+  // filtro global ni la lista visible.
+  let _scrubMs = null;
+  function isTsaActiveAt(tsa, ms) {
+    if (!tsa || !Array.isArray(tsa.schedules)) return false;
+    return tsa.schedules.some(s => {
+      const a = s.startUTC instanceof Date ? s.startUTC.getTime() : Date.parse(s.startUTC);
+      const b = s.endUTC   instanceof Date ? s.endUTC.getTime()   : Date.parse(s.endUTC);
+      return Number.isFinite(a) && Number.isFinite(b) && a <= ms && ms < b;
+    });
+  }
+  function applyScrubVisuals() {
+    if (!layerGroup) return;
+    const active = _scrubMs !== null;
+    layerGroup.eachLayer(l => {
+      if (!l || !l._tsa || !l.setStyle) return;
+      const base = (typeof l._baseOpacity === 'number') ? l._baseOpacity : 0.3;
+      if (!active) {
+        l.setStyle({ fillOpacity: base, opacity: 1 });
+        return;
+      }
+      const on = isTsaActiveAt(l._tsa, _scrubMs);
+      l.setStyle({
+        fillOpacity: on ? Math.min(base + 0.15, 0.6) : 0.05,
+        opacity:     on ? 1 : 0.25,
+      });
+    });
+  }
+  function setScrubMs(ms) {
+    _scrubMs = (typeof ms === 'number' && Number.isFinite(ms)) ? ms : null;
+    applyScrubVisuals();
   }
 
   function fitBounds() {
@@ -1800,6 +1841,7 @@ window.TSAgestor.mapView = (function () {
     setWaypointClickHandler,
     setLegendVisible, updateLegend, isLegendVisible,
     setLayersControlVisible, isLayersControlVisible,
+    setScrubMs,
     _debugZoom: function () {
       if (!map) { console.log('mapa no inicializado'); return; }
       const z = map.getZoom();
