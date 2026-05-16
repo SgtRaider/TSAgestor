@@ -2679,38 +2679,6 @@
     $('#btn-fit-bounds').addEventListener('click', () => mapView.fitBounds());
     $('#btn-map-legend').addEventListener('click', toggleMapLegend);
     $('#btn-map-layers').addEventListener('click', toggleMapLayersControl);
-    // Time scrubber del mapa: el slider tiene rango [-1..23]; -1 significa
-    // "sin scrub" (todas las TSAs visibles igual). 0..23 = hora UTC de hoy.
-    // La fecha base es la salida del plan si esta presente, si no la de hoy.
-    const scrubInput = $('#map-scrub-hour');
-    const scrubDisplay = $('#map-scrub-display');
-    const scrubReset = $('#btn-scrub-reset');
-    function pickScrubBaseDate() {
-      const planInp = $('#plan-departure');
-      if (planInp && planInp.value) {
-        const d = new Date(planInp.value);
-        if (!isNaN(d.getTime())) return d;
-      }
-      return new Date();
-    }
-    function applyScrubFromSlider() {
-      if (!scrubInput) return;
-      const h = parseInt(scrubInput.value, 10);
-      if (!Number.isFinite(h) || h < 0) {
-        if (scrubDisplay) scrubDisplay.textContent = 'Todas';
-        if (mapView.setScrubMs) mapView.setScrubMs(null);
-        return;
-      }
-      const base = pickScrubBaseDate();
-      const ms = Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate(), h, 0, 0);
-      if (scrubDisplay) scrubDisplay.textContent = String(h).padStart(2, '0') + ':00Z';
-      if (mapView.setScrubMs) mapView.setScrubMs(ms);
-    }
-    if (scrubInput) scrubInput.addEventListener('input', applyScrubFromSlider);
-    if (scrubReset) scrubReset.addEventListener('click', () => {
-      if (scrubInput) scrubInput.value = '-1';
-      applyScrubFromSlider();
-    });
     $('#btn-download-cross').addEventListener('click', downloadCrossPNG);
     $('#btn-export-pdf').addEventListener('click', exportPDF);
     $('#btn-plan-calc').addEventListener('click', calcPlan);

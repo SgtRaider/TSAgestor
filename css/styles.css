@@ -531,62 +531,6 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   flex-wrap: wrap;
 }
 
-/* Time scrubber del mapa: slider 0-23h UTC para previsualizar
-   que TSAs estan activas a esa hora hoy. Hour=-1 = "sin scrub". */
-.map-scrubber {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-  padding: 4px 10px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid var(--border);
-  border-radius: var(--r-pill);
-  font-size: var(--fs-sm);
-  color: var(--ea-azul-palido);
-}
-.map-scrubber-label {
-  font-weight: 600;
-  font-size: var(--fs-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: var(--ea-azul-cielo);
-}
-.map-scrubber input[type="range"] {
-  width: 140px;
-  accent-color: var(--ea-amarillo);
-  cursor: pointer;
-  background: transparent;
-}
-.map-scrubber output {
-  font-family: 'JetBrains Mono', Consolas, monospace;
-  font-weight: 700;
-  font-size: var(--fs-md);
-  color: #fff;
-  min-width: 50px;
-  text-align: center;
-}
-.btn-icon-mini {
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--ea-azul-palido);
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border-radius: var(--r-sm);
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.btn-icon-mini:hover {
-  background: rgba(255,255,255,0.08);
-  border-color: var(--border);
-  color: #fff;
-}
-
 /* ── Map ──────────────────────────────────────────── */
 #map {
   flex: 1;
