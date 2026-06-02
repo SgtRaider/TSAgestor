@@ -134,36 +134,36 @@ window.TSAgestor.flightPlan = (function () {
   // un buffer de 500 ft respecto al techo y al suelo. Si el FL inicial ya
   // cae en la banda permitida lo conserva; si no, lo recorta al extremo
   // más cercano. FLs en pasos de 500 ft (FL005).
+  // Politica de prioridad:
+  //   1) Si el waypoint esta GEOGRAFICAMENTE dentro del poligono de
+  //      la TSA, la ruta debe estar TAMBIEN dentro de la banda
+  //      vertical de la TSA. Es decir, "dentro de TSA" = lateral +
+  //      vertical. Si el FL crucero entra en [lowerFt, upperFt] lo
+  //      mantenemos (priorida 2: cruise). Si no, snap al limite mas
+  //      cercano de la banda con buffer de 500 ft.
+  //   2) El FL crucero se preserva SOLO cuando es compatible con la
+  //      TSA atravesada — porque el avion no puede estar "fuera" de
+  //      la TSA verticalmente cuando esta "dentro" lateralmente
+  //      (seria un sobrevuelo, que el cliente no quiere para esta
+  //      planificacion: necesita coordinacion / interaccion con la
+  //      TSA y por tanto encajar en su banda).
   function adjustFLForTSA(initialFL, tsa) {
     if (!tsa || !tsa.vertical) return initialFL;
     const lowerFt = tsa.vertical.lowerFt;
     const upperFt = tsa.vertical.upperFt;
-    const cruiseFt = initialFL * 100;
-    // Politica nueva: el FL crucero MANDA cuando es viable. Solo
-    // bajamos / subimos la ruta si el FL crucero queda fuera de la
-    // banda de la TSA y entrar en ella es necesario.
-    //
-    // - cruise DENTRO de [lower, upper]  -> mantener FL crucero (la
-    //   TSA contiene ese FL; sigue volando a su altitud planeada).
-    // - cruise POR ENCIMA de upper       -> mantener FL crucero
-    //   (sobrevuelo; el avion no toca la TSA). Antes esto bajaba el
-    //   FL a la banda de la TSA y producia descensos a FL80 en
-    //   TSA GUAGA LOW cuando el plan era FL270.
-    // - cruise POR DEBAJO de lower      -> subir al FL minimo de la
-    //   banda. Caso raro (TSAs por encima del cruise); aqui si toca
-    //   ajustar porque el plan literal no llegaria a la altitud
-    //   donde el waypoint esta operativo.
-    if (cruiseFt >= lowerFt && cruiseFt <= upperFt) return initialFL;
-    if (cruiseFt > upperFt) return initialFL;
-    // cruiseFt < lowerFt -> subir
     let flMin = Math.ceil((lowerFt + 500) / 500) * 5;
     let flMax = Math.floor((upperFt - 500) / 500) * 5;
     if (flMax < flMin) {
+      // TSA demasiado fina (≤1000 ft): aplicamos sólo la banda sin buffer.
       flMin = Math.ceil(lowerFt / 500) * 5;
       flMax = Math.floor(upperFt / 500) * 5;
       if (flMax < flMin) return Math.round((lowerFt + upperFt) / 1000) * 5;
     }
-    return flMin;
+    // FL crucero dentro de la banda -> se mantiene (prio 2).
+    // Fuera -> snap a la banda (prio 1: dentro de TSA).
+    if (initialFL < flMin) return flMin;
+    if (initialFL > flMax) return flMax;
+    return initialFL;
   }
 
   // Enriquece un waypoint con TSA contenedora y FL ajustado.
