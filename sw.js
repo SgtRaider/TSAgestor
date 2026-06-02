@@ -9,7 +9,7 @@
  * Para forzar invalidación al desplegar nueva versión, sube CACHE_VERSION.
  */
 
-const CACHE_VERSION = 'tsagestor-v167';
+const CACHE_VERSION = 'tsagestor-v168';
 const SHELL_CACHE   = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -52,13 +52,18 @@ const SHELL_ASSETS = [
   'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
 ];
 
-// Hosts que deben ir siempre por red (datos meteorológicos en tiempo real).
+// Hosts que deben ir siempre por red (datos en tiempo real). Sin esto
+// la estrategia cache-first del SW serviria la PRIMERA respuesta para
+// siempre, congelando posiciones de aviones, METARs, tiles de RainViewer
+// etc. airplanes.live se anadio explicitamente porque su /point/...
+// devuelve snapshots ADS-B y necesita ir siempre por red.
 const NETWORK_FIRST_HOSTS = [
   'api.open-meteo.com',
   'aviationweather.gov',
   'tilecache.rainviewer.com',
   'view.eumetsat.int',
   'api.autorouter.aero',
+  'api.airplanes.live',
 ];
 
 self.addEventListener('install', (event) => {

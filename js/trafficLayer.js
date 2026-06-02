@@ -132,7 +132,10 @@ window.TSAgestor.trafficLayer = (function () {
     console.info('[traffic] fetch', url);
     let data;
     try {
-      const res = await fetch(url);
+      // cache:'no-store' impide que la HTTP cache del navegador devuelva
+      // una respuesta vieja. La invalidacion del SW se hace via
+      // NETWORK_FIRST_HOSTS en sw.js — esto es belt-and-suspenders.
+      const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) {
         console.warn('[traffic] HTTP', res.status);
         emitStatus(`Error API ${res.status}`, 'error');
