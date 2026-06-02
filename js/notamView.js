@@ -225,10 +225,10 @@ window.TSAgestor.notamView = (function () {
   function getWxLimits() {
     const s = window.TSAgestor && window.TSAgestor.settings;
     return {
-      ceilingHardFt:      s ? s.get('wxLimits.ceilingHardFt',      500) : 500,
-      ceilingMarginalFt:  s ? s.get('wxLimits.ceilingMarginalFt',  1000) : 1000,
-      visibilityHardM:    s ? s.get('wxLimits.visibilityHardM',    1500) : 1500,
-      visibilityMarginalM:s ? s.get('wxLimits.visibilityMarginalM',3000) : 3000,
+      ceilingHardFt:      s ? s.get('wxLimits.ceilingHardFt',      1500) : 1500,
+      ceilingMarginalFt:  s ? s.get('wxLimits.ceilingMarginalFt',  2000) : 2000,
+      visibilityHardM:    s ? s.get('wxLimits.visibilityHardM',    3000) : 3000,
+      visibilityMarginalM:s ? s.get('wxLimits.visibilityMarginalM',5000) : 5000,
       windHardKt:         s ? s.get('wxLimits.windHardKt',         30) : 30,
       windMarginalKt:     s ? s.get('wxLimits.windMarginalKt',     20) : 20,
     };
