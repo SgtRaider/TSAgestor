@@ -2161,7 +2161,13 @@
       tr.innerHTML = `
         <td>${r.index + 1}</td>
         <td>${nameHTML}</td>
-        <td class="cell-leg-dist">${isFirst || isHold ? '—' : r.legDistNM.toFixed(1)}</td>
+        <td class="cell-leg-dist">${
+          isFirst || isHold
+            ? '—'
+            : (Number.isFinite(r.legTrack)
+                ? String(Math.round(r.legTrack)).padStart(3, '0') + '/' + r.legDistNM.toFixed(1)
+                : r.legDistNM.toFixed(1))
+        }</td>
         ${iasCell}
         ${tasCell}
         <td class="cell-wind ${windCls}"${windTooltip}>${isHold ? '—' : windText}</td>

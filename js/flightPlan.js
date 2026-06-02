@@ -1022,9 +1022,15 @@ window.TSAgestor.flightPlan = (function () {
 
       let track = null, windInfo = null, gs = tasPerLeg[i];
       let legHoursOverride = null;
-      if (i > 0 && windsHourly) {
+      // Calculamos siempre el track del leg (heading magnetic-true sin
+      // declinacion -- bearing geodesico). Lo necesita la columna
+      // "Tramo (HDG/NM)" del log incluso si no hay vientos cargados.
+      if (i > 0) {
         const prev = coords[i - 1];
         track = geom.bearing([prev.lat, prev.lon], [c.lat, c.lon]);
+      }
+      if (i > 0 && windsHourly) {
+        const prev = coords[i - 1];
         const res = integrateLeg({
           legNM, track, tas: tasPerLeg[i], ias: iasPerLeg[i],
           flA: flPerWp[i - 1], flB: flPerWp[i],
@@ -1073,6 +1079,7 @@ window.TSAgestor.flightPlan = (function () {
         airway: c.airway,
         fl: c.fl,
         legDistNM: legNM,
+        legTrack: track,                            // heading geodesico del leg (deg, 0-360) o null para el primer waypoint
         legIAS: iasPerLeg[i],                      // velocidad indicada (input)
         legSpeedKt: tasPerLeg[i],                  // TAS (KIAS corregida por densidad)
         legGS: i === 0 ? null : gs,                // GS = TAS + componente viento
