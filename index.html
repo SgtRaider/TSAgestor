@@ -347,6 +347,16 @@
         <button id="btn-fit-bounds" class="btn btn-ghost">Centrar</button>
         <button id="btn-map-legend" class="btn btn-ghost" type="button" aria-pressed="false">Leyenda TSAs</button>
         <button id="btn-map-layers" class="btn btn-ghost is-active" type="button" aria-pressed="true">Capas</button>
+        <button id="btn-traffic" class="btn btn-ghost" type="button" aria-pressed="false" title="Trafico aéreo en vivo (airplanes.live)">✈ Tráfico</button>
+        <div id="traffic-panel" class="traffic-panel hidden" role="group" aria-label="Capa de tráfico aéreo">
+          <label class="traffic-panel-label">
+            <span>Aeródromo ICAO</span>
+            <input type="text" id="traffic-icao" maxlength="4" placeholder="GCRR" autocomplete="off" spellcheck="false" inputmode="latin" pattern="[A-Za-z]{4}">
+          </label>
+          <button id="btn-traffic-go" class="btn btn-sm btn-primary" type="button">Iniciar</button>
+          <button id="btn-traffic-stop" class="btn btn-sm" type="button" disabled>Parar</button>
+          <span id="traffic-status" class="traffic-status"></span>
+        </div>
       </div>
       <div id="draw-banner" class="draw-banner hidden">
         <div class="draw-banner-text">
@@ -752,10 +762,11 @@
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
 <script src="js/filters.js"></script>
-<script src="js/notamHub.js?v=163"></script>
-<script src="js/kmlIO.js?v=163"></script>
-<script src="js/notamView.js?v=163"></script>
-<script src="js/mapView.js?v=163"></script>
+<script src="js/notamHub.js?v=164"></script>
+<script src="js/kmlIO.js?v=164"></script>
+<script src="js/notamView.js?v=164"></script>
+<script src="js/mapView.js?v=164"></script>
+<script src="js/trafficLayer.js?v=164"></script>
 <script src="js/crossSection.js"></script>
 <script src="js/flightPlan.js"></script>
 <script src="js/pdfExport.js"></script>

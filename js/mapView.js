@@ -155,7 +155,10 @@ window.TSAgestor.mapView = (function () {
   }
 
   function init(elId) {
-    if (map) return map;
+    if (map) {
+      window._tsa_leaflet_map = map;
+      return map;
+    }
     map = L.map(elId, {
       zoomControl: true,
       worldCopyJump: false,
@@ -183,6 +186,10 @@ window.TSAgestor.mapView = (function () {
     _initSettingsHook();
     _applyZoomVisibility();
     map.on('zoomend', _applyZoomVisibility);
+    // Expone el mapa para modulos externos (trafficLayer, etc.) que
+    // necesitan una referencia al objeto Leaflet sin tener que repetir
+    // toda la init.
+    window._tsa_leaflet_map = map;
     return map;
   }
 

@@ -619,6 +619,114 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   flex-wrap: wrap;
 }
 
+/* ── Panel de capa de trafico aereo (airplanes.live) ── */
+.traffic-panel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 4px var(--sp-3);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-sm);
+}
+.traffic-panel.hidden { display: none; }
+.traffic-panel-label {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--ea-azul-cielo);
+  font-weight: 600;
+}
+.traffic-panel-label span { line-height: 1.1; }
+.traffic-panel input {
+  background: var(--bg);
+  color: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 3px 7px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  width: 72px;
+}
+.traffic-panel input:focus {
+  outline: none;
+  border-color: var(--ea-amarillo);
+  box-shadow: 0 0 0 2px rgba(250, 194, 0, 0.18);
+}
+.btn.btn-sm {
+  padding: 3px 10px;
+  font-size: var(--fs-sm);
+}
+.traffic-status {
+  font-size: var(--fs-sm);
+  color: var(--ea-azul-palido);
+  white-space: nowrap;
+}
+.traffic-status-ok      { color: #86efac; }
+.traffic-status-error   { color: #fca5a5; }
+.traffic-status-loading { color: var(--ea-amarillo); }
+
+/* Iconos de los aviones en el mapa. El SVG ya viene rotado por
+   transform inline; rotamos el wrapper para que el origen sea el
+   centro del icon. */
+.traffic-plane-icon { background: transparent !important; border: 0 !important; }
+.traffic-plane {
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+}
+.traffic-tt {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+}
+.traffic-ad-marker { background: transparent !important; border: 0 !important; }
+.traffic-ad-marker .ad-pin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ea-amarillo);
+  color: #1a1200;
+  border-radius: var(--r-sm);
+  padding: 1px 6px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  border: 1.5px solid #1a1200;
+}
+.traffic-popup { font-family: 'Archivo', Arial, sans-serif; color: #0f172a; }
+.traffic-popup-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 4px;
+}
+.traffic-popup-head b { font-size: 14px; }
+.traffic-popup-type {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 10px;
+  background: #e2e8f0;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.traffic-popup-row { font-size: 12px; line-height: 1.5; }
+.traffic-popup-row span {
+  display: inline-block;
+  min-width: 78px;
+  color: #64748b;
+  font-weight: 600;
+}
+.traffic-popup-row.dim { color: #94a3b8; font-size: 10px; margin-top: 4px; }
+
 /* ── Map ──────────────────────────────────────────── */
 #map {
   flex: 1;

@@ -9,7 +9,7 @@
  * Para forzar invalidación al desplegar nueva versión, sube CACHE_VERSION.
  */
 
-const CACHE_VERSION = 'tsagestor-v163';
+const CACHE_VERSION = 'tsagestor-v164';
 const SHELL_CACHE   = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -35,6 +35,7 @@ const SHELL_ASSETS = [
   './js/scheduleFmt.js',
   './js/filters.js',
   './js/mapView.js',
+  './js/trafficLayer.js',
   './js/notamView.js',
   './js/notamHub.js',
   './js/kmlIO.js',

@@ -2780,6 +2780,93 @@
     refreshQuickSelectChips();
   }
 
+  // ── Capa de trafico aereo (airplanes.live) ──────────────────────
+  // Resuelve un ICAO a coords via airways.waypoints (que ya carga
+  // aeropuertos AIRPORTS + waypoints AIP). El usuario introduce
+  // p.ej. GCRR y el modulo arranca polling cada 10 s del trafico
+  // a 100 NM.
+  function resolveICAOToCoords(icao) {
+    const aw = window.TSAgestor && window.TSAgestor.airways;
+    if (!aw || !aw.waypoints) return null;
+    const key = String(icao || '').trim().toUpperCase();
+    if (!/^[A-Z]{4}$/.test(key)) return null;
+    const pt = aw.waypoints[key];
+    if (!pt || pt.length < 2) return null;
+    return { icao: key, lat: pt[0], lon: pt[1], name: (aw.waypointNames || {})[key] || key };
+  }
+
+  function wireTrafficLayer() {
+    const tl = window.TSAgestor && window.TSAgestor.trafficLayer;
+    if (!tl) return;
+    const btnToggle = $('#btn-traffic');
+    const panel = $('#traffic-panel');
+    const inp = $('#traffic-icao');
+    const btnGo = $('#btn-traffic-go');
+    const btnStop = $('#btn-traffic-stop');
+    const statusEl = $('#traffic-status');
+    if (!btnToggle || !panel) return;
+    tl.setStatusElement(statusEl);
+
+    // Sincroniza el estado de los botones Iniciar/Parar segun si esta
+    // corriendo el polling. Tambien refleja el aria-pressed del toggle.
+    const syncUI = () => {
+      const st = tl.getStatus();
+      btnGo.disabled = !!st.running;
+      btnStop.disabled = !st.running;
+      btnToggle.classList.toggle('is-active', !panel.classList.contains('hidden'));
+      btnToggle.setAttribute('aria-pressed', String(!panel.classList.contains('hidden')));
+    };
+    tl.setOnStateChange(syncUI);
+
+    btnToggle.addEventListener('click', () => {
+      // Asegura que el mapa esta inicializado y la capa registrada.
+      ensureMap();
+      const mv = window.TSAgestor && window.TSAgestor.mapView;
+      const map = mv && mv._debugGetMap ? mv._debugGetMap() : null;
+      // Inicializa la capa con el mapa la primera vez. mapView no
+      // expone el mapa publicamente; usamos un hook via window.
+      if (window._tsa_leaflet_map) tl.init(window._tsa_leaflet_map);
+      const opening = panel.classList.contains('hidden');
+      panel.classList.toggle('hidden', !opening);
+      if (!opening) {
+        // Al cerrar paramos el polling para no malgastar requests.
+        tl.stop();
+      }
+      syncUI();
+      if (opening) {
+        // Si hay origen del plan, sugierelo como ICAO inicial.
+        if (!inp.value) {
+          const planOrig = ($('#plan-origin') || {}).value || '';
+          if (/^[A-Za-z]{4}$/.test(planOrig.trim())) inp.value = planOrig.trim().toUpperCase();
+        }
+        inp.focus();
+      }
+    });
+
+    btnGo.addEventListener('click', () => {
+      const ad = resolveICAOToCoords(inp.value);
+      if (!ad) {
+        statusEl.textContent = `ICAO "${inp.value || ''}" no reconocido (usa 4 letras de un aerodromo conocido).`;
+        statusEl.className = 'traffic-status traffic-status-error';
+        return;
+      }
+      if (window._tsa_leaflet_map) tl.init(window._tsa_leaflet_map);
+      tl.start(ad.icao, ad.lat, ad.lon);
+      syncUI();
+    });
+
+    btnStop.addEventListener('click', () => {
+      tl.stop();
+      syncUI();
+    });
+
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); btnGo.click(); }
+    });
+
+    syncUI();
+  }
+
   // ── Bootstrap ────────────────────────────────────────────────────────
 
   function wireTabs() {
@@ -2797,6 +2884,7 @@
     $('#btn-fit-bounds').addEventListener('click', () => mapView.fitBounds());
     $('#btn-map-legend').addEventListener('click', toggleMapLegend);
     $('#btn-map-layers').addEventListener('click', toggleMapLayersControl);
+    wireTrafficLayer();
     $('#btn-download-cross').addEventListener('click', downloadCrossPNG);
     $('#btn-export-pdf').addEventListener('click', exportPDF);
     $('#btn-plan-calc').addEventListener('click', calcPlan);
