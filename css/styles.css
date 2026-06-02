@@ -318,6 +318,94 @@ h1, h2, h3, .ea-title {
   color: var(--ea-azul-cielo);
 }
 
+/* Quick-select por grupo (FIR/tipo/banda) sobre la tabla TSA */
+.tsa-quickselect {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--sp-2) var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.tsa-quickselect.hidden { display: none; }
+.quickselect-label {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--ea-azul-cielo);
+}
+.quickselect-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+}
+.quickselect-hint {
+  font-size: var(--fs-xs);
+  color: var(--ea-azul-palido);
+  white-space: nowrap;
+}
+.tsa-qs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 4px 10px;
+  background: rgba(255,255,255,0.04);
+  color: var(--ea-azul-palido);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  font-family: 'Archivo', Arial, sans-serif;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease,
+              color 0.12s ease, transform 0.08s ease;
+}
+.tsa-qs-chip:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: var(--ea-azul-claro);
+  color: #fff;
+}
+.tsa-qs-chip:active { transform: translateY(1px); }
+.tsa-qs-chip.is-active {
+  background: var(--ea-amarillo);
+  color: #1a1200;
+  border-color: var(--ea-amarillo);
+}
+.tsa-qs-chip.is-partial {
+  background: rgba(250,194,0,0.18);
+  color: #fde68a;
+  border-color: rgba(250,194,0,0.55);
+}
+.tsa-qs-chip.tsa-qs-sep { margin-left: var(--sp-3); position: relative; }
+.tsa-qs-chip.tsa-qs-sep::before {
+  content: '';
+  position: absolute;
+  left: calc(-1 * var(--sp-3) + 4px);
+  top: 4px;
+  bottom: 4px;
+  border-left: 1px dashed var(--border);
+}
+.tsa-qs-count {
+  display: inline-block;
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  min-width: 18px;
+  text-align: center;
+}
+.tsa-qs-chip:not(.is-active) .tsa-qs-count {
+  background: rgba(255,255,255,0.12);
+  color: var(--ea-azul-cielo);
+}
+
 /* ── Main ─────────────────────────────────────────── */
 main { flex: 1; display: flex; flex-direction: column; }
 

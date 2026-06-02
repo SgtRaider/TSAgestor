@@ -898,6 +898,7 @@
         headRow.classList.toggle('selected', newState);
         groupCb.indeterminate = false;
         refreshSelectionUI();
+        refreshQuickSelectChips();
         renderViews();
         return;
       }
@@ -913,6 +914,7 @@
       const groupId = row && row.dataset.groupId;
       if (groupId) syncGroupMasterCheckbox(groupId);
       refreshSelectionUI();
+      refreshQuickSelectChips();
       renderViews();
     });
 
@@ -960,12 +962,117 @@
     state.selected = new Set(state.tsas.map(t => t.id));
     renderTable();
     renderViews();
+    refreshQuickSelectChips();
   }
 
   function selectNone() {
     state.selected = new Set();
     renderTable();
     renderViews();
+    refreshQuickSelectChips();
+  }
+
+  // ── Quick-select por grupo (FIR/tipo/banda) ──────────────────────
+  // Detecta el FIR de una TSA por la posicion de su centroide. Las
+  // fronteras reales son poligonos complejos; usamos bounding boxes
+  // aproximadas suficientes para Iberia + Canarias + Portugal. Si la
+  // TSA no encaja en ninguno, devuelve null y la TSA no aparece en
+  // ningun chip de FIR (sigue accesible via "Todas").
+  function detectFIR(tsa) {
+    if (!tsa || !Array.isArray(tsa.centroid) || tsa.centroid.length < 2) return null;
+    const lat = Number(tsa.centroid[0]), lon = Number(tsa.centroid[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    // GCCC Canarias: lat 26-30.5, lon -19.5..-12 (cubre las 7 islas
+    // y aguas adyacentes).
+    if (lat >= 26 && lat <= 30.5 && lon >= -19.5 && lon <= -12) return 'GCCC';
+    // Resto en la ventana peninsular iberica.
+    if (lat >= 35.5 && lat <= 44.5 && lon >= -10 && lon <= 5) {
+      // LPPC Portugal: aproximadamente al oeste de la frontera con
+      // Espana. Galicia (lon < -7, lat > 42) se queda como LECM.
+      if (lon < -6.5 && lat < 42) return 'LPPC';
+      // LECB Barcelona: NE peninsular + Balears. Aproximacion:
+      //   - Cataluna, este de Aragon, este de Valencia: lat>=38.5 y lon>=-1
+      //   - Balears: lon>=1
+      if (lon >= 1) return 'LECB';
+      if (lat >= 38.5 && lon >= -1) return 'LECB';
+      // Resto peninsular -> LECM Madrid.
+      return 'LECM';
+    }
+    return null;
+  }
+
+  // Definicion de los grupos rapidos. Cada grupo es un predicado sobre
+  // la TSA. Si filter() devuelve true, la TSA pertenece al grupo.
+  function getQuickSelectGroups() {
+    return [
+      { key: 'GCCC',    label: 'GCCC · Canarias',  filter: t => detectFIR(t) === 'GCCC' },
+      { key: 'LECM',    label: 'LECM · Madrid',    filter: t => detectFIR(t) === 'LECM' },
+      { key: 'LECB',    label: 'LECB · Barcelona', filter: t => detectFIR(t) === 'LECB' },
+      { key: 'LPPC',    label: 'LPPC · Lisboa',    filter: t => detectFIR(t) === 'LPPC' },
+      { key: 'work',    label: 'Solo Work',        filter: t => t._isWorkArea === true,  sep: true },
+      { key: 'transit', label: 'Solo Transit',     filter: t => t._isWorkArea === false },
+      { key: 'low',     label: '≤ FL100',          filter: t => t.vertical && t.vertical.upperFt <= 10000, sep: true },
+      { key: 'mid',     label: 'FL100–FL245',      filter: t => t.vertical && t.vertical.upperFt > 10000 && t.vertical.upperFt <= 24500 },
+      { key: 'high',    label: '> FL245',          filter: t => t.vertical && t.vertical.upperFt > 24500 },
+    ];
+  }
+
+  function refreshQuickSelectChips() {
+    const cont = $('#tsa-quickselect');
+    const chipsCont = $('#tsa-quickselect-chips');
+    if (!cont || !chipsCont) return;
+    const tsas = state.tsas || [];
+    if (!tsas.length) { cont.classList.add('hidden'); return; }
+    const groups = getQuickSelectGroups();
+    // Cuenta cuantas TSAs por grupo y cuantas estan ya seleccionadas.
+    const stats = groups.map(g => {
+      const members = tsas.filter(g.filter);
+      const selectedCount = members.filter(t => state.selected.has(t.id)).length;
+      return { g, members, selectedCount };
+    });
+    // Solo mostramos chips de grupos con al menos 1 miembro -- evita
+    // ruido con chips vacios cuando el dataset no toca ese FIR.
+    const visible = stats.filter(s => s.members.length > 0);
+    if (!visible.length) { cont.classList.add('hidden'); return; }
+    cont.classList.remove('hidden');
+    chipsCont.innerHTML = visible.map(s => {
+      const allOn = s.members.length > 0 && s.selectedCount === s.members.length;
+      const someOn = s.selectedCount > 0 && !allOn;
+      const cls = 'tsa-qs-chip' + (allOn ? ' is-active' : (someOn ? ' is-partial' : ''));
+      const sepCls = s.g.sep ? ' tsa-qs-sep' : '';
+      return `<button type="button" class="${cls}${sepCls}" data-qs-group="${escapeHTML(s.g.key)}" aria-pressed="${allOn ? 'true' : 'false'}" title="${escapeHTML(s.g.label)}: ${s.members.length} TSA${s.members.length === 1 ? '' : 's'}${someOn ? ` (${s.selectedCount} marcadas)` : ''}">${escapeHTML(s.g.label)}<span class="tsa-qs-count">${s.selectedCount}/${s.members.length}</span></button>`;
+    }).join('');
+  }
+
+  function toggleQuickSelectGroup(groupKey) {
+    const g = getQuickSelectGroups().find(x => x.key === groupKey);
+    if (!g) return;
+    const members = (state.tsas || []).filter(g.filter);
+    if (!members.length) return;
+    const allOn = members.every(t => state.selected.has(t.id));
+    if (allOn) {
+      // Desmarcar todas las del grupo.
+      members.forEach(t => state.selected.delete(t.id));
+    } else {
+      // Marcar todas las del grupo (sin desmarcar las demas; suma).
+      members.forEach(t => state.selected.add(t.id));
+    }
+    renderTable();
+    renderViews();
+    refreshQuickSelectChips();
+    if (state.mapReady && mapView.render) mapView.render(getVisible());
+  }
+
+  function wireQuickSelect() {
+    const chipsCont = $('#tsa-quickselect-chips');
+    if (!chipsCont || chipsCont._wired) return;
+    chipsCont._wired = true;
+    chipsCont.addEventListener('click', (e) => {
+      const btn = e.target.closest && e.target.closest('[data-qs-group]');
+      if (!btn) return;
+      e.preventDefault();
+      toggleQuickSelectGroup(btn.dataset.qsGroup);
+    });
   }
 
   // ── Filtro ───────────────────────────────────────────────────────────
@@ -2670,6 +2777,7 @@
     renderViews();
     refreshKMLCounter();
     refreshTsaChipCounts();
+    refreshQuickSelectChips();
   }
 
   // ── Bootstrap ────────────────────────────────────────────────────────
@@ -2759,6 +2867,7 @@
     wireSelection();
     wireKMLEditor();
     wireTsaFilterChips();
+    wireQuickSelect();
     refreshExportUI();
     console.log('[TSAgestor] listo.');
   });
