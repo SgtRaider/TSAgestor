@@ -1156,8 +1156,12 @@
       btn.disabled = false;
       const planTag = opts.plan ? ' · plan' : '';
       const cloudTag = opts.clouds ? ' · nubes' : '';
+      // res.distance viene en km desde crossSection.render(); convertimos
+      // a NM para el texto operativo (la representacion del SVG ya esta
+      // en NM tras el cambio de unidad).
+      const distNM = res.distance / 1.852;
       info.textContent =
-        `${res.extremes.A} → ${res.extremes.B} · ${res.distance.toFixed(1)} km · ` +
+        `${res.extremes.A} → ${res.extremes.B} · ${distNM.toFixed(1)} NM · ` +
         `${res.panels} panel${res.panels === 1 ? '' : 'es'} · solapes: ${res.overlapCount}` +
         planTag + cloudTag;
     } else {

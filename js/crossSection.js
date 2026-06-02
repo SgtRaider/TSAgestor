@@ -12,6 +12,13 @@ window.TSAgestor.crossSection = (function () {
 
   const BAND_COLORS = { low: '#22c55e', mid: '#f59e0b', high: '#ef4444' };
 
+  // 1 NM = 1.852 km. Internamente seguimos calculando en km (centroides,
+  // along-track, polygonAlongTrackRange viven en geom.js); la conversion
+  // a NM se hace solo al pintar el eje X, ticks y leyendas. Asi no
+  // tocamos la matematica y evitamos drift acumulado por redondeos.
+  const NM_KM = 1.852;
+  const kmToNM = km => km / NM_KM;
+
   const WIDTH = 1100;
   const PANEL_H = 440;
   const PANEL_GAP = 28;
@@ -305,9 +312,9 @@ window.TSAgestor.crossSection = (function () {
     const xScale = km => pad.left + ((km - panel.xMinKm) / span) * plotW;
     const yScale = ft => plotBottom - (ft / maxY) * plotH;
 
-    // Título del panel
+    // Título del panel (rango en NM)
     const title = (nPanels > 1 ? `Tramo ${panelIndex + 1}/${nPanels} · ` : '') +
-      `${panel.xMinKm.toFixed(0)}–${panel.xMaxKm.toFixed(0)} km`;
+      `${kmToNM(panel.xMinKm).toFixed(0)}–${kmToNM(panel.xMaxKm).toFixed(0)} NM`;
     svg.appendChild(text(pad.left, topPx + 24, title, {
       'font-size': 13, 'font-weight': 700, fill: '#0f172a',
     }));
@@ -324,16 +331,20 @@ window.TSAgestor.crossSection = (function () {
       }));
     }
 
-    // X ticks (~6 divisiones)
-    const xStep = niceStep(span / 6);
-    const xStart = Math.ceil(panel.xMinKm / xStep) * xStep;
-    for (let km = xStart; km <= panel.xMaxKm; km += xStep) {
+    // X ticks en NM (~6 divisiones). Calculamos paso en NM y volvemos a
+    // km para posicionar (xScale espera km porque sigue siendo el eje
+    // interno).
+    const spanNM = Math.max(1, kmToNM(panel.xMaxKm) - kmToNM(panel.xMinKm));
+    const xStepNM = niceStep(spanNM / 6);
+    const xStartNM = Math.ceil(kmToNM(panel.xMinKm) / xStepNM) * xStepNM;
+    for (let nm = xStartNM; nm <= kmToNM(panel.xMaxKm); nm += xStepNM) {
+      const km = nm * NM_KM;
       const x = xScale(km);
       svg.appendChild(el('line', {
         x1: x, y1: plotTop, x2: x, y2: plotBottom,
         stroke: '#f1f5f9', 'stroke-width': 1,
       }));
-      svg.appendChild(text(x, plotBottom + 14, Math.round(km) + ' km', {
+      svg.appendChild(text(x, plotBottom + 14, Math.round(nm) + ' NM', {
         'text-anchor': 'middle', 'font-size': 10, fill: '#64748b',
       }));
     }
@@ -646,7 +657,7 @@ window.TSAgestor.crossSection = (function () {
       { 'text-anchor': 'middle', 'font-size': 16, 'font-weight': 700, fill: '#0f172a' }
     ));
     const subParts = [
-      `${distance.toFixed(1)} km`,
+      `${kmToNM(distance).toFixed(1)} NM`,
     ];
     if (fromPlan) {
       const uniqueTsas = new Set(rects.map(r => r.tsa)).size;

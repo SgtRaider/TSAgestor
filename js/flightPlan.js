@@ -229,7 +229,7 @@ window.TSAgestor.flightPlan = (function () {
   // Concatena rutas Dijkstra entre cada par consecutivo de puntos
   // (origen, via1, via2, ..., destino). Cada leg trae sus propios fixes
   // intermedios via aerovias.
-  function buildAirwayRouteVia(origin, viaList, destination, fl, filter) {
+  function buildAirwayRouteVia(origin, viaList, destination, fl, filter, tsasAtFL) {
     const points = [origin].concat(viaList).concat([destination]);
     const allSegments = [];
     let totalDistKm = 0;
@@ -239,7 +239,7 @@ window.TSAgestor.flightPlan = (function () {
       const b = points[i + 1];
       // Si los dos extremos son el mismo punto, lo saltamos.
       if (a.lat === b.lat && a.lon === b.lon) continue;
-      const leg = findRoute(a, b, fl, filter);
+      const leg = findRoute(a, b, fl, filter, tsasAtFL);
       if (leg && leg.segments && leg.segments.length) {
         for (const seg of leg.segments) allSegments.push(seg);
         totalDistKm += leg.totalDistKm || 0;
@@ -276,9 +276,15 @@ window.TSAgestor.flightPlan = (function () {
     };
   }
 
-  // Dijkstra. Penaliza usar la cota equivocada para el FL elegido.
+  // Dijkstra. Penaliza usar la cota equivocada para el FL elegido y, si
+  // se proporciona tsasAtFL (TSAs visibles cuya banda vertical contiene
+  // el FL crucero), aplica un descuento del 30% a los segmentos cuyo
+  // punto medio cae dentro de alguna de ellas. Asi la ruta tiende a
+  // mantenerse dentro de las TSAs activas a la altitud crucero — util
+  // para entrenamiento militar donde el piloto QUIERE volar por las
+  // areas de trabajo / transito coordinadas.
   // filter: { upper: bool, lower: bool } controla que aerovias entran en el grafo.
-  function findRoute(origin, destination, flightLevel, filter) {
+  function findRoute(origin, destination, flightLevel, filter, tsasAtFL) {
     const g = graph(filter);
     const oKey = coordKey([origin.lat, origin.lon]);
     const dKey = coordKey([destination.lat, destination.lon]);
@@ -290,6 +296,8 @@ window.TSAgestor.flightPlan = (function () {
     const visited = new Set();
     for (const k of g.nodes.keys()) dist.set(k, Infinity);
     dist.set(oKey, 0);
+
+    const useTsaBoost = Array.isArray(tsasAtFL) && tsasAtFL.length > 0;
 
     while (true) {
       let curKey = null, curDist = Infinity;
@@ -305,6 +313,18 @@ window.TSAgestor.flightPlan = (function () {
         let cost = edge.dist;
         if (flightLevel >= 245 && edge.type === 'lower') cost *= 1.5;
         else if (flightLevel < 195 && edge.type === 'upper') cost *= 1.5;
+        // Bonus por TSA: descuento si el segmento pasa por una TSA a la
+        // altitud crucero. Calculamos el midpoint del segmento (basta
+        // para edges cortos de aerovia) y aplicamos factor 0.7.
+        if (useTsaBoost) {
+          const toNode = g.nodes.get(edge.to);
+          if (toNode) {
+            const mid = [(node.lat + toNode.lat) / 2, (node.lon + toNode.lon) / 2];
+            for (const tsa of tsasAtFL) {
+              if (pointInPoly(mid, tsa.polygon)) { cost *= 0.7; break; }
+            }
+          }
+        }
         const nd = curDist + cost;
         if (nd < dist.get(edge.to)) {
           dist.set(edge.to, nd);
@@ -578,17 +598,30 @@ window.TSAgestor.flightPlan = (function () {
       return { error: 'Origen y destino son el mismo punto. Añade waypoints en "Vía" o dibuja la ruta para definir un circuito.' };
     }
 
+    // Pre-filtra las TSAs visibles cuya banda vertical CONTIENE el FL
+    // crucero. Solo estas tiran del router como atractor; las que estan
+    // a otro FL no aplican porque el ATC no autorizaria pasar por ellas
+    // sin coordinar el cambio. Asi "ruta dentro de TSA" e "ajustada a
+    // altitud crucero" son la misma cosa.
+    const flFt = fl * 100;
+    const tsasAtFL = Array.isArray(opts.tsas) ? opts.tsas.filter(t =>
+      t && Array.isArray(t.polygon) && t.polygon.length >= 3 &&
+      t.vertical &&
+      Number.isFinite(t.vertical.lowerFt) && Number.isFinite(t.vertical.upperFt) &&
+      t.vertical.lowerFt <= flFt && flFt <= t.vertical.upperFt
+    ) : [];
+
     if (!useAirways) {
       // Sin overlays activos: DCT puro origen -> vias -> destino.
       route = buildManualRoute(origin, viaList, destination);
     } else if (!viaList.length) {
       // Con overlays activos y sin via: Dijkstra origen -> destino.
-      route = findRoute(origin, destination, fl, filter);
+      route = findRoute(origin, destination, fl, filter, tsasAtFL);
     } else {
       // Con overlays activos y via forzada: Dijkstra entre cada par
       // consecutivo. Permite forzar puntos de paso obligatorios mientras
       // el resto de la ruta sigue aerovias.
-      route = buildAirwayRouteVia(origin, viaList, destination, fl, filter);
+      route = buildAirwayRouteVia(origin, viaList, destination, fl, filter, tsasAtFL);
     }
 
     // Cada waypoint adopta el nombre de la TSA que lo contiene (si la hay) y
