@@ -17,6 +17,9 @@ window.TSAgestor.trafficLayer = (function () {
   const API_BASE = 'https://api.airplanes.live/v2';
   const REFRESH_MS = 10000;
   const RADIUS_NM = 100;
+  // Ventana de traza por avion: conservamos los puntos de posicion de
+  // los ultimos 5 min para dibujar el path detras del marker.
+  const TRAIL_MS = 5 * 60 * 1000;
 
   let _map = null;
   let _layer = null;
@@ -24,7 +27,8 @@ window.TSAgestor.trafficLayer = (function () {
   let _icao = null;       // ICAO actualmente activo
   let _timer = null;      // setInterval id del polling
   let _aborter = null;    // AbortController del fetch en curso
-  let _markers = new Map();   // hex -> { marker, rotation }
+  let _markers = new Map();   // hex -> { marker, rotation, altBand }
+  let _trails  = new Map();   // hex -> { points: [[lat,lon,tsMs],...], line: L.polyline, altBand }
   let _statusEl = null;
   let _onStateChange = null;  // callback(state) -> emite al UI
 
@@ -88,6 +92,7 @@ window.TSAgestor.trafficLayer = (function () {
     if (_aborter) { try { _aborter.abort(); } catch (_) {} _aborter = null; }
     if (_layer) _layer.clearLayers();
     _markers.clear();
+    _trails.clear();
     _icao = null;
     _center = null;
     emitStatus('', null);
@@ -146,6 +151,7 @@ window.TSAgestor.trafficLayer = (function () {
   // refresh (solo movemos la posicion y rotamos).
   function _renderAircraft(list) {
     if (!_layer) return;
+    const now = Date.now();
     const seen = new Set();
     for (const ac of list) {
       if (!Number.isFinite(ac.lat) || !Number.isFinite(ac.lon)) continue;
@@ -153,13 +159,13 @@ window.TSAgestor.trafficLayer = (function () {
       const entry = _markers.get(ac.hex);
       const track = Number.isFinite(ac.track) ? ac.track : 0;
       const altFt = Number.isFinite(ac.alt_baro) ? ac.alt_baro : null;
+      const altBand = _altitudeBand(altFt);
       const tooltip = _buildTooltip(ac);
       const popup = _buildPopup(ac);
       if (entry) {
         entry.marker.setLatLng([ac.lat, ac.lon]);
         // Solo regeneramos el icono si cambio el track (>=2 deg) o la
         // banda de altitud — evita recreaciones por jitter.
-        const altBand = _altitudeBand(altFt);
         if (Math.abs((entry.rotation || 0) - track) > 2 || entry.altBand !== altBand) {
           entry.marker.setIcon(_planeIcon(track, altBand));
           entry.rotation = track;
@@ -168,7 +174,6 @@ window.TSAgestor.trafficLayer = (function () {
         entry.marker.getElement && _setTooltipContent(entry.marker, tooltip);
         if (entry.marker._popup) entry.marker._popup.setContent(popup);
       } else {
-        const altBand = _altitudeBand(altFt);
         const m = L.marker([ac.lat, ac.lon], {
           icon: _planeIcon(track, altBand),
         });
@@ -177,14 +182,85 @@ window.TSAgestor.trafficLayer = (function () {
         m.addTo(_layer);
         _markers.set(ac.hex, { marker: m, rotation: track, altBand });
       }
+      // Actualiza la traza (path de los ultimos 5 min) del avion.
+      _updateTrail(ac.hex, ac.lat, ac.lon, now, altBand);
     }
-    // Elimina markers de aviones que ya no estan en el radio.
+    // Elimina markers y trazas de aviones que ya no estan en el radio.
     for (const [hex, entry] of _markers) {
       if (!seen.has(hex)) {
         _layer.removeLayer(entry.marker);
         _markers.delete(hex);
       }
     }
+    for (const [hex, t] of _trails) {
+      if (!seen.has(hex)) {
+        if (t.line) _layer.removeLayer(t.line);
+        _trails.delete(hex);
+      }
+    }
+  }
+
+  // Acumula los puntos de posicion de cada avion en los ultimos 5 min
+  // y mantiene un polyline tras el marker mostrando la traza recorrida.
+  // Se omite el punto si esta a < ~10m del anterior (jitter de la
+  // fuente ADS-B) para no inflar el array. Se quitan los puntos
+  // anteriores al cutoff antes de re-pintar.
+  function _updateTrail(hex, lat, lon, nowMs, altBand) {
+    let entry = _trails.get(hex);
+    if (!entry) {
+      entry = { points: [], line: null, altBand };
+      _trails.set(hex, entry);
+    }
+    const cutoff = nowMs - TRAIL_MS;
+    // Filtra los puntos viejos (> 5 min).
+    if (entry.points.length && entry.points[0][2] < cutoff) {
+      entry.points = entry.points.filter(p => p[2] >= cutoff);
+    }
+    const last = entry.points[entry.points.length - 1];
+    const closeEnough = last
+      && Math.abs(last[0] - lat) < 0.0001
+      && Math.abs(last[1] - lon) < 0.0001;
+    if (!closeEnough) entry.points.push([lat, lon, nowMs]);
+
+    // Re-pinta la polilinea. La capa Leaflet acepta setLatLngs sin
+    // recrear el objeto, evitando flicker.
+    const latlngs = entry.points.map(p => [p[0], p[1]]);
+    if (latlngs.length < 2) {
+      // Aun no hay traza visible (primer fix); nada que pintar.
+      if (entry.line) { _layer.removeLayer(entry.line); entry.line = null; }
+      return;
+    }
+    const color = _trailColor(altBand);
+    if (entry.line) {
+      entry.line.setLatLngs(latlngs);
+      if (entry.altBand !== altBand) {
+        entry.line.setStyle({ color });
+        entry.altBand = altBand;
+      }
+    } else {
+      entry.line = L.polyline(latlngs, {
+        color,
+        weight: 2,
+        opacity: 0.65,
+        interactive: false,
+        dashArray: '4 3',
+        className: 'traffic-trail',
+      });
+      entry.line.addTo(_layer);
+      entry.altBand = altBand;
+    }
+  }
+
+  function _trailColor(altBand) {
+    // Mismo codigo de color que el icono del avion para que el ojo
+    // empareje traza y banda de altitud.
+    const map = {
+      low:     '#22c55e',
+      mid:     '#fac200',
+      high:    '#ef4444',
+      unknown: '#94a3b8',
+    };
+    return map[altBand] || map.unknown;
   }
 
   function _setTooltipContent(marker, html) {
