@@ -120,14 +120,28 @@ window.TSAgestor.flightPlan = (function () {
     return { error: t };
   }
 
-  // Devuelve la primera TSA cuyo polígono contiene el punto (lateral),
-  // o null si ninguna lo contiene.
-  function findTSAContaining(latlon, tsas) {
+  // Devuelve la TSA cuyo poligono contiene el punto. Si se pasa
+  // preferredFL, prefiere la TSA cuya banda vertical CONTIENE ese FL
+  // (asi no hay que recortar). Util para climb/descent interpolados
+  // donde varias TSAs apiladas (GUAGUA LOW/MEDIUM/HIGH) cubren la
+  // misma area lateral con bandas distintas: queremos asignar al
+  // sub-waypoint la TSA que ya encaja con su altitud, en vez de
+  // siempre la primera del array.
+  function findTSAContaining(latlon, tsas, preferredFL) {
     if (!tsas) return null;
+    const targetFt = (preferredFL != null && Number.isFinite(preferredFL))
+      ? preferredFL * 100 : null;
+    let fallback = null;
     for (const tsa of tsas) {
-      if (pointInPoly(latlon, tsa.polygon)) return tsa;
+      if (!pointInPoly(latlon, tsa.polygon)) continue;
+      if (targetFt !== null && tsa.vertical &&
+          Number.isFinite(tsa.vertical.lowerFt) && Number.isFinite(tsa.vertical.upperFt) &&
+          tsa.vertical.lowerFt <= targetFt && targetFt <= tsa.vertical.upperFt) {
+        return tsa;
+      }
+      if (!fallback) fallback = tsa;
     }
-    return null;
+    return fallback;
   }
 
   // El vuelo cruza la TSA, manteniéndose DENTRO de su banda vertical con
@@ -169,7 +183,11 @@ window.TSAgestor.flightPlan = (function () {
   // Enriquece un waypoint con TSA contenedora y FL ajustado.
   // Si el waypoint era un genérico "lat,lon", adopta el nombre de la TSA.
   function enrichWaypoint(pt, tsas, initialFL, isEndpoint) {
-    const tsa = findTSAContaining([pt.lat, pt.lon], tsas);
+    // Pasamos el FL crucero como preferencia: si el waypoint esta dentro
+    // de varias TSAs apiladas, picks la que ya contiene el FL crucero.
+    // Asi un waypoint dentro de GUAGUA LOW + GUAGUA HIGH con cruise
+    // FL250 elige GUAGUA HIGH (FL125-255) y mantiene FL250 sin recortar.
+    const tsa = findTSAContaining([pt.lat, pt.lon], tsas, initialFL);
     // Origen y destino: aeropuertos al nivel del suelo. Mantenemos `tsa`
     // (si cae dentro de una) para que findConflicts pueda excluirla del
     // listado: por geografia es un cruce inevitable al despegar/aterrizar.
@@ -686,7 +704,12 @@ window.TSAgestor.flightPlan = (function () {
   // waypoints normales.
   function expandClimbDescentLegs(coords, tsas) {
     if (!coords || coords.length < 2) return coords;
-    const STEP_FL = 50; // 5000 ft
+    // STEP_FL define el grano del staircase: cada cuanto FL insertamos
+    // un sub-waypoint. STEP_FL=25 (= FL025 = 2500 ft) da una linea
+    // mucho mas pegada a las TSAs apiladas (p.ej. GUAGUA LOW FL75-135
+    // + GUAGUA HIGH FL125-255). Antes era STEP_FL=50 y la linea
+    // saltaba zonas sin TSA.
+    const STEP_FL = 25;
     const out = [coords[0]];
     for (let i = 1; i < coords.length; i++) {
       const prev = coords[i - 1], cur = coords[i];
@@ -704,15 +727,18 @@ window.TSAgestor.flightPlan = (function () {
           const t = s / nSubs;
           const lat = prev.lat + (cur.lat - prev.lat) * t;
           const lon = prev.lon + (cur.lon - prev.lon) * t;
-          // FL redondeado al multiple de STEP_FL mas cercano (50 = FL050).
+          // FL redondeado al multiple de STEP_FL mas cercano.
           const flRaw = flA + (flB - flA) * t;
           let fl = Math.round(flRaw / STEP_FL) * STEP_FL;
           // Si el sub-leg cae dentro de una TSA, acotar el FL a su banda
           // vertical -- el avion no puede atravesar la TSA fuera de
           // [lowerFt, upperFt]. adjustFLForTSA aplica un buffer de 500 ft
           // y aproxima a FL5; lo reusamos para mantener consistencia con
-          // los waypoints originales.
-          const tsa = findTSAContaining([lat, lon], tsas);
+          // los waypoints originales. Pasamos fl como preferredFL para
+          // que findTSAContaining priorice la TSA cuya banda ya encaja
+          // (ej.: en climb FL100, prefiere GUAGUA MEDIUM FL75-135 antes
+          // que GUAGA LOW GND-FL85 que requeriria recorte).
+          const tsa = findTSAContaining([lat, lon], tsas, fl);
           let clamped = false, prefix = arrow;
           if (tsa && tsa.vertical) {
             const adj = adjustFLForTSA(fl, tsa);
