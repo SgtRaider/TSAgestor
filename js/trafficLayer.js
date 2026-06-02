@@ -21,14 +21,21 @@ window.TSAgestor.trafficLayer = (function () {
   // los ultimos 5 min para dibujar el path detras del marker.
   const TRAIL_MS = 5 * 60 * 1000;
 
+  // Duracion de la interpolacion suave entre dos snapshots ADS-B.
+  // Ligeramente inferior al periodo de refresco (10 s) para que cuando
+  // llegue el siguiente tick el avion ya este donde realmente esta,
+  // sin "rebote" hacia atras.
+  const ANIM_MS = 9500;
+
   let _map = null;
   let _layer = null;
   let _center = null;     // [lat, lon] del aerodromo seleccionado
   let _icao = null;       // ICAO actualmente activo
   let _timer = null;      // setInterval id del polling
   let _aborter = null;    // AbortController del fetch en curso
-  let _markers = new Map();   // hex -> { marker, rotation, altBand }
+  let _markers = new Map();   // hex -> { marker, rotation, altBand, anim }
   let _trails  = new Map();   // hex -> { points: [[lat,lon,tsMs],...], line: L.polyline, altBand }
+  let _animFrame = null;      // id de requestAnimationFrame activo (o null)
   let _statusEl = null;
   let _onStateChange = null;  // callback(state) -> emite al UI
 
@@ -90,6 +97,7 @@ window.TSAgestor.trafficLayer = (function () {
   function stop() {
     if (_timer) { clearInterval(_timer); _timer = null; }
     if (_aborter) { try { _aborter.abort(); } catch (_) {} _aborter = null; }
+    if (_animFrame) { cancelAnimationFrame(_animFrame); _animFrame = null; }
     if (_layer) _layer.clearLayers();
     _markers.clear();
     _trails.clear();
@@ -146,14 +154,17 @@ window.TSAgestor.trafficLayer = (function () {
     emitStatus(`${aircraft.length} aviones a ≤${RADIUS_NM} NM · ult. ${tStamp}`, 'ok');
   }
 
-  // Dibuja o actualiza los markers de los aviones. Reusa el marker
-  // existente cuando el avion ya estaba para no parpadear cada
-  // refresh (solo movemos la posicion y rotamos).
+  // Dibuja o actualiza los markers. La posicion se interpola en
+  // requestAnimationFrame durante ~9.5 s desde la ultima conocida
+  // hasta la nueva, para que la traza y el icono se muevan suave
+  // entre snapshots ADS-B (cada 10 s seria un salto visible).
   function _renderAircraft(list) {
     if (!_layer) return;
     const now = Date.now();
     const seen = new Set();
     for (const ac of list) {
+      // El hex es la clave; sin el se mezclan aviones distintos.
+      if (!ac.hex) continue;
       if (!Number.isFinite(ac.lat) || !Number.isFinite(ac.lon)) continue;
       seen.add(ac.hex);
       const entry = _markers.get(ac.hex);
@@ -163,15 +174,28 @@ window.TSAgestor.trafficLayer = (function () {
       const tooltip = _buildTooltip(ac);
       const popup = _buildPopup(ac);
       if (entry) {
-        entry.marker.setLatLng([ac.lat, ac.lon]);
-        // Solo regeneramos el icono si cambio el track (>=2 deg) o la
-        // banda de altitud — evita recreaciones por jitter.
-        if (Math.abs((entry.rotation || 0) - track) > 2 || entry.altBand !== altBand) {
-          entry.marker.setIcon(_planeIcon(track, altBand));
+        // Programamos animacion desde la posicion CURRENTLY-DISPLAYED
+        // (no la del snapshot anterior) hasta la nueva. Asi si llega
+        // un tick antes de que termine la animacion previa, el avion
+        // arranca el nuevo tramo donde realmente esta visualmente.
+        const curLL = entry.marker.getLatLng();
+        entry.anim = {
+          fromLat: curLL.lat, fromLon: curLL.lng,
+          toLat:   ac.lat,    toLon:   ac.lon,
+          t0Ms:    now,
+          durMs:   ANIM_MS,
+        };
+        // Rotacion y color via DOM directo (sin setIcon -> sin rebuild,
+        // sin perdida de animaciones CSS internas).
+        if (Math.abs((entry.rotation || 0) - track) > 1) {
+          _setMarkerRotation(entry.marker, track);
           entry.rotation = track;
+        }
+        if (entry.altBand !== altBand) {
+          _setMarkerColor(entry.marker, altBand);
           entry.altBand = altBand;
         }
-        entry.marker.getElement && _setTooltipContent(entry.marker, tooltip);
+        _setTooltipContent(entry.marker, tooltip);
         if (entry.marker._popup) entry.marker._popup.setContent(popup);
       } else {
         const m = L.marker([ac.lat, ac.lon], {
@@ -180,9 +204,17 @@ window.TSAgestor.trafficLayer = (function () {
         m.bindTooltip(tooltip, { direction: 'top', offset: [0, -8], className: 'traffic-tt' });
         m.bindPopup(popup, { maxWidth: 280 });
         m.addTo(_layer);
-        _markers.set(ac.hex, { marker: m, rotation: track, altBand });
+        // No animamos el primer fix (no hay posicion previa); cuando
+        // llegue el siguiente, _animLoop tomara esta posicion como
+        // origen y la nueva como destino.
+        _markers.set(ac.hex, {
+          marker: m, rotation: track, altBand,
+          anim: null,
+        });
       }
-      // Actualiza la traza (path de los ultimos 5 min) del avion.
+      // Actualiza la traza (path de los ultimos 5 min). Usamos la
+      // posicion REAL del snapshot, no la interpolada — los puntos
+      // de la traza son mediciones ADS-B.
       _updateTrail(ac.hex, ac.lat, ac.lon, now, altBand);
     }
     // Elimina markers y trazas de aviones que ya no estan en el radio.
@@ -198,6 +230,52 @@ window.TSAgestor.trafficLayer = (function () {
         _trails.delete(hex);
       }
     }
+    // Arranca el loop si hay animaciones pendientes y no esta corriendo.
+    if (!_animFrame && _markers.size > 0) {
+      _animFrame = requestAnimationFrame(_animTick);
+    }
+  }
+
+  // Loop de animacion. Cada frame interpola lat/lon de cada marker
+  // segun el tiempo transcurrido desde su ultimo snapshot. Para si
+  // no hay nada que mover (todos los markers llegaron al destino).
+  function _animTick() {
+    _animFrame = null;
+    const now = Date.now();
+    let anyPending = false;
+    for (const entry of _markers.values()) {
+      const a = entry.anim;
+      if (!a) continue;
+      const elapsed = now - a.t0Ms;
+      const t = Math.min(1, Math.max(0, elapsed / a.durMs));
+      // Easing lineal — los aviones siguen rumbos cuasi-rectos a
+      // velocidad constante en escalas de 10 s; lineal es lo correcto.
+      const lat = a.fromLat + (a.toLat - a.fromLat) * t;
+      const lon = a.fromLon + (a.toLon - a.fromLon) * t;
+      entry.marker.setLatLng([lat, lon]);
+      if (t < 1) anyPending = true;
+      else entry.anim = null;
+    }
+    if (anyPending) {
+      _animFrame = requestAnimationFrame(_animTick);
+    }
+  }
+
+  // Aplica la rotacion sobre el elemento interno del icono via DOM.
+  // No usamos setIcon porque eso rebuildea el DOM entero del marker y
+  // pierde la animacion / posicion fluida.
+  function _setMarkerRotation(marker, track) {
+    const el = marker.getElement && marker.getElement();
+    if (!el) return;
+    const inner = el.querySelector('.traffic-plane');
+    if (inner) inner.style.transform = 'rotate(' + track + 'deg)';
+  }
+
+  function _setMarkerColor(marker, altBand) {
+    const el = marker.getElement && marker.getElement();
+    if (!el) return;
+    const path = el.querySelector('.traffic-plane svg path');
+    if (path) path.setAttribute('fill', _trailColor(altBand));
   }
 
   // Acumula los puntos de posicion de cada avion en los ultimos 5 min
