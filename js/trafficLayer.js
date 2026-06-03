@@ -160,49 +160,93 @@ window.TSAgestor.trafficLayer = (function () {
     emitStatus(`${aircraft.length} arr/dep · ${raw.length} en ${RADIUS_NM} NM · ult. ${tStamp}`, 'ok');
   }
 
-  // Decide si un avion ADS-B es arrival/departure del aerodromo
-  // centro. Heuristica (sin flight plan disponible en airplanes.live):
+  // Decide si un avion ADS-B esta entrando o saliendo del aerodromo
+  // centro. airplanes.live NO entrega origen ni destino del plan de
+  // vuelo, asi que combinamos las senales mas fiables:
   //
-  //  1) Dentro de 20 NM y bajo FL200 -> SI (zona TMA tipica).
-  //  2) Crucero (>=FL250 con baro_rate plano) -> NO (overflight).
-  //  3) Descendiendo y rumbo hacia el aerodromo (<60° de diff) -> SI (arrival).
-  //  4) Ascendiendo y rumbo desde el aerodromo (<60° de diff) -> SI (departure).
-  //  5) Resto -> NO.
-  //
-  // Sin track o sin distancia no podemos clasificar; fallback a SI dentro
-  // de 30 NM (probable trafico local) y NO fuera.
+  //  A) En pista (alt_baro === 'ground') a <5 NM -> SI.
+  //  B) category C* o B6 (vehiculo tierra, obstaculo, UAV) -> NO.
+  //  C) nav_modes contiene 'approach' y dist<60 NM -> SI (arrival).
+  //  D) Intencion del piloto via nav_altitude_mcp/fms (mas fiable
+  //     que baro_rate, que oscila): si la altitud seleccionada es
+  //     >=2000 ft por DEBAJO de la actual -> descenso. Si >=2000 ft
+  //     por ENCIMA -> ascenso. Si plano y FL>=250 -> overflight.
+  //  E) Dentro de 20 NM y bajo FL200 -> SI (zona TMA tipica).
+  //  F) Descendiendo + rumbo al aerodromo (<60 deg diff) -> SI (arrival).
+  //  G) Ascendiendo + alejandose (<60 deg diff) -> SI (departure).
+  //  H) <40 NM, <15000 ft y rumbo al aerodromo (<70 deg) -> SI
+  //     (vector de aproximacion guiado por ATC).
+  //  Resto -> NO.
   function _isArrivalOrDeparture(ac, centerLat, centerLon) {
     if (!Number.isFinite(ac.lat) || !Number.isFinite(ac.lon)) return false;
     const geom = window.TSAgestor && window.TSAgestor.geom;
-    if (!geom) return true;  // sin geom modulo: no podemos filtrar, no excluyas
+    if (!geom) return true;
     const distKm = geom.greatCircleDistance([ac.lat, ac.lon], [centerLat, centerLon]);
     const distNM = distKm / 1.852;
-    const altFt = Number.isFinite(ac.alt_baro) ? ac.alt_baro : null;
-    const climbing   = Number.isFinite(ac.baro_rate) && ac.baro_rate >  300;
-    const descending = Number.isFinite(ac.baro_rate) && ac.baro_rate < -300;
-    const cruising   = !climbing && !descending;
 
-    // 1) Muy cerca + bajo: trafico de aerodromo. Incluye GA, helos, etc.
+    // B) Filtra vehiculos de tierra, obstaculos y UAV por ADS-B
+    // category code. Solo nos interesan aviones de verdad (A* y B1/B2
+    // glider/balloon que tambien hacen vuelos).
+    if (typeof ac.category === 'string') {
+      if (/^C[0-7]$/.test(ac.category)) return false;   // surface vehicles + obstacles
+      if (ac.category === 'B6') return false;           // UAV
+    }
+
+    // A) Avion en tierra a <5 NM = en pista del aerodromo.
+    if (ac.alt_baro === 'ground' && distNM < 5) return true;
+    // Avion en tierra fuera del aerodromo: lo descartamos (estara en otro).
+    if (ac.alt_baro === 'ground') return false;
+
+    const altFt = Number.isFinite(ac.alt_baro) ? ac.alt_baro : null;
+    // nav_modes: lista de modos de automatismo activos.
+    const modes = Array.isArray(ac.nav_modes) ? ac.nav_modes : [];
+
+    // C) Senal mas fuerte: aproximacion engaged. Si esta cerca, casi
+    //    seguro arrival del aerodromo seleccionado.
+    if (modes.indexOf('approach') >= 0 && distNM < 60) return true;
+
+    // D) Intencion del piloto via MCP/FMS. La altitud seleccionada
+    //    refleja el target real, no oscila como baro_rate.
+    const selectedAlt = Number.isFinite(ac.nav_altitude_mcp) ? ac.nav_altitude_mcp
+                      : Number.isFinite(ac.nav_altitude_fms) ? ac.nav_altitude_fms
+                      : null;
+    let intent = null;  // 'descent' | 'climb' | 'level'
+    if (selectedAlt != null && altFt != null) {
+      const diff = selectedAlt - altFt;
+      if (diff <= -2000) intent = 'descent';
+      else if (diff >= 2000) intent = 'climb';
+      else intent = 'level';
+    }
+    // Fallback: baro_rate.
+    if (!intent) {
+      if (Number.isFinite(ac.baro_rate)) {
+        if (ac.baro_rate >  300) intent = 'climb';
+        else if (ac.baro_rate < -300) intent = 'descent';
+        else intent = 'level';
+      } else {
+        intent = 'unknown';
+      }
+    }
+
+    // Overflight en crucero: alta altitud, intent=level -> descarta.
+    if (altFt != null && altFt >= 25000 && intent === 'level') return false;
+
+    // E) Muy cerca + bajo: trafico de aerodromo (GA, IFR aproximando).
     if (distNM < 20 && (altFt == null || altFt < 20000)) return true;
-    // 2) Crucero alto pasando por encima -> overflight, no es para nosotros.
-    if (altFt != null && altFt >= 25000 && cruising) return false;
 
     if (!Number.isFinite(ac.track)) {
-      // Sin rumbo: aproximacion conservadora por distancia.
+      // Sin rumbo usable: conservador por distancia.
       return distNM < 30;
     }
-    // Rumbo del segmento aerodromo -> avion (hacia donde "esta" el avion).
     const bearingFromAirport = geom.bearing([centerLat, centerLon], [ac.lat, ac.lon]);
-    const diffAway   = _absAngleDiff(ac.track, bearingFromAirport);                  // arrumbado hacia fuera
-    const diffToward = _absAngleDiff(ac.track, (bearingFromAirport + 180) % 360);    // arrumbado hacia dentro
+    const diffAway   = _absAngleDiff(ac.track, bearingFromAirport);
+    const diffToward = _absAngleDiff(ac.track, (bearingFromAirport + 180) % 360);
 
-    // 3) Descendiendo y arrumbado al aerodromo -> arrival.
-    if (descending && diffToward < 60) return true;
-    // 4) Ascendiendo y alejandose -> departure.
-    if (climbing && diffAway < 60) return true;
-    // 5) Si esta a media altitud cerca y arrumbado al aerodromo, lo
-    //    aceptamos como vector de aproximacion (controlador podria
-    //    estarlo guiando).
+    // F) Descendiendo y arrumbado al aerodromo -> arrival.
+    if (intent === 'descent' && diffToward < 60) return true;
+    // G) Ascendiendo y alejandose -> departure.
+    if (intent === 'climb' && diffAway < 60) return true;
+    // H) Vector ATC: medio nivel, cerca, rumbo entrante.
     if (distNM < 40 && altFt != null && altFt < 15000 && diffToward < 70) return true;
     return false;
   }
