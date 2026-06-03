@@ -55,14 +55,23 @@ window.TSAgestor.notamHub = (function () {
     return url.toString();
   }
 
+  // Patron de las respuestas de error del edge de Cloudflare. Cuando
+  // CF no puede llegar al upstream, o tiene una caida transitoria, o
+  // hay DNS error puntual, devuelve un body MUY corto tipo "error
+  // code: 1016" con status 403/520/525/530. No es nuestro upstream
+  // diciendo "prohibido", es CF antes de que llegue la Pages Function.
+  // Son SIEMPRE transitorios y se reintentan.
+  const CF_EDGE_ERR_RE = /^\s*error code:\s*\d{3,4}\s*$/i;
+
   async function _fetchJSON(path, qs, opts) {
     const url = buildUrl(path, qs);
     console.debug('[notamHub] GET', url);
-    // Retry para 5xx (errores intermitentes del backend o de la
-    // Pages Function proxy). Backoff: 500ms, 1500ms (=2s y 3s totales).
-    // 4xx NO se reintenta porque son fallos del cliente (bad params,
-    // unauthorized, etc.) y reintentarlos solo malgasta tiempo.
-    const MAX_ATTEMPTS = 3;
+    // Retry para 5xx, errores de red, Y errores transitorios del edge
+    // de Cloudflare (codigos 1xxx, llegan como 403/520-525/530 con
+    // body "error code: NNNN"). Backoff exponencial empezando en 800ms.
+    // 4xx "reales" (400/401/403 con JSON detail, 404, 422, etc.) NO se
+    // reintentan: son fallos del cliente, malgastan tiempo.
+    const MAX_ATTEMPTS = 4;
     let lastErr = null;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       let res;
@@ -71,7 +80,7 @@ window.TSAgestor.notamHub = (function () {
       } catch (e) {
         lastErr = new Error('Red caida o CORS: ' + e.message);
         if (attempt < MAX_ATTEMPTS) {
-          const backoffMs = 500 * Math.pow(2, attempt - 1);
+          const backoffMs = 800 * Math.pow(2, attempt - 1);
           console.warn('[notamHub] network error, retry ' + attempt + '/' + (MAX_ATTEMPTS - 1) +
             ' en ' + backoffMs + 'ms:', e.message);
           await new Promise(r => setTimeout(r, backoffMs));
@@ -91,14 +100,20 @@ window.TSAgestor.notamHub = (function () {
         console.debug('[notamHub] response:', Array.isArray(data) ? `array(${data.length})` : typeof data, data);
         return data;
       }
-      // 5xx -> reintentar. 4xx -> fallo definitivo del cliente.
       let body = '';
       try { body = await res.text(); } catch (_) {}
       const status = res.status;
-      const isRetryable = status >= 500 && status < 600;
+      const is5xx = status >= 500 && status < 600;
+      const isCfEdge = CF_EDGE_ERR_RE.test(body);
+      // Cloudflare a veces devuelve 520-525 (origin unreachable) o
+      // 530 (origin error) sin tocar nuestro upstream. Reintentables.
+      const isCfStatus = status === 520 || status === 521 || status === 522 ||
+                         status === 523 || status === 524 || status === 525 || status === 530;
+      const isRetryable = is5xx || isCfEdge || isCfStatus;
       if (isRetryable && attempt < MAX_ATTEMPTS) {
-        const backoffMs = 500 * Math.pow(2, attempt - 1);
-        console.warn('[notamHub] HTTP ' + status + ', retry ' + attempt + '/' + (MAX_ATTEMPTS - 1) +
+        const backoffMs = 800 * Math.pow(2, attempt - 1);
+        const tag = isCfEdge ? 'CF edge ' + body.trim() : 'HTTP ' + status;
+        console.warn('[notamHub] ' + tag + ', retry ' + attempt + '/' + (MAX_ATTEMPTS - 1) +
           ' en ' + backoffMs + 'ms');
         await new Promise(r => setTimeout(r, backoffMs));
         continue;
@@ -107,9 +122,14 @@ window.TSAgestor.notamHub = (function () {
       let detail = '';
       try { const j = JSON.parse(body); detail = j.detail || j.error || JSON.stringify(j).slice(0, 200); }
       catch (_) { detail = body.slice(0, 200); }
+      // Mensaje user-friendly cuando es claro que el problema es de CF.
+      if (isCfEdge) {
+        throw new Error('Cloudflare ' + body.trim() + ' tras ' + MAX_ATTEMPTS +
+          ' intentos. Suele ser un fallo transitorio en el edge de Cloudflare ' +
+          'o en el DNS upstream — vuelve a intentar en 30-60 segundos.');
+      }
       throw new Error(`HTTP ${status} ${res.statusText}${detail ? ' — ' + detail : ''}`);
     }
-    // Defensive: no deberiamos llegar aqui.
     throw lastErr || new Error('Fetch fallo sin razon clara');
   }
 
