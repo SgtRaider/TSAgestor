@@ -731,6 +731,18 @@ window.TSAgestor.notamView = (function () {
            /\bESPACIO\s+AEREO\b/.test(s);
   }
 
+  // Decide si una `section` del NOTAM lo marca explicitamente como
+  // NOTAM de aerodromo (AERODROMOS / WARNINGS_AERODROMOS). Si es asi,
+  // NO aplicamos el filtro por serie ICAO (D/M/W) — esos NOTAMs son
+  // warnings del aerodromo aunque su body describa TSAs cercanas.
+  // Ejemplo verificado: D3006/26 (section=WARNINGS_AERODROMOS,
+  // aerodrome=LEBZ) describe TSA TALAVERA LOW que afecta a LEBZ;
+  // antes se descartaba por empezar con D, ahora se conserva.
+  function isAerodromeSection(section) {
+    if (!section) return false;
+    return /AERODROMOS?/i.test(String(section));
+  }
+
   // Detecta NOTAMs de area por OTROS criterios ademas de la section:
   //   - Series ICAO D / M / W (D = danger area / military activity,
   //     M = military, W = warning). En el sistema espanyol estos son
@@ -1072,12 +1084,17 @@ window.TSAgestor.notamView = (function () {
         const id = String(n.notamId || '').trim();
         if (!id) continue;
         // Omitir NOTAMs de apartados de area (areas segregadas, TSAs,
-        // corredores, military training). Tres criterios:
-        //   1) section del API (ICARO XXI capitulo)
-        //   2) serie ICAO del id (D/M/W -> areas peligrosas/military/
-        //      warning, ej. D2428/26, M0833/26)
-        //   3) Q-code subject R* (RR/RD/RT/RP/RA/RM)
-        if (isAreaSection(n._section) || isAreaByIdOrQcode(n)) {
+        // corredores, military training).
+        //   - Si el section es explicitamente AERODROMOS o
+        //     WARNINGS_AERODROMOS, lo conservamos siempre — son
+        //     NOTAMs del aerodromo aunque su serie sea D/M/W.
+        //   - Si el section dice AREAS / SEGREGADAS / TSA / ESPACIO
+        //     AEREO -> descartar.
+        //   - Si no hay section claro, caemos al heuristico por
+        //     serie ICAO (D/M/W) y Q-code R*.
+        if (isAerodromeSection(n._section)) {
+          // Pass-through: NOTAM marcado como aerodromo por el API.
+        } else if (isAreaSection(n._section) || isAreaByIdOrQcode(n)) {
           droppedAreas++; continue;
         }
         if (!byId.has(id)) byId.set(id, n);
