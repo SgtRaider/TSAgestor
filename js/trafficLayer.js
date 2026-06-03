@@ -163,32 +163,43 @@ window.TSAgestor.trafficLayer = (function () {
     _prependTraceToTrail(hex, data);
   }
 
-  // Anade los puntos historicos del trace al trail existente. Solo
-  // los puntos cuya marca temporal sea ANTERIOR al primer fix obtenido
-  // por polling (sin duplicados). Si el trail no existe (raro, el avion
-  // habria desaparecido) silenciosamente se ignora.
+  // Anade los puntos historicos del trace al trail existente.
+  // Filtra dos cosas:
+  //   1) Tiempo: solo puntos ANTERIORES al primer fix por polling
+  //      (para no duplicar lo que ya tenemos).
+  //   2) Distancia: solo puntos DENTRO del radio RADIUS_NM del aerodromo.
+  //      Asi la traza visible empieza justo cuando el avion entro al
+  //      circulo, no desde el aeropuerto de origen real (que puede
+  //      estar a cientos de NM).
   function _prependTraceToTrail(hex, traceData) {
     const entry = _trails.get(hex);
     if (!entry) return;
     const baseTsMs = Number(traceData.timestamp || 0) * 1000;
     if (!Number.isFinite(baseTsMs) || baseTsMs <= 0) return;
+    const cutoffMs = entry.points.length ? entry.points[0][2] : Infinity;
     const hist = [];
+    let outsideRadius = 0;
     for (const p of traceData.trace) {
       if (!Array.isArray(p) || p.length < 3) continue;
       const offsetSec = Number(p[0]);
       const lat = Number(p[1]);
       const lon = Number(p[2]);
       if (!Number.isFinite(offsetSec) || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-      hist.push([lat, lon, baseTsMs + offsetSec * 1000]);
+      const ts = baseTsMs + offsetSec * 1000;
+      if (ts >= cutoffMs) continue;          // ya cubierto por polling
+      if (!_withinRadius(lat, lon)) {        // fuera de 100 NM
+        outsideRadius++;
+        continue;
+      }
+      hist.push([lat, lon, ts]);
     }
-    if (!hist.length) return;
-    // Excluye puntos historicos que coincidan o sean posteriores al
-    // primer fix por polling (para no duplicar).
-    const cutoffMs = entry.points.length ? entry.points[0][2] : Infinity;
-    const filtered = hist.filter(p => p[2] < cutoffMs);
-    if (!filtered.length) return;
-    entry.points = filtered.concat(entry.points);
-    console.info('[traffic] trace cargada para', hex, ':+', filtered.length, 'puntos historicos');
+    if (!hist.length) {
+      console.info('[traffic] trace para', hex, ': 0 puntos dentro del radio (' + outsideRadius + ' fuera)');
+      return;
+    }
+    entry.points = hist.concat(entry.points);
+    console.info('[traffic] trace cargada para', hex, ':+', hist.length,
+      'puntos historicos dentro del radio (' + outsideRadius + ' fuera descartados)');
     _redrawTrailLine(entry);
   }
 
@@ -447,16 +458,28 @@ window.TSAgestor.trafficLayer = (function () {
   // Se omite el punto si esta a < ~10m del anterior (jitter de la
   // fuente ADS-B) para no inflar el array. Se quitan los puntos
   // anteriores al cutoff antes de re-pintar.
+  // Comprueba si un punto cae dentro del radio RADIUS_NM del centro
+  // (el aerodromo seleccionado). Se usa para recortar la traza
+  // historica de cada avion al area visible: los segmentos previos a
+  // entrar en el circulo se descartan (el usuario solo ve lo que pasa
+  // dentro de "su" zona).
+  function _withinRadius(lat, lon) {
+    if (!_center) return true;
+    const geom = window.TSAgestor && window.TSAgestor.geom;
+    if (!geom) return true;
+    const distKm = geom.greatCircleDistance([lat, lon], _center);
+    return distKm <= RADIUS_NM * 1.852;
+  }
+
   function _updateTrail(hex, lat, lon, nowMs, colorKey) {
     let entry = _trails.get(hex);
     if (!entry) {
       entry = { points: [], line: null, colorKey };
       _trails.set(hex, entry);
     }
-    // Sin cutoff temporal: la traza completa desde que el avion entro
-    // al radio. Solo descartamos duplicados por jitter ADS-B (cambios
-    // <11 m respecto al ultimo punto guardado) para no inflar la lista
-    // cuando un avion esta estacionado o en hold.
+    // Solo guardamos puntos dentro del radio (por si el API devuelve
+    // un avion cuyo fix actual ha salido ligeramente del circulo).
+    if (!_withinRadius(lat, lon)) return;
     const last = entry.points[entry.points.length - 1];
     const closeEnough = last
       && Math.abs(last[0] - lat) < 0.0001
