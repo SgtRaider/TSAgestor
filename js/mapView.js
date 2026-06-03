@@ -600,7 +600,9 @@ window.TSAgestor.mapView = (function () {
       startPolling();
       if (!grp._visibilityHook) {
         grp._visibilityHook = () => {
-          if (document.visibilityState === 'hidden') stopPolling();
+          // !== 'visible' cubre hidden / prerender / unloaded; solo
+          // reanudamos en estado 'visible' real.
+          if (document.visibilityState !== 'visible') stopPolling();
           else if (map && map.hasLayer(grp)) {
             startPolling();
             loadSigmets(grp).catch(e => console.warn('[sigmet]', e));

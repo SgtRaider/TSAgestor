@@ -109,7 +109,9 @@ window.TSAgestor.trafficLayer = (function () {
     if (!_visibilityHook) {
       _visibilityHook = () => {
         if (!_center) return;  // stop() ya quito el center
-        if (document.visibilityState === 'hidden') {
+        // !== 'visible' cubre 'hidden', 'prerender' y 'unloaded'. Solo
+        // reanudamos cuando el doc esta plenamente visible al usuario.
+        if (document.visibilityState !== 'visible') {
           if (_timer) { clearInterval(_timer); _timer = null; }
         } else if (!_timer) {
           _fetchAndRender();
@@ -143,6 +145,9 @@ window.TSAgestor.trafficLayer = (function () {
   // a la vez): un fetch cada 150 ms = max ~6 req/s. Soft cap, basta
   // para 16 aviones en ~2.4 s.
   function _enqueueTrace(hex) {
+    // Direcciones TIS-B no-ICAO (prefijo '~') no tienen archivo trace
+    // en tar1090; pedirlo siempre devuelve 404 y gasta cuota.
+    if (!hex || hex.charAt(0) === '~') return;
     if (_tracesFetched.has(hex)) return;
     _tracesFetched.add(hex);
     _traceQueue.push(hex);
@@ -196,7 +201,13 @@ window.TSAgestor.trafficLayer = (function () {
     // El avion puede haber salido del radio entre _enqueueTrace y el
     // resolve del fetch -> _trails ya no tiene su entry. O la entry
     // puede haber sido reseteada y carecer de .points. Guard completo.
-    if (!entry || !Array.isArray(entry.points)) return;
+    // Si no hay entry, limpiamos _tracesFetched para que si el avion
+    // vuelve a entrar mas adelante, reintentemos el fetch (sin esto,
+    // un fly-by rapido bloquea para siempre el trace de ese hex).
+    if (!entry || !Array.isArray(entry.points)) {
+      _tracesFetched.delete(hex);
+      return;
+    }
     if (!traceData || !Array.isArray(traceData.trace)) return;
     const baseTsMs = Number(traceData.timestamp || 0) * 1000;
     if (!Number.isFinite(baseTsMs) || baseTsMs <= 0) return;
@@ -660,12 +671,22 @@ window.TSAgestor.trafficLayer = (function () {
   }
 
   function _buildTooltip(ac) {
-    const cs = (ac.flight || '').trim() || ac.hex || '?';
+    // Leaflet bindTooltip(string) lo parsea como HTML, asi que callsign
+    // y tipo (de la API publica airplanes.live) podrian inyectar JS si
+    // no se escapan. _esc cubre &, <, > que son los unicos significativos
+    // en este contexto (no hay atributos con interpolacion).
+    const cs = _esc((ac.flight || '').trim() || ac.hex || '?');
     const alt = Number.isFinite(ac.alt_baro)
       ? (ac.alt_baro >= 18000 ? 'FL' + Math.round(ac.alt_baro / 100) : ac.alt_baro + ' ft')
       : '—';
-    const t = ac.t || '';
+    const t = _esc(ac.t || '');
     return `<b>${cs}</b>${t ? ' · ' + t : ''} · ${alt}`;
+  }
+
+  // Escape minimo para strings de la API antes de meterlos en HTML.
+  function _esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   function _buildPopup(ac) {
