@@ -9,7 +9,7 @@
  * Para forzar invalidación al desplegar nueva versión, sube CACHE_VERSION.
  */
 
-const CACHE_VERSION = 'tsagestor-v172';
+const CACHE_VERSION = 'tsagestor-v173';
 const SHELL_CACHE   = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -64,6 +64,7 @@ const NETWORK_FIRST_HOSTS = [
   'view.eumetsat.int',
   'api.autorouter.aero',
   'api.airplanes.live',
+  'globe.airplanes.live',
 ];
 
 self.addEventListener('install', (event) => {

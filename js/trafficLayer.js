@@ -15,23 +15,30 @@ window.TSAgestor.trafficLayer = (function () {
   'use strict';
 
   const API_BASE = 'https://api.airplanes.live/v2';
+  // Endpoint NO documentado pero publico de tar1090/globe.airplanes.live
+  // para obtener traza historica (~10-15 min) por hex ICAO. Formato:
+  //   /data/traces/<lastTwoCharsOfHex>/trace_recent_<hex>.json
+  // Respuesta: { timestamp: unixSec, trace: [[secOffset, lat, lon, alt, gs, track, ...], ...] }
+  // Solo hay que mandar User-Agent decente y Referer; CORS abierto.
+  const TRACE_BASE = 'https://globe.airplanes.live/data/traces';
   const REFRESH_MS = 10000;
   const RADIUS_NM = 100;
-  // La traza por avion se acumula desde el primer snapshot en el que lo
-  // vimos dentro del radio. Cuando el avion sale del radio se borra
-  // junto con su marker en _renderAircraft (no aparece en `seen`).
-  // No hay ventana temporal: si el avion entro hace 25 min y sigue
-  // dentro, vemos los 25 min. Memoria acotada: maximo ~150 puntos a
-  // 10s/tick por avion (suficiente para cruzar todo el diametro de
-  // 200 NM a velocidades tipicas).
+  // La traza acumulada por avion: cuando un avion es detectado por
+  // primera vez en el polling, se hace fetch de su trace historica
+  // (~10-15 min) y se prepende al trail. A partir de ahi, los puntos
+  // van entrando en cada refresco. Al salir del radio se borra junto
+  // con el marker.
 
   let _map = null;
   let _layer = null;
   let _center = null;     // [lat, lon] del aerodromo seleccionado
   let _icao = null;       // ICAO actualmente activo
   let _timer = null;      // setInterval id del polling
-  let _markers = new Map();   // hex -> { marker, rotation, altBand }
-  let _trails  = new Map();   // hex -> { points: [[lat,lon,tsMs],...], line: L.polyline, altBand }
+  let _markers = new Map();   // hex -> { marker, rotation, colorKey }
+  let _trails  = new Map();   // hex -> { points: [[lat,lon,tsMs],...], line: L.polyline, colorKey }
+  let _tracesFetched = new Set();  // hex de aviones cuya traza ya pedimos
+  let _traceQueue = [];            // hex pendientes de fetch (throttle)
+  let _traceBusy = false;
   let _statusEl = null;
   let _onStateChange = null;  // callback(state) -> emite al UI
 
@@ -97,10 +104,103 @@ window.TSAgestor.trafficLayer = (function () {
     if (_layer) _layer.clearLayers();
     _markers.clear();
     _trails.clear();
+    _tracesFetched.clear();
+    _traceQueue.length = 0;
+    _traceBusy = false;
     _icao = null;
     _center = null;
     emitStatus('', null);
     console.info('[traffic] stop()');
+  }
+
+  // Encola un hex para fetch de su trace historica. Throttle para no
+  // saturar globe.airplanes.live al arrancar (cuando aparecen 16 aviones
+  // a la vez): un fetch cada 150 ms = max ~6 req/s. Soft cap, basta
+  // para 16 aviones en ~2.4 s.
+  function _enqueueTrace(hex) {
+    if (_tracesFetched.has(hex)) return;
+    _tracesFetched.add(hex);
+    _traceQueue.push(hex);
+    _drainTraceQueue();
+  }
+  async function _drainTraceQueue() {
+    if (_traceBusy) return;
+    _traceBusy = true;
+    while (_traceQueue.length) {
+      const hex = _traceQueue.shift();
+      try { await _fetchTraceFor(hex); } catch (_) {}
+      await new Promise(r => setTimeout(r, 150));
+    }
+    _traceBusy = false;
+  }
+
+  async function _fetchTraceFor(hex) {
+    if (!hex) return;
+    const last2 = hex.slice(-2);
+    const url = `${TRACE_BASE}/${last2}/trace_recent_${hex}.json`;
+    let data;
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) {
+        console.info('[traffic] trace no disponible para', hex, 'HTTP', res.status);
+        return;
+      }
+      data = await res.json();
+    } catch (e) {
+      console.warn('[traffic] trace fetch fallo para', hex, ':', e.message);
+      return;
+    }
+    if (!data || !Array.isArray(data.trace) || !data.trace.length) return;
+    _prependTraceToTrail(hex, data);
+  }
+
+  // Anade los puntos historicos del trace al trail existente. Solo
+  // los puntos cuya marca temporal sea ANTERIOR al primer fix obtenido
+  // por polling (sin duplicados). Si el trail no existe (raro, el avion
+  // habria desaparecido) silenciosamente se ignora.
+  function _prependTraceToTrail(hex, traceData) {
+    const entry = _trails.get(hex);
+    if (!entry) return;
+    const baseTsMs = Number(traceData.timestamp || 0) * 1000;
+    if (!Number.isFinite(baseTsMs) || baseTsMs <= 0) return;
+    const hist = [];
+    for (const p of traceData.trace) {
+      if (!Array.isArray(p) || p.length < 3) continue;
+      const offsetSec = Number(p[0]);
+      const lat = Number(p[1]);
+      const lon = Number(p[2]);
+      if (!Number.isFinite(offsetSec) || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      hist.push([lat, lon, baseTsMs + offsetSec * 1000]);
+    }
+    if (!hist.length) return;
+    // Excluye puntos historicos que coincidan o sean posteriores al
+    // primer fix por polling (para no duplicar).
+    const cutoffMs = entry.points.length ? entry.points[0][2] : Infinity;
+    const filtered = hist.filter(p => p[2] < cutoffMs);
+    if (!filtered.length) return;
+    entry.points = filtered.concat(entry.points);
+    console.info('[traffic] trace cargada para', hex, ':+', filtered.length, 'puntos historicos');
+    _redrawTrailLine(entry);
+  }
+
+  // Repinta la polilinea del trail tras un cambio (prepend trace).
+  // Reutiliza el L.polyline existente si esta o lo crea si hace falta.
+  function _redrawTrailLine(entry) {
+    const latlngs = entry.points.map(p => [p[0], p[1]]);
+    if (latlngs.length < 2) return;
+    const color = _colorFor(entry.colorKey || 'unknown');
+    if (entry.line) {
+      entry.line.setLatLngs(latlngs);
+    } else {
+      entry.line = L.polyline(latlngs, {
+        color,
+        weight: 2,
+        opacity: entry.colorKey === 'transit' ? 0.45 : 0.85,
+        interactive: false,
+        className: 'traffic-trail',
+      });
+      entry.line.addTo(_layer);
+    }
   }
 
   function _drawRangeRing(lat, lon, radiusNM) {
@@ -307,6 +407,9 @@ window.TSAgestor.trafficLayer = (function () {
         m.addTo(_layer);
         _markers.set(ac.hex, { marker: m, rotation: track, colorKey });
         added++;
+        // Avion nuevo: encola fetch de su trace historica (~10-15 min)
+        // para prepender al trail y mostrar de donde viene.
+        _enqueueTrace(ac.hex);
       }
       // Actualiza la traza (path de los ultimos 5 min) con el color
       // actual. Si el avion pasa de transito a arr/dep, la traza se
