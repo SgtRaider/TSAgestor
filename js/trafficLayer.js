@@ -147,11 +147,69 @@ window.TSAgestor.trafficLayer = (function () {
       emitStatus('Fallo de red al consultar trafico.', 'error');
       return;
     }
-    const aircraft = Array.isArray(data && data.ac) ? data.ac : [];
-    console.info('[traffic] respuesta:', aircraft.length, 'aviones');
+    const raw = Array.isArray(data && data.ac) ? data.ac : [];
+    // Filtro arrival/departure del aerodromo seleccionado. airplanes.live
+    // solo entrega telemetria ADS-B (posicion/altitud/track), no el plan
+    // de vuelo, asi que inferimos por rumbo + tasa baro + distancia. Los
+    // overflights en crucero se descartan; quedan los que estan
+    // interactuando con el aeropuerto.
+    const aircraft = raw.filter(ac => _isArrivalOrDeparture(ac, _center[0], _center[1]));
+    console.info('[traffic] respuesta:', raw.length, 'aviones (radius 100 NM), filtrados arr/dep:', aircraft.length);
     _renderAircraft(aircraft);
     const tStamp = new Date().toISOString().slice(11, 19) + 'Z';
-    emitStatus(`${aircraft.length} aviones a ≤${RADIUS_NM} NM · ult. ${tStamp}`, 'ok');
+    emitStatus(`${aircraft.length} arr/dep · ${raw.length} en ${RADIUS_NM} NM · ult. ${tStamp}`, 'ok');
+  }
+
+  // Decide si un avion ADS-B es arrival/departure del aerodromo
+  // centro. Heuristica (sin flight plan disponible en airplanes.live):
+  //
+  //  1) Dentro de 20 NM y bajo FL200 -> SI (zona TMA tipica).
+  //  2) Crucero (>=FL250 con baro_rate plano) -> NO (overflight).
+  //  3) Descendiendo y rumbo hacia el aerodromo (<60° de diff) -> SI (arrival).
+  //  4) Ascendiendo y rumbo desde el aerodromo (<60° de diff) -> SI (departure).
+  //  5) Resto -> NO.
+  //
+  // Sin track o sin distancia no podemos clasificar; fallback a SI dentro
+  // de 30 NM (probable trafico local) y NO fuera.
+  function _isArrivalOrDeparture(ac, centerLat, centerLon) {
+    if (!Number.isFinite(ac.lat) || !Number.isFinite(ac.lon)) return false;
+    const geom = window.TSAgestor && window.TSAgestor.geom;
+    if (!geom) return true;  // sin geom modulo: no podemos filtrar, no excluyas
+    const distKm = geom.greatCircleDistance([ac.lat, ac.lon], [centerLat, centerLon]);
+    const distNM = distKm / 1.852;
+    const altFt = Number.isFinite(ac.alt_baro) ? ac.alt_baro : null;
+    const climbing   = Number.isFinite(ac.baro_rate) && ac.baro_rate >  300;
+    const descending = Number.isFinite(ac.baro_rate) && ac.baro_rate < -300;
+    const cruising   = !climbing && !descending;
+
+    // 1) Muy cerca + bajo: trafico de aerodromo. Incluye GA, helos, etc.
+    if (distNM < 20 && (altFt == null || altFt < 20000)) return true;
+    // 2) Crucero alto pasando por encima -> overflight, no es para nosotros.
+    if (altFt != null && altFt >= 25000 && cruising) return false;
+
+    if (!Number.isFinite(ac.track)) {
+      // Sin rumbo: aproximacion conservadora por distancia.
+      return distNM < 30;
+    }
+    // Rumbo del segmento aerodromo -> avion (hacia donde "esta" el avion).
+    const bearingFromAirport = geom.bearing([centerLat, centerLon], [ac.lat, ac.lon]);
+    const diffAway   = _absAngleDiff(ac.track, bearingFromAirport);                  // arrumbado hacia fuera
+    const diffToward = _absAngleDiff(ac.track, (bearingFromAirport + 180) % 360);    // arrumbado hacia dentro
+
+    // 3) Descendiendo y arrumbado al aerodromo -> arrival.
+    if (descending && diffToward < 60) return true;
+    // 4) Ascendiendo y alejandose -> departure.
+    if (climbing && diffAway < 60) return true;
+    // 5) Si esta a media altitud cerca y arrumbado al aerodromo, lo
+    //    aceptamos como vector de aproximacion (controlador podria
+    //    estarlo guiando).
+    if (distNM < 40 && altFt != null && altFt < 15000 && diffToward < 70) return true;
+    return false;
+  }
+
+  function _absAngleDiff(a, b) {
+    let d = ((a - b) % 360 + 540) % 360 - 180;
+    return Math.abs(d);
   }
 
   // Dibuja o actualiza los markers. setLatLng() directo en cada
