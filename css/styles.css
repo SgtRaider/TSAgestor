@@ -3566,7 +3566,9 @@ body.welcome-open { overflow: hidden; }
    visual y mejora la navegacion por teclado de pilotos en EFB
    con teclado externo. */
 :focus-visible {
-  outline: 2px solid var(--ea-amarillo);
+  /* 3px en lugar de 2px para que el anillo de foco sea visible
+     incluso sobre fondos amarillos/claros (los chips activos). */
+  outline: 3px solid var(--ea-amarillo);
   outline-offset: 2px;
   border-radius: var(--r-sm);
 }
@@ -3578,7 +3580,7 @@ button:focus-visible,
 .btn-kml-win-del:focus-visible,
 .kml-modal-close:focus-visible {
   outline-offset: 2px;
-  box-shadow: 0 0 0 2px var(--ea-amarillo);
+  box-shadow: 0 0 0 3px var(--ea-amarillo);
 }
 /* Para inputs y textarea, el box-shadow existente ya hace de
    ring; preservamos su estetica. */

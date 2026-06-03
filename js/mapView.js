@@ -582,16 +582,39 @@ window.TSAgestor.mapView = (function () {
   }
   function buildSigmetLayer() {
     const grp = L.layerGroup();
+    const startPolling = () => {
+      if (_sigmetState.timer) clearInterval(_sigmetState.timer);
+      _sigmetState.timer = setInterval(() => loadSigmets(grp), SIGMET_REFRESH_MS);
+    };
+    const stopPolling = () => {
+      if (_sigmetState.timer) { clearInterval(_sigmetState.timer); _sigmetState.timer = null; }
+    };
     grp.on('add', async function () {
       try { await loadSigmets(grp); } catch (e) {
         console.warn('[sigmet]', e);
       }
-      // Auto-refresco cada 10 min mientras la capa esta activa.
-      if (_sigmetState.timer) clearInterval(_sigmetState.timer);
-      _sigmetState.timer = setInterval(() => loadSigmets(grp), SIGMET_REFRESH_MS);
+      // Auto-refresco cada 10 min mientras la capa esta activa Y la
+      // pestania esta visible. Si el usuario cambia de tab, pausamos
+      // el polling para no malgastar red/CPU. visibilitychange recupera
+      // automaticamente cuando vuelve.
+      startPolling();
+      if (!grp._visibilityHook) {
+        grp._visibilityHook = () => {
+          if (document.visibilityState === 'hidden') stopPolling();
+          else if (map && map.hasLayer(grp)) {
+            startPolling();
+            loadSigmets(grp).catch(e => console.warn('[sigmet]', e));
+          }
+        };
+        document.addEventListener('visibilitychange', grp._visibilityHook);
+      }
     });
     grp.on('remove', function () {
-      if (_sigmetState.timer) { clearInterval(_sigmetState.timer); _sigmetState.timer = null; }
+      stopPolling();
+      if (grp._visibilityHook) {
+        document.removeEventListener('visibilitychange', grp._visibilityHook);
+        grp._visibilityHook = null;
+      }
       clearSigmetLayers(grp);
     });
     return grp;

@@ -27,6 +27,15 @@ window.TSAgestor.flightPlan = (function () {
   // a DCT directo, anulando el efecto de seleccionar aerovias.
   const _graphCache = new Map();
 
+  // Invalida la cache del grafo. Hay que llamarlo cuando cambia el
+  // dataset AIP (recarga de aipData, AIRAC nuevo, etc.) — sin esto,
+  // el router seguiria usando waypoints/aerovias obsoletas hasta el
+  // proximo full reload de la app.
+  function invalidateGraphCache() {
+    _graphCache.clear();
+    console.info('[flightPlan] _graphCache invalidada');
+  }
+
   function graph(filter) {
     filter = filter || { upper: true, lower: true };
     const key = (filter.upper ? 'U' : '') + (filter.lower ? 'L' : '');
@@ -1191,5 +1200,5 @@ window.TSAgestor.flightPlan = (function () {
     return { windSpeedKt: speed, windDir: dir };
   }
 
-  return { plan, listWaypoints, buildFuelLog };
+  return { plan, listWaypoints, buildFuelLog, invalidateGraphCache };
 })();

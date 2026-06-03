@@ -344,10 +344,18 @@
     <section id="tab-map" class="tab-content">
       <div class="toolbar">
         <span id="map-count" class="chip"></span>
-        <button id="btn-fit-bounds" class="btn btn-ghost">Centrar</button>
-        <button id="btn-map-legend" class="btn btn-ghost" type="button" aria-pressed="false">Leyenda TSAs</button>
-        <button id="btn-map-layers" class="btn btn-ghost is-active" type="button" aria-pressed="true">Capas</button>
-        <button id="btn-traffic" class="btn btn-ghost" type="button" aria-pressed="false" title="Trafico aéreo en vivo (airplanes.live)">✈ Tráfico</button>
+        <button id="btn-fit-bounds" class="btn btn-ghost" type="button"
+          aria-label="Centrar mapa en las TSAs visibles"
+          title="Centrar mapa en las TSAs visibles">Centrar</button>
+        <button id="btn-map-legend" class="btn btn-ghost" type="button"
+          aria-pressed="false" aria-label="Mostrar u ocultar leyenda de TSAs"
+          title="Leyenda de TSAs visibles">Leyenda TSAs</button>
+        <button id="btn-map-layers" class="btn btn-ghost is-active" type="button"
+          aria-pressed="true" aria-label="Mostrar u ocultar control de capas del mapa"
+          title="Capas del mapa (meteo, aerovías, etc.)">Capas</button>
+        <button id="btn-traffic" class="btn btn-ghost" type="button"
+          aria-pressed="false" aria-label="Activar tráfico aéreo en vivo (airplanes.live)"
+          title="Tráfico aéreo en vivo (airplanes.live)">✈ Tráfico</button>
         <div id="traffic-panel" class="traffic-panel hidden" role="group" aria-label="Capa de tráfico aéreo">
           <label class="traffic-panel-label">
             <span>Aeródromo ICAO</span>
@@ -762,11 +770,11 @@
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
 <script src="js/filters.js"></script>
-<script src="js/notamHub.js?v=179"></script>
-<script src="js/kmlIO.js?v=179"></script>
-<script src="js/notamView.js?v=179"></script>
-<script src="js/mapView.js?v=179"></script>
-<script src="js/trafficLayer.js?v=179"></script>
+<script src="js/notamHub.js?v=180"></script>
+<script src="js/kmlIO.js?v=180"></script>
+<script src="js/notamView.js?v=180"></script>
+<script src="js/mapView.js?v=180"></script>
+<script src="js/trafficLayer.js?v=180"></script>
 <script src="js/crossSection.js"></script>
 <script src="js/flightPlan.js"></script>
 <script src="js/pdfExport.js"></script>

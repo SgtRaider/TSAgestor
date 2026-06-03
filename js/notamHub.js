@@ -399,7 +399,14 @@ window.TSAgestor.notamHub = (function () {
     const dedupMap = new Map();
     let mergedCount = 0;
     for (const t of out) {
-      const key = t.name + '||' + t.vertical.lowerLabel + '||' + t.vertical.upperLabel;
+      // Si lowerLabel/upperLabel son null o '', usamos los ft numericos
+      // como discriminador. Sin esto, dos TSAs distintas con labels
+      // ausentes (raro pero posible si el API entrega vertical sin
+      // labels) se mergeaban en una sola por colision de key
+      // "NAME||null||null".
+      const lo = t.vertical.lowerLabel || ('L' + (t.vertical.lowerFt | 0));
+      const up = t.vertical.upperLabel || ('U' + (t.vertical.upperFt | 0));
+      const key = t.name + '||' + lo + '||' + up;
       if (!dedupMap.has(key)) {
         dedupMap.set(key, Object.assign({}, t, { schedules: t.schedules.slice() }));
         continue;
@@ -456,7 +463,14 @@ window.TSAgestor.notamHub = (function () {
   // longitud se compensa con cos(lat).
   function circleToPolygon(lat, lon, radiusNM, points) {
     const n = Math.max(8, points || 32);
-    const cosLat = Math.max(0.01, Math.cos(lat * Math.PI / 180));
+    // Para latitudes muy altas (cerca de los polos), cos(lat) tiende
+    // a 0 y dLon -> Infinity. Clamp a un valor que corresponde a
+    // ~88.5 grados (cos(88.5°) ≈ 0.026) — suficiente para todas las
+    // TSAs operacionales reales en el planeta. Sin esto, una TSA
+    // erronea o un parser bug que diese lat=89.99 generaria
+    // poligonos con dLon enorme que romperia el render del mapa.
+    const COS_MIN = 0.026;
+    const cosLat = Math.max(COS_MIN, Math.cos(lat * Math.PI / 180));
     const out = [];
     for (let i = 0; i < n; i++) {
       const a = (i / n) * 2 * Math.PI;

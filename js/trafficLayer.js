@@ -44,6 +44,7 @@ window.TSAgestor.trafficLayer = (function () {
   let _tracesFetched = new Set();  // hex de aviones cuya traza ya pedimos
   let _traceQueue = [];            // hex pendientes de fetch (throttle)
   let _traceBusy = false;
+  let _visibilityHook = null;      // listener para pausar polling en tab inactivo
   let _statusEl = null;
   let _onStateChange = null;  // callback(state) -> emite al UI
 
@@ -102,10 +103,29 @@ window.TSAgestor.trafficLayer = (function () {
     _fetchAndRender();
     _timer = setInterval(_fetchAndRender, REFRESH_MS);
     console.info('[traffic] polling iniciado, intervalo ' + REFRESH_MS + ' ms');
+    // Pausa el polling cuando la pestana esta oculta para ahorrar
+    // red/cuota de API (airplanes.live tiene rate limit). Al volver
+    // a la pestana, hace un fetch inmediato y reanuda el intervalo.
+    if (!_visibilityHook) {
+      _visibilityHook = () => {
+        if (!_center) return;  // stop() ya quito el center
+        if (document.visibilityState === 'hidden') {
+          if (_timer) { clearInterval(_timer); _timer = null; }
+        } else if (!_timer) {
+          _fetchAndRender();
+          _timer = setInterval(_fetchAndRender, REFRESH_MS);
+        }
+      };
+      document.addEventListener('visibilitychange', _visibilityHook);
+    }
   }
 
   function stop() {
     if (_timer) { clearInterval(_timer); _timer = null; }
+    if (_visibilityHook) {
+      document.removeEventListener('visibilitychange', _visibilityHook);
+      _visibilityHook = null;
+    }
     if (_layer) _layer.clearLayers();
     _markers.clear();
     _trails.clear();
@@ -173,7 +193,11 @@ window.TSAgestor.trafficLayer = (function () {
   //      estar a cientos de NM).
   function _prependTraceToTrail(hex, traceData) {
     const entry = _trails.get(hex);
-    if (!entry) return;
+    // El avion puede haber salido del radio entre _enqueueTrace y el
+    // resolve del fetch -> _trails ya no tiene su entry. O la entry
+    // puede haber sido reseteada y carecer de .points. Guard completo.
+    if (!entry || !Array.isArray(entry.points)) return;
+    if (!traceData || !Array.isArray(traceData.trace)) return;
     const baseTsMs = Number(traceData.timestamp || 0) * 1000;
     if (!Number.isFinite(baseTsMs) || baseTsMs <= 0) return;
     const cutoffMs = entry.points.length ? entry.points[0][2] : Infinity;
