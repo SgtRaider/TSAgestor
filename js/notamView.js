@@ -761,6 +761,24 @@ window.TSAgestor.notamView = (function () {
     return false;
   }
 
+  // Detecta NOTAMs de area por el CONTENIDO del body, no por section
+  // ni por serie. Algunos NOTAMs (p.ej. D3006/26 sobre TSA TALAVERA
+  // LOW) vienen del API marcados con section=WARNINGS_AERODROMOS
+  // porque su aeropuerto vecino se ve afectado, pero su contenido es
+  // claramente un NOTAM de TSA y el usuario no lo quiere en la lista
+  // de aerodromo. El body manda cuando estas frases aparecen.
+  function isAreaByBody(notam) {
+    const raw = String(notam.text || notam.raw || notam.body || '');
+    if (!raw) return false;
+    // Castellano (ICARO XXI) e ingles (ICAO).
+    return /\b(?:TSA|TRA)\s+[A-Z0-9]/.test(raw) ||                      // "TSA TALAVERA", "TRA NORTE"
+           /AREAS?\s+TEMPORALMENTE\s+SEGREGAD/i.test(raw) ||             // "AREAS TEMPORALMENTE SEGREGADAS"
+           /TEMPO(?:RARY)?\s+SEGREGATED\s+AREA/i.test(raw) ||            // "TEMPORARY SEGREGATED AREA"
+           /AREAS?\s+SEGREGAD/i.test(raw) ||                             // "AREA SEGREGADA"
+           /CORREDOR(?:\s+(?:NORTE|SUR|ESTE|OESTE))?\b/i.test(raw) ||    // "CORREDOR SUR", "CORREDOR"
+           /\bPASILLO\b/i.test(raw);                                     // "PASILLO HUELVA"
+  }
+
   // Categorias disponibles para el filtro (mismas que classifyNotam).
   const NOTAM_FILTER_CATEGORIES = [
     { id: 'RWY',  label: 'Pista' },
@@ -1083,17 +1101,22 @@ window.TSAgestor.notamView = (function () {
       for (const n of (Array.isArray(notamRes) ? notamRes : [])) {
         const id = String(n.notamId || '').trim();
         if (!id) continue;
-        // Omitir NOTAMs de apartados de area (areas segregadas, TSAs,
-        // corredores, military training).
-        //   - Si el section es explicitamente AERODROMOS o
-        //     WARNINGS_AERODROMOS, lo conservamos siempre — son
-        //     NOTAMs del aerodromo aunque su serie sea D/M/W.
-        //   - Si el section dice AREAS / SEGREGADAS / TSA / ESPACIO
-        //     AEREO -> descartar.
-        //   - Si no hay section claro, caemos al heuristico por
-        //     serie ICAO (D/M/W) y Q-code R*.
+        // Omitir NOTAMs de area (areas segregadas, TSAs, corredores,
+        // ejercicios militares). Orden de chequeos:
+        //   1) Body habla de TSAs/corredores/AREAS SEGREGADAS ->
+        //      DESCARTAR aunque el section diga AERODROMOS. Esto es
+        //      lo que filtra D3006/D2473 en LEBZ: section dice
+        //      WARNINGS_AERODROMOS pero el cuerpo es TSA TALAVERA.
+        //   2) section dice AREAS / TSA / ESPACIO AEREO -> descartar.
+        //   3) section dice AERODROMOS y no hay matches de #1 ->
+        //      conservar (deja pasar warnings reales de aerodromo).
+        //   4) Sin section claro, heuristico por serie ICAO y Q-code.
+        if (isAreaByBody(n)) {
+          droppedAreas++; continue;
+        }
         if (isAerodromeSection(n._section)) {
-          // Pass-through: NOTAM marcado como aerodromo por el API.
+          // Pass-through: NOTAM marcado como aerodromo por el API y
+          // cuyo body no menciona TSAs/corredores.
         } else if (isAreaSection(n._section) || isAreaByIdOrQcode(n)) {
           droppedAreas++; continue;
         }
