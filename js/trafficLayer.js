@@ -15,12 +15,17 @@ window.TSAgestor.trafficLayer = (function () {
   'use strict';
 
   const API_BASE = 'https://api.airplanes.live/v2';
-  // Endpoint NO documentado pero publico de tar1090/globe.airplanes.live
-  // para obtener traza historica (~10-15 min) por hex ICAO. Formato:
-  //   /data/traces/<lastTwoCharsOfHex>/trace_recent_<hex>.json
-  // Respuesta: { timestamp: unixSec, trace: [[secOffset, lat, lon, alt, gs, track, ...], ...] }
-  // Solo hay que mandar User-Agent decente y Referer; CORS abierto.
-  const TRACE_BASE = 'https://globe.airplanes.live/data/traces';
+  // Endpoint historico de tar1090 (~10-15 min de traza). En produccion
+  // (Pages) globe.airplanes.live bloquea CORS al browser, asi que vamos
+  // via Cloudflare Pages Function en /api/airplanes/trace/<hex> que
+  // proxy-fetcha el JSON real con el User-Agent y Referer adecuados.
+  // En local (file:// / localhost) pegamos directo (curl con UA decente
+  // ya pasa, y no hay funcion Pages disponible).
+  const ON_REMOTE = !/^(?:localhost|127\.0\.0\.1)$/i.test(location.hostname) &&
+                    location.protocol !== 'file:';
+  const TRACE_BASE = ON_REMOTE
+    ? '/api/airplanes/trace'
+    : 'https://globe.airplanes.live/data/traces';
   const REFRESH_MS = 10000;
   const RADIUS_NM = 100;
   // La traza acumulada por avion: cuando un avion es detectado por
@@ -136,8 +141,12 @@ window.TSAgestor.trafficLayer = (function () {
 
   async function _fetchTraceFor(hex) {
     if (!hex) return;
+    // En remoto: /api/airplanes/trace/<hex> (Pages Function).
+    // En local: /<last2>/trace_recent_<hex>.json directo a globe.
     const last2 = hex.slice(-2);
-    const url = `${TRACE_BASE}/${last2}/trace_recent_${hex}.json`;
+    const url = ON_REMOTE
+      ? `${TRACE_BASE}/${hex}`
+      : `${TRACE_BASE}/${last2}/trace_recent_${hex}.json`;
     let data;
     try {
       const res = await fetch(url, { cache: 'no-store' });
