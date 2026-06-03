@@ -17,9 +17,13 @@ window.TSAgestor.trafficLayer = (function () {
   const API_BASE = 'https://api.airplanes.live/v2';
   const REFRESH_MS = 10000;
   const RADIUS_NM = 100;
-  // Ventana de traza por avion: conservamos los puntos de posicion de
-  // los ultimos 5 min para dibujar el path detras del marker.
-  const TRAIL_MS = 5 * 60 * 1000;
+  // La traza por avion se acumula desde el primer snapshot en el que lo
+  // vimos dentro del radio. Cuando el avion sale del radio se borra
+  // junto con su marker en _renderAircraft (no aparece en `seen`).
+  // No hay ventana temporal: si el avion entro hace 25 min y sigue
+  // dentro, vemos los 25 min. Memoria acotada: maximo ~150 puntos a
+  // 10s/tick por avion (suficiente para cruzar todo el diametro de
+  // 200 NM a velocidades tipicas).
 
   let _map = null;
   let _layer = null;
@@ -337,10 +341,10 @@ window.TSAgestor.trafficLayer = (function () {
       entry = { points: [], line: null, colorKey };
       _trails.set(hex, entry);
     }
-    const cutoff = nowMs - TRAIL_MS;
-    if (entry.points.length && entry.points[0][2] < cutoff) {
-      entry.points = entry.points.filter(p => p[2] >= cutoff);
-    }
+    // Sin cutoff temporal: la traza completa desde que el avion entro
+    // al radio. Solo descartamos duplicados por jitter ADS-B (cambios
+    // <11 m respecto al ultimo punto guardado) para no inflar la lista
+    // cuando un avion esta estacionado o en hold.
     const last = entry.points[entry.points.length - 1];
     const closeEnough = last
       && Math.abs(last[0] - lat) < 0.0001
