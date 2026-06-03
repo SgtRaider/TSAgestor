@@ -3974,10 +3974,13 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   pointer-events: auto;
 }
 
-/* Drawer inferior (tablas pesadas) */
+/* Drawer inferior (tablas pesadas) — full-width: cruza por debajo
+   del panel para que las tablas anchas dispongan de toda la pantalla
+   y desaparezca el hueco muerto en la esquina inferior-izquierda. El
+   panel se acorta con `bottom: var(--b1-drawer-effective-h)`. */
 .b1-drawer {
   position: absolute;
-  left: var(--b1-panel-effective-w, var(--b1-panel-w));
+  left: 0;
   right: 0;
   bottom: 0;
   height: var(--b1-drawer-effective-h, 0px);
@@ -3985,7 +3988,7 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   border-top: 1px solid var(--border);
   z-index: 60;
   overflow: hidden;
-  transition: height var(--b1-transition), left var(--b1-transition);
+  transition: height var(--b1-transition);
   display: flex;
   flex-direction: column;
 }
