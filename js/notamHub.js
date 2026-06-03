@@ -58,31 +58,59 @@ window.TSAgestor.notamHub = (function () {
   async function _fetchJSON(path, qs, opts) {
     const url = buildUrl(path, qs);
     console.debug('[notamHub] GET', url);
-    let res;
-    try {
-      res = await fetch(url, Object.assign({ headers: buildHeaders() }, opts || {}));
-    } catch (e) {
-      console.error('[notamHub] network error:', e);
-      throw new Error('Red caida o CORS: ' + e.message);
-    }
-    if (!res.ok) {
+    // Retry para 5xx (errores intermitentes del backend o de la
+    // Pages Function proxy). Backoff: 500ms, 1500ms (=2s y 3s totales).
+    // 4xx NO se reintenta porque son fallos del cliente (bad params,
+    // unauthorized, etc.) y reintentarlos solo malgasta tiempo.
+    const MAX_ATTEMPTS = 3;
+    let lastErr = null;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      let res;
+      try {
+        res = await fetch(url, Object.assign({ headers: buildHeaders() }, opts || {}));
+      } catch (e) {
+        lastErr = new Error('Red caida o CORS: ' + e.message);
+        if (attempt < MAX_ATTEMPTS) {
+          const backoffMs = 500 * Math.pow(2, attempt - 1);
+          console.warn('[notamHub] network error, retry ' + attempt + '/' + (MAX_ATTEMPTS - 1) +
+            ' en ' + backoffMs + 'ms:', e.message);
+          await new Promise(r => setTimeout(r, backoffMs));
+          continue;
+        }
+        console.error('[notamHub] network error final:', e);
+        throw lastErr;
+      }
+      if (res.ok) {
+        const text = await res.text();
+        let data;
+        try { data = JSON.parse(text); }
+        catch (e) {
+          console.error('[notamHub] respuesta no es JSON:', text.slice(0, 500));
+          throw new Error('Respuesta no JSON del API: ' + text.slice(0, 100));
+        }
+        console.debug('[notamHub] response:', Array.isArray(data) ? `array(${data.length})` : typeof data, data);
+        return data;
+      }
+      // 5xx -> reintentar. 4xx -> fallo definitivo del cliente.
       let body = '';
       try { body = await res.text(); } catch (_) {}
-      console.error('[notamHub] HTTP', res.status, body.slice(0, 500));
+      const status = res.status;
+      const isRetryable = status >= 500 && status < 600;
+      if (isRetryable && attempt < MAX_ATTEMPTS) {
+        const backoffMs = 500 * Math.pow(2, attempt - 1);
+        console.warn('[notamHub] HTTP ' + status + ', retry ' + attempt + '/' + (MAX_ATTEMPTS - 1) +
+          ' en ' + backoffMs + 'ms');
+        await new Promise(r => setTimeout(r, backoffMs));
+        continue;
+      }
+      console.error('[notamHub] HTTP', status, body.slice(0, 500));
       let detail = '';
       try { const j = JSON.parse(body); detail = j.detail || j.error || JSON.stringify(j).slice(0, 200); }
       catch (_) { detail = body.slice(0, 200); }
-      throw new Error(`HTTP ${res.status} ${res.statusText}${detail ? ' — ' + detail : ''}`);
+      throw new Error(`HTTP ${status} ${res.statusText}${detail ? ' — ' + detail : ''}`);
     }
-    const text = await res.text();
-    let data;
-    try { data = JSON.parse(text); }
-    catch (e) {
-      console.error('[notamHub] respuesta no es JSON:', text.slice(0, 500));
-      throw new Error('Respuesta no JSON del API: ' + text.slice(0, 100));
-    }
-    console.debug('[notamHub] response:', Array.isArray(data) ? `array(${data.length})` : typeof data, data);
-    return data;
+    // Defensive: no deberiamos llegar aqui.
+    throw lastErr || new Error('Fetch fallo sin razon clara');
   }
 
   // ── Endpoints ──────────────────────────────────────────────────────
@@ -106,16 +134,22 @@ window.TSAgestor.notamHub = (function () {
 
   function fetchNotamsByFIR(icao, params) {
     params = params || {};
+    // Si params.at es Date, lo serializamos como ISO 8601 UTC. Si no
+    // (string ISO ya valido o null), lo pasamos tal cual. El default
+    // de Date.toString() produce algo tipo "Wed Jun 03 ..." que el
+    // backend rechaza con 422 (datetime_from_date_parsing).
+    const at = params.at instanceof Date ? params.at.toISOString() : params.at;
     return _fetchJSON('/notams/fir/' + encodeURIComponent(icao), {
-      at: params.at,
+      at,
       include_refs: params.includeRefs ? 'true' : undefined,
     });
   }
 
   function fetchNotamsByAerodrome(icao, params) {
     params = params || {};
+    const at = params.at instanceof Date ? params.at.toISOString() : params.at;
     return _fetchJSON('/notams/aerodrome/' + encodeURIComponent(icao), {
-      at: params.at,
+      at,
       include_refs: params.includeRefs ? 'true' : undefined,
     });
   }
