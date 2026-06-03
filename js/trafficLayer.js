@@ -148,16 +148,17 @@ window.TSAgestor.trafficLayer = (function () {
       return;
     }
     const raw = Array.isArray(data && data.ac) ? data.ac : [];
-    // Filtro arrival/departure del aerodromo seleccionado. airplanes.live
-    // solo entrega telemetria ADS-B (posicion/altitud/track), no el plan
-    // de vuelo, asi que inferimos por rumbo + tasa baro + distancia. Los
-    // overflights en crucero se descartan; quedan los que estan
-    // interactuando con el aeropuerto.
-    const aircraft = raw.filter(ac => _isArrivalOrDeparture(ac, _center[0], _center[1]));
-    console.info('[traffic] respuesta:', raw.length, 'aviones (radius 100 NM), filtrados arr/dep:', aircraft.length);
-    _renderAircraft(aircraft);
+    // Renderiza TODOS los aviones del radio. La heuristica decide solo
+    // el COLOR: los arr/dep van con su banda de altitud (verde/amarillo
+    // /rojo), los transitos (overflights, no relacionados con el aero-
+    // dromo) van en gris. Si un avion cambia de rumbo y empieza a
+    // dirigirse al aerodromo, el siguiente tick lo recolorea solo.
+    const arrDepCount = raw.reduce((acc, ac) =>
+      acc + (_isArrivalOrDeparture(ac, _center[0], _center[1]) ? 1 : 0), 0);
+    console.info('[traffic] respuesta:', raw.length, 'aviones · arr/dep:', arrDepCount);
+    _renderAircraft(raw);
     const tStamp = new Date().toISOString().slice(11, 19) + 'Z';
-    emitStatus(`${aircraft.length} arr/dep · ${raw.length} en ${RADIUS_NM} NM · ult. ${tStamp}`, 'ok');
+    emitStatus(`${arrDepCount} arr/dep · ${raw.length} total en ${RADIUS_NM} NM · ult. ${tStamp}`, 'ok');
   }
 
   // Decide si un avion ADS-B esta entrando o saliendo del aerodromo
@@ -256,18 +257,18 @@ window.TSAgestor.trafficLayer = (function () {
     return Math.abs(d);
   }
 
-  // Dibuja o actualiza los markers. setLatLng() directo en cada
-  // snapshot (sin interpolacion). El icono se REGENERA con setIcon
-  // cuando cambia track o altBand, asi aseguramos que la rotacion
-  // se aplica via Leaflet (en vez de manipular el DOM, que rompia en
-  // algunos casos al re-renderizar el marker).
+  // Dibuja o actualiza los markers. El COLOR depende de si el avion
+  // se considera arrival/departure del aerodromo seleccionado:
+  //   arr/dep -> color por banda de altitud (verde/amarillo/rojo).
+  //   transito -> gris.
+  // Asi un avion que cambia de rumbo y empieza a dirigirse al aero-
+  // dromo se recolorea automaticamente al siguiente tick.
   function _renderAircraft(list) {
     if (!_layer) return;
     const now = Date.now();
     const seen = new Set();
     let added = 0, updated = 0, removed = 0;
     for (const ac of list) {
-      // El hex es la clave; sin el se mezclan aviones distintos.
       if (!ac.hex) continue;
       if (!Number.isFinite(ac.lat) || !Number.isFinite(ac.lon)) continue;
       seen.add(ac.hex);
@@ -275,32 +276,39 @@ window.TSAgestor.trafficLayer = (function () {
       const track = Number.isFinite(ac.track) ? ac.track : 0;
       const altFt = Number.isFinite(ac.alt_baro) ? ac.alt_baro : null;
       const altBand = _altitudeBand(altFt);
+      const isArrDep = _isArrivalOrDeparture(ac, _center[0], _center[1]);
+      const colorKey = isArrDep ? altBand : 'transit';
       const tooltip = _buildTooltip(ac);
       const popup = _buildPopup(ac);
       if (entry) {
         entry.marker.setLatLng([ac.lat, ac.lon]);
-        if (Math.abs((entry.rotation || 0) - track) > 1 || entry.altBand !== altBand) {
-          entry.marker.setIcon(_planeIcon(track, altBand));
+        // Regenera icono si cambia track, banda altitud, o estado
+        // arr/dep (esto ultimo es lo que cambia el color cuando el
+        // avion gira y empieza a dirigirse al aerodromo).
+        if (Math.abs((entry.rotation || 0) - track) > 1 ||
+            entry.colorKey !== colorKey) {
+          entry.marker.setIcon(_planeIcon(track, colorKey));
           entry.rotation = track;
-          entry.altBand = altBand;
+          entry.colorKey = colorKey;
         }
         _setTooltipContent(entry.marker, tooltip);
         if (entry.marker._popup) entry.marker._popup.setContent(popup);
         updated++;
       } else {
         const m = L.marker([ac.lat, ac.lon], {
-          icon: _planeIcon(track, altBand),
+          icon: _planeIcon(track, colorKey),
         });
         m.bindTooltip(tooltip, { direction: 'top', offset: [0, -8], className: 'traffic-tt' });
         m.bindPopup(popup, { maxWidth: 280 });
         m.addTo(_layer);
-        _markers.set(ac.hex, { marker: m, rotation: track, altBand });
+        _markers.set(ac.hex, { marker: m, rotation: track, colorKey });
         added++;
       }
-      // Actualiza la traza (path de los ultimos 5 min).
-      _updateTrail(ac.hex, ac.lat, ac.lon, now, altBand);
+      // Actualiza la traza (path de los ultimos 5 min) con el color
+      // actual. Si el avion pasa de transito a arr/dep, la traza se
+      // recolorea entera (la historia previa tambien).
+      _updateTrail(ac.hex, ac.lat, ac.lon, now, colorKey);
     }
-    // Elimina markers y trazas de aviones que ya no estan en el radio.
     for (const [hex, entry] of _markers) {
       if (!seen.has(hex)) {
         _layer.removeLayer(entry.marker);
@@ -323,14 +331,13 @@ window.TSAgestor.trafficLayer = (function () {
   // Se omite el punto si esta a < ~10m del anterior (jitter de la
   // fuente ADS-B) para no inflar el array. Se quitan los puntos
   // anteriores al cutoff antes de re-pintar.
-  function _updateTrail(hex, lat, lon, nowMs, altBand) {
+  function _updateTrail(hex, lat, lon, nowMs, colorKey) {
     let entry = _trails.get(hex);
     if (!entry) {
-      entry = { points: [], line: null, altBand };
+      entry = { points: [], line: null, colorKey };
       _trails.set(hex, entry);
     }
     const cutoff = nowMs - TRAIL_MS;
-    // Filtra los puntos viejos (> 5 min).
     if (entry.points.length && entry.points[0][2] < cutoff) {
       entry.points = entry.points.filter(p => p[2] >= cutoff);
     }
@@ -340,45 +347,45 @@ window.TSAgestor.trafficLayer = (function () {
       && Math.abs(last[1] - lon) < 0.0001;
     if (!closeEnough) entry.points.push([lat, lon, nowMs]);
 
-    // Re-pinta la polilinea. La capa Leaflet acepta setLatLngs sin
-    // recrear el objeto, evitando flicker.
     const latlngs = entry.points.map(p => [p[0], p[1]]);
     if (latlngs.length < 2) {
-      // Aun no hay traza visible (primer fix); nada que pintar.
       if (entry.line) { _layer.removeLayer(entry.line); entry.line = null; }
       return;
     }
-    const color = _trailColor(altBand);
+    const color = _colorFor(colorKey);
     if (entry.line) {
       entry.line.setLatLngs(latlngs);
-      if (entry.altBand !== altBand) {
+      // Recolorea TODA la traza si el avion cambia de transito a arr/dep
+      // (o viceversa). Pintar segmentos historicos con el color actual
+      // hace mas obvio el cambio de intencion para el ojo.
+      if (entry.colorKey !== colorKey) {
         entry.line.setStyle({ color });
-        entry.altBand = altBand;
+        entry.colorKey = colorKey;
       }
     } else {
       entry.line = L.polyline(latlngs, {
         color,
         weight: 2,
-        opacity: 0.85,
+        opacity: colorKey === 'transit' ? 0.45 : 0.85,
         interactive: false,
         className: 'traffic-trail',
       });
       entry.line.addTo(_layer);
-      entry.altBand = altBand;
-      console.info('[traffic] trail nuevo para', hex, 'puntos=', entry.points.length);
+      entry.colorKey = colorKey;
+      console.info('[traffic] trail nuevo para', hex, 'puntos=', entry.points.length, 'color=', colorKey);
     }
   }
 
-  function _trailColor(altBand) {
-    // Mismo codigo de color que el icono del avion para que el ojo
-    // empareje traza y banda de altitud.
+  // Paleta unica: bandas de altitud para arr/dep, gris para transito.
+  function _colorFor(colorKey) {
     const map = {
       low:     '#22c55e',
       mid:     '#fac200',
       high:    '#ef4444',
       unknown: '#94a3b8',
+      transit: '#64748b',
     };
-    return map[altBand] || map.unknown;
+    return map[colorKey] || map.unknown;
   }
 
   function _setTooltipContent(marker, html) {
@@ -394,18 +401,13 @@ window.TSAgestor.trafficLayer = (function () {
     return 'high';
   }
 
-  function _planeIcon(track, altBand) {
-    // SVG triangulo apuntando al norte. Rotamos via inline transform.
-    // Color por banda de altitud.
-    const colorMap = {
-      low:     '#22c55e',
-      mid:     '#fac200',
-      high:    '#ef4444',
-      unknown: '#94a3b8',
-    };
-    const fill = colorMap[altBand] || colorMap.unknown;
+  function _planeIcon(track, colorKey) {
+    const fill = _colorFor(colorKey);
+    // Los aviones de transito (gris) se dibujan con opacidad reducida
+    // para que las arr/dep destaquen visualmente.
+    const opacity = colorKey === 'transit' ? 0.55 : 1;
     const html = `
-      <div class="traffic-plane" style="transform: rotate(${track}deg);">
+      <div class="traffic-plane" style="transform: rotate(${track}deg); opacity: ${opacity};">
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
           <path d="M12 2 L18 20 L12 16 L6 20 Z"
                 fill="${fill}" stroke="#0f172a" stroke-width="1.2"
