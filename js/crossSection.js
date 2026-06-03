@@ -535,16 +535,21 @@ window.TSAgestor.crossSection = (function () {
     if (visIdx[visIdx.length - 1] < planPts.length - 1) visIdx.push(visIdx[visIdx.length - 1] + 1);
 
     // Línea principal: halo oscuro + amarillo brillante encima.
-    const points = visIdx.map(i => `${xScale(planPts[i].xKm)},${yScale(planPts[i].fl * 100)}`).join(' ');
-    g.appendChild(el('polyline', {
-      points, fill: 'none', stroke: '#1f2937',
-      'stroke-width': 6, 'stroke-opacity': 0.45,
-      'stroke-linejoin': 'round', 'stroke-linecap': 'round',
-    }));
-    g.appendChild(el('polyline', {
-      points, fill: 'none', stroke: '#f59e0b',
-      'stroke-width': 3, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
-    }));
+    // Una polilinea con <2 puntos es invalida en SVG (queda en blanco
+    // o ignorada por el render). Saltamos directamente a los marcadores
+    // y etiquetas si solo hay 1 waypoint visible en este panel.
+    if (visIdx.length >= 2) {
+      const points = visIdx.map(i => `${xScale(planPts[i].xKm)},${yScale(planPts[i].fl * 100)}`).join(' ');
+      g.appendChild(el('polyline', {
+        points, fill: 'none', stroke: '#1f2937',
+        'stroke-width': 6, 'stroke-opacity': 0.45,
+        'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+      }));
+      g.appendChild(el('polyline', {
+        points, fill: 'none', stroke: '#f59e0b',
+        'stroke-width': 3, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+      }));
+    }
 
     // Marcadores y etiquetas
     for (const i of visIdx) {
@@ -636,6 +641,19 @@ window.TSAgestor.crossSection = (function () {
     // toda la ruta para que se dibuje el plan.
     if (!panels.length && planPts) {
       panels.push({ xMinKm: 0, xMaxKm: totalXMax, members: [], primaryIds: new Set() });
+    }
+
+    // Defensa final: si aun asi panels esta vacio (caso degenerado:
+    // sin TSAs y sin plan utilizable), pintamos solo el mensaje de
+    // estado y devolvemos no-ok en vez de seguir con layout undefined.
+    if (!panels.length) {
+      svgEl.setAttribute('viewBox', '0 0 600 200');
+      svgEl.setAttribute('width', '600');
+      svgEl.setAttribute('height', '200');
+      svgEl.appendChild(text(300, 100,
+        'Sin TSAs ni plan utilizable para el corte',
+        { 'text-anchor': 'middle', fill: '#64748b', 'font-size': 14 }));
+      return { ok: false };
     }
 
     const height =

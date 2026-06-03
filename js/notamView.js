@@ -1055,7 +1055,13 @@ window.TSAgestor.notamView = (function () {
     _state.tafs   = normalizeReports(tafRes);
 
     if (notamRes && notamRes.__error) {
-      _state.error = 'NotamHub: ' + String(notamRes.__error.message || notamRes.__error);
+      // notamRes.__error puede ser un Error, un string, o cualquier
+      // cosa que el catch del fetch capturase. Optional chaining +
+      // String() para no crashear ante valores raros.
+      const errMsg = (notamRes.__error && notamRes.__error.message)
+        || notamRes.__error
+        || 'desconocido';
+      _state.error = 'NotamHub: ' + String(errMsg);
       _state.notams = [];
     } else {
       // Dedup defensivo por notamId por si NotamHub repite alguno entre

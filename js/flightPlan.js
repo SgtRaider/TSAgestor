@@ -171,10 +171,24 @@ window.TSAgestor.flightPlan = (function () {
       // TSA demasiado fina (≤1000 ft): aplicamos sólo la banda sin buffer.
       flMin = Math.ceil(lowerFt / 500) * 5;
       flMax = Math.floor(upperFt / 500) * 5;
-      if (flMax < flMin) return Math.round((lowerFt + upperFt) / 1000) * 5;
+      if (flMax < flMin) {
+        // Banda muy fina: devolvemos el FL medio del rango y nos
+        // aseguramos de que cae dentro de [lowerFt/100, upperFt/100]
+        // — sin esto, el redondeo a multiples de 5 podia dar un FL
+        // ligeramente fuera (p.ej. lower=8000 upper=8100 -> FL80 OK,
+        // pero lower=8050 upper=8150 -> Math.round((16200)/1000)*5=80
+        // que es < 80.5 -> fuera del piso).
+        const flMid = Math.round((lowerFt + upperFt) / 1000) * 5;
+        const lo = Math.ceil(lowerFt / 100);
+        const hi = Math.floor(upperFt / 100);
+        return Math.max(lo, Math.min(hi, flMid));
+      }
     }
     // FL crucero dentro de la banda -> se mantiene (prio 2).
     // Fuera -> snap a la banda (prio 1: dentro de TSA).
+    // Clamp defensivo final: garantiza monotonia incluso si flMin>flMax
+    // por culpa de aritmetica entera al ceil/floor en bandas extremas.
+    if (flMax < flMin) return Math.round((lowerFt + upperFt) / 200);  // FL = (lo+hi)/2 en pies/100
     if (initialFL < flMin) return flMin;
     if (initialFL > flMax) return flMax;
     return initialFL;
@@ -655,6 +669,13 @@ window.TSAgestor.flightPlan = (function () {
       // consecutivo. Permite forzar puntos de paso obligatorios mientras
       // el resto de la ruta sigue aerovias.
       route = buildAirwayRouteVia(origin, viaList, destination, fl, filter, tsasAtFL);
+    }
+
+    // Guard defensivo: si el builder devolvio una ruta sin segmentos
+    // (caso raro: todos los puntos coinciden, p.ej. origen=via1=destino),
+    // el resto del flujo crashearia en route.segments[0] y similares.
+    if (!route || !Array.isArray(route.segments) || !route.segments.length) {
+      return { error: 'No se pudo construir la ruta. Revisa que origen, vías y destino no coincidan.' };
     }
 
     // Cada waypoint adopta el nombre de la TSA que lo contiene (si la hay) y
