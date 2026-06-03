@@ -191,7 +191,10 @@ window.TSAgestor.trafficLayer = (function () {
         outsideRadius++;
         continue;
       }
-      hist.push([lat, lon, ts]);
+      // p[3] del trace tar1090 = alt_baro_ft (number o null).
+      const altFt = Number.isFinite(Number(p[3])) ? Number(p[3]) : null;
+      const altBand = _altitudeBand(altFt);
+      hist.push([lat, lon, ts, altBand]);
     }
     if (!hist.length) {
       console.info('[traffic] trace para', hex, ': 0 puntos dentro del radio (' + outsideRadius + ' fuera)');
@@ -200,7 +203,7 @@ window.TSAgestor.trafficLayer = (function () {
     entry.points = hist.concat(entry.points);
     console.info('[traffic] trace cargada para', hex, ':+', hist.length,
       'puntos historicos dentro del radio (' + outsideRadius + ' fuera descartados)');
-    _redrawTrailLine(entry);
+    _redrawTrailLine(entry, hex);
   }
 
   // Repinta la polilinea del trail tras un cambio (prepend trace).
@@ -392,9 +395,12 @@ window.TSAgestor.trafficLayer = (function () {
     const now = Date.now();
     const seen = new Set();
     let added = 0, updated = 0, removed = 0;
+    let hidden50 = 0;
     for (const ac of list) {
       if (!ac.hex) continue;
       if (!Number.isFinite(ac.lat) || !Number.isFinite(ac.lon)) continue;
+      // Filtro de zona interior (<50 NM): solo FL250- o FL300- descendiendo.
+      if (!_shouldShow(ac, _center[0], _center[1])) { hidden50++; continue; }
       seen.add(ac.hex);
       const entry = _markers.get(ac.hex);
       const track = Number.isFinite(ac.track) ? ac.track : 0;
@@ -431,10 +437,11 @@ window.TSAgestor.trafficLayer = (function () {
         // para prepender al trail y mostrar de donde viene.
         _enqueueTrace(ac.hex);
       }
-      // Actualiza la traza (path de los ultimos 5 min) con el color
-      // actual. Si el avion pasa de transito a arr/dep, la traza se
-      // recolorea entera (la historia previa tambien).
-      _updateTrail(ac.hex, ac.lat, ac.lon, now, colorKey);
+      // Actualiza la traza con el color actual. El altFt del avion
+      // (ya calculado arriba para el icono) se pasa para guardar la
+      // banda de altitud con cada punto y permitir coloreo por
+      // segmento cuando colorKey != 'transit'.
+      _updateTrail(ac.hex, ac.lat, ac.lon, altFt, now, colorKey);
     }
     for (const [hex, entry] of _markers) {
       if (!seen.has(hex)) {
@@ -446,11 +453,13 @@ window.TSAgestor.trafficLayer = (function () {
     for (const [hex, t] of _trails) {
       if (!seen.has(hex)) {
         if (t.line) _layer.removeLayer(t.line);
+        if (t.lines) for (const l of t.lines) _layer.removeLayer(l);
         _trails.delete(hex);
       }
     }
     console.info('[traffic] render: +' + added + ' / =' + updated + ' / -' + removed +
-      ' (markers ' + _markers.size + ', trails ' + _trails.size + ')');
+      ' (markers ' + _markers.size + ', trails ' + _trails.size +
+      (hidden50 ? ', ocultos<50NM ' + hidden50 : '') + ')');
   }
 
   // Acumula los puntos de posicion de cada avion en los ultimos 5 min
@@ -471,48 +480,113 @@ window.TSAgestor.trafficLayer = (function () {
     return distKm <= RADIUS_NM * 1.852;
   }
 
-  function _updateTrail(hex, lat, lon, nowMs, colorKey) {
+  // Filtro de zona interior (< 50 NM): solo aviones a baja altitud o
+  // descendiendo se muestran. Aviones a FL300+ se descartan siempre;
+  // a FL250-FL300 solo si estan bajando. Asi se evita ruido por
+  // sobrevuelos altos justo encima del aerodromo. Fuera de 50 NM, todo
+  // pasa por aqui sin filtrar (la heuristica arr/dep ya separa los
+  // visibles entre coloreados y gris).
+  function _shouldShow(ac, centerLat, centerLon) {
+    const geom = window.TSAgestor && window.TSAgestor.geom;
+    if (!geom) return true;
+    const distKm = geom.greatCircleDistance([ac.lat, ac.lon], [centerLat, centerLon]);
+    const distNM = distKm / 1.852;
+    if (distNM >= 50) return true;
+    const altFt = Number.isFinite(ac.alt_baro) ? ac.alt_baro : null;
+    if (altFt == null) return true;             // en pista / sin altitud: no filtra
+    if (altFt < 25000) return true;             // <FL250 -> SI
+    if (altFt >= 30000) return false;           // >=FL300 -> NO siempre
+    // FL250..FL300 -> solo si esta descendiendo (intencion clara).
+    const selectedAlt = Number.isFinite(ac.nav_altitude_mcp) ? ac.nav_altitude_mcp
+                      : Number.isFinite(ac.nav_altitude_fms) ? ac.nav_altitude_fms
+                      : null;
+    if (selectedAlt != null && selectedAlt - altFt <= -2000) return true;
+    if (Number.isFinite(ac.baro_rate) && ac.baro_rate < -300) return true;
+    return false;
+  }
+
+  // Cada punto se guarda como [lat, lon, tsMs, altBand]. altBand
+  // permite colorear cada segmento de la traza por banda de altitud
+  // (low/mid/high/unknown) cuando el avion es arr/dep. Para transito
+  // se ignora y se pinta toda la traza en gris.
+  function _updateTrail(hex, lat, lon, altFt, nowMs, colorKey) {
     let entry = _trails.get(hex);
     if (!entry) {
-      entry = { points: [], line: null, colorKey };
+      entry = { points: [], lines: [], colorKey };
       _trails.set(hex, entry);
     }
-    // Solo guardamos puntos dentro del radio (por si el API devuelve
-    // un avion cuyo fix actual ha salido ligeramente del circulo).
     if (!_withinRadius(lat, lon)) return;
+    const altBand = _altitudeBand(altFt);
     const last = entry.points[entry.points.length - 1];
     const closeEnough = last
       && Math.abs(last[0] - lat) < 0.0001
       && Math.abs(last[1] - lon) < 0.0001;
-    if (!closeEnough) entry.points.push([lat, lon, nowMs]);
+    if (!closeEnough) entry.points.push([lat, lon, nowMs, altBand]);
 
-    const latlngs = entry.points.map(p => [p[0], p[1]]);
-    if (latlngs.length < 2) {
-      if (entry.line) { _layer.removeLayer(entry.line); entry.line = null; }
+    if (entry.points.length < 2) return;
+    // Re-pinta si la geometria crecio o si el colorKey global cambio
+    // (transito <-> arr/dep). _redrawTrailLine maneja ambos casos.
+    entry.colorKey = colorKey;
+    _redrawTrailLine(entry, hex);
+  }
+
+  // (Re)pinta la polilinea del trail.
+  //   colorKey 'transit'  -> una sola polilinea gris.
+  //   colorKey != 'transit' (arr/dep) -> una polilinea por cada run
+  //     consecutivo de puntos con la misma banda de altitud. Cada
+  //     polilinea solapa 1 punto con la siguiente para evitar gaps
+  //     visuales en los limites entre bandas.
+  function _redrawTrailLine(entry, hex) {
+    // Limpia cualquier polilinea previa (line legacy + lines array).
+    if (entry.line) { _layer.removeLayer(entry.line); entry.line = null; }
+    if (entry.lines) { for (const l of entry.lines) _layer.removeLayer(l); }
+    entry.lines = [];
+    if (!entry.points || entry.points.length < 2) return;
+
+    if (entry.colorKey === 'transit') {
+      const latlngs = entry.points.map(p => [p[0], p[1]]);
+      const line = L.polyline(latlngs, {
+        color: _colorFor('transit'),
+        weight: 2, opacity: 0.45,
+        interactive: false, className: 'traffic-trail',
+      });
+      line.addTo(_layer);
+      entry.lines.push(line);
       return;
     }
-    const color = _colorFor(colorKey);
-    if (entry.line) {
-      entry.line.setLatLngs(latlngs);
-      // Recolorea TODA la traza si el avion cambia de transito a arr/dep
-      // (o viceversa). Pintar segmentos historicos con el color actual
-      // hace mas obvio el cambio de intencion para el ojo.
-      if (entry.colorKey !== colorKey) {
-        entry.line.setStyle({ color });
-        entry.colorKey = colorKey;
+
+    // Multi-color por banda de altitud para arr/dep.
+    let runStart = 0;
+    let runBand = entry.points[0][3] || 'unknown';
+    for (let i = 1; i < entry.points.length; i++) {
+      const band = entry.points[i][3] || 'unknown';
+      if (band !== runBand) {
+        // Cierra el run actual incluyendo el punto del cambio para
+        // que las polilineas se toquen sin gap visual.
+        const slice = entry.points.slice(runStart, i + 1);
+        entry.lines.push(_makeTrailSegment(slice, runBand));
+        runStart = i;
+        runBand = band;
       }
-    } else {
-      entry.line = L.polyline(latlngs, {
-        color,
-        weight: 2,
-        opacity: colorKey === 'transit' ? 0.45 : 0.85,
-        interactive: false,
-        className: 'traffic-trail',
-      });
-      entry.line.addTo(_layer);
-      entry.colorKey = colorKey;
-      console.info('[traffic] trail nuevo para', hex, 'puntos=', entry.points.length, 'color=', colorKey);
     }
+    // Run final.
+    const tail = entry.points.slice(runStart);
+    if (tail.length >= 2) entry.lines.push(_makeTrailSegment(tail, runBand));
+    if (hex !== undefined && entry.lines.length === 1 && !entry._announced) {
+      entry._announced = true;
+      console.info('[traffic] trail nuevo para', hex, 'puntos=', entry.points.length, 'color=', entry.colorKey);
+    }
+  }
+
+  function _makeTrailSegment(pointsSlice, band) {
+    const latlngs = pointsSlice.map(p => [p[0], p[1]]);
+    const line = L.polyline(latlngs, {
+      color: _colorFor(band),
+      weight: 2, opacity: 0.85,
+      interactive: false, className: 'traffic-trail',
+    });
+    line.addTo(_layer);
+    return line;
   }
 
   // Paleta unica: bandas de altitud para arr/dep, gris para transito.
