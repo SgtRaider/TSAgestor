@@ -3755,3 +3755,323 @@ select:focus-visible {
   .kml-windows .kml-window-row { flex-wrap: wrap; }
   .kml-window-row input[type="datetime-local"] { flex: 1 1 100%; }
 }
+
+/* ============================================================
+   B1 LAYOUT — Stepper + floating opaque panel + bottom drawer
+   sobre mapa siempre full-canvas.
+   ------------------------------------------------------------
+   Activado en <body class="b1"> via b1Layout.js. Sin esa
+   clase, la app se renderiza igual que antes (compat). Toda
+   la zona b1-* es nueva, no toca selectores antiguos.
+   ============================================================ */
+
+body.b1 { overflow: hidden; }
+body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
+
+.b1-shell {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  grid-template-columns: 100%;
+  background: var(--bg);
+  /* Tokens del layout */
+  --b1-panel-w:          480px;
+  --b1-panel-w-collapsed: 48px;
+  --b1-drawer-h:         42vh;
+  --b1-drawer-h-collapsed: 38px;
+  --b1-header-h:         var(--sp-8);
+  --b1-transition:       0.18s ease;
+}
+
+/* ── Header + stepper ─────────────────────────── */
+.b1-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  min-height: 52px;
+  z-index: 100;
+}
+.b1-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: 0 0 auto;
+}
+.b1-brand img { height: 32px; width: auto; }
+.b1-brand-name {
+  font-weight: 700;
+  font-size: var(--fs-lg);
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+.b1-stepper {
+  display: flex;
+  gap: 4px;
+  flex: 1 1 auto;
+  justify-content: center;
+}
+.b1-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px var(--sp-3);
+  background: transparent;
+  color: var(--ea-azul-palido);
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  font-family: 'Archivo', Arial, sans-serif;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--b1-transition), color var(--b1-transition);
+}
+.b1-step:hover {
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+}
+.b1-step.is-active {
+  background: var(--ea-amarillo);
+  color: #1a1200;
+}
+.b1-step .b1-step-num {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: var(--fs-sm);
+  opacity: 0.75;
+}
+.b1-actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.b1-icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  color: var(--ea-azul-palido);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: background-color var(--b1-transition);
+}
+.b1-icon-btn:hover { background: rgba(255,255,255,0.10); color: #fff; }
+
+/* ── Main area (panel + map + drawer) ─────────── */
+.b1-main {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Panel izquierdo (forms / filtros / NOTAM cards) */
+.b1-panel {
+  position: absolute;
+  top: 0; left: 0;
+  bottom: var(--b1-drawer-effective-h, 0px);
+  width: var(--b1-panel-effective-w, var(--b1-panel-w));
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  z-index: 50;
+  overflow: hidden;
+  transition: width var(--b1-transition), bottom var(--b1-transition);
+  display: flex;
+  flex-direction: column;
+}
+.b1-shell[data-panel-state="collapsed"] {
+  --b1-panel-effective-w: var(--b1-panel-w-collapsed);
+}
+.b1-shell[data-panel-state="hidden"] {
+  --b1-panel-effective-w: 0;
+}
+.b1-shell[data-drawer-state="open"] {
+  --b1-drawer-effective-h: var(--b1-drawer-h);
+}
+.b1-shell[data-drawer-state="collapsed"] {
+  --b1-drawer-effective-h: var(--b1-drawer-h-collapsed);
+}
+
+.b1-panel-rail {
+  /* Sidebar minimo cuando esta colapsado: iconos verticales del stepper */
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--sp-3) 0;
+  gap: 6px;
+}
+.b1-shell[data-panel-state="collapsed"] .b1-panel-rail { display: flex; }
+.b1-shell[data-panel-state="collapsed"] .b1-panel-body { display: none; }
+.b1-shell[data-panel-state="collapsed"] .b1-panel-resize { display: none; }
+.b1-panel-rail .b1-step {
+  padding: 6px;
+  border-radius: var(--r-md);
+  width: 36px;
+  height: 36px;
+  justify-content: center;
+}
+.b1-panel-rail .b1-step .b1-step-label { display: none; }
+
+.b1-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--sp-3);
+}
+.b1-panel-resize {
+  position: absolute;
+  top: 0; right: -3px; bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  z-index: 5;
+  background: transparent;
+}
+.b1-panel-resize:hover,
+.b1-panel-resize.b1-dragging {
+  background: var(--ea-amarillo);
+  opacity: 0.6;
+}
+
+/* Zona del mapa: full canvas, siempre detras de panel/drawer */
+.b1-map-zone {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+.b1-map-zone > #map {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+}
+
+/* Toolbar flotante del mapa */
+.b1-map-toolbar {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  z-index: 500; /* por encima de leaflet-control (400) y leaflet-top (~1000) */
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  pointer-events: auto;
+}
+
+/* Banner flotante de 'Dibujar ruta' encima del mapa */
+.b1-map-zone > .b1-draw-banner {
+  position: absolute;
+  left: 50%;
+  bottom: var(--sp-3);
+  transform: translateX(-50%);
+  z-index: 70;
+  pointer-events: auto;
+}
+
+/* Drawer inferior (tablas pesadas) */
+.b1-drawer {
+  position: absolute;
+  left: var(--b1-panel-effective-w, var(--b1-panel-w));
+  right: 0;
+  bottom: 0;
+  height: var(--b1-drawer-effective-h, 0px);
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  z-index: 60;
+  overflow: hidden;
+  transition: height var(--b1-transition), left var(--b1-transition);
+  display: flex;
+  flex-direction: column;
+}
+.b1-shell[data-drawer-state="closed"] .b1-drawer {
+  height: 0;
+  overflow: hidden;
+  border-top-width: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .b1-shell[data-drawer-state="closed"] .b1-drawer { display: none; }
+}
+.b1-drawer-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 4px var(--sp-3);
+  border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,0.18);
+  min-height: 36px;
+}
+.b1-drawer-tabs { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
+.b1-drawer-tab {
+  padding: 4px 10px;
+  background: transparent;
+  color: var(--ea-azul-palido);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  font-family: 'Archivo', Arial, sans-serif;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.b1-drawer-tab:hover { background: rgba(255,255,255,0.06); color: #fff; }
+.b1-drawer-tab.is-active {
+  background: var(--ea-amarillo);
+  color: #1a1200;
+}
+.b1-drawer-body {
+  flex: 1;
+  overflow: auto;
+  padding: var(--sp-2) var(--sp-3);
+}
+.b1-drawer-resize {
+  position: absolute;
+  top: -3px; left: 0; right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  z-index: 5;
+  background: transparent;
+}
+.b1-drawer-resize:hover,
+.b1-drawer-resize.b1-dragging {
+  background: var(--ea-amarillo);
+  opacity: 0.6;
+}
+
+/* ── Mobile (<=768px): los dos paneles van abajo apilados ── */
+@media (max-width: 768px) {
+  .b1-shell {
+    --b1-panel-w: 100%;
+    --b1-drawer-h: 32vh;
+  }
+  .b1-map-zone { min-height: 30vh; }
+  .b1-panel {
+    top: auto;
+    bottom: var(--b1-drawer-effective-h, 0px);
+    width: 100%;
+    height: 38vh;
+    border-right: 0;
+    border-top: 1px solid var(--border);
+  }
+  .b1-shell[data-panel-state="collapsed"] .b1-panel { height: 40px; }
+  .b1-shell[data-panel-state="hidden"]    .b1-panel { display: none; }
+  .b1-panel-resize {
+    top: -3px; right: 0; left: 0;
+    width: 100%;
+    height: 6px;
+    cursor: ns-resize;
+  }
+  .b1-shell[data-panel-state="collapsed"] .b1-panel-rail {
+    flex-direction: row;
+    padding: 4px var(--sp-3);
+  }
+  .b1-drawer {
+    left: 0;
+  }
+  .b1-stepper { display: none; }
+  .b1-shell[data-panel-state="collapsed"] .b1-panel-rail { display: flex !important; }
+}

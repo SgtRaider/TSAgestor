@@ -2944,6 +2944,18 @@
     }
   }
 
+  // Expone hooks de pestania para que b1Layout pueda inicializar
+  // Plan / Ajustes / Briefing al cambiar de step (los IIFEs antiguos
+  // solo los llamaban desde switchTab, que B1 no usa).
+  window.TSAgestor = window.TSAgestor || {};
+  window.TSAgestor.app = {
+    initPlanTab,
+    initSettingsTab,
+    refreshExportUI,
+    ensureMap,
+    switchTab,
+  };
+
   document.addEventListener('DOMContentLoaded', () => {
     showWelcomeIfNeeded();
     if (settings) settings.load();

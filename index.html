@@ -21,7 +21,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="css/styles.css">
 </head>
-<body>
+<body class="b1">
 
 <!-- Modal de bienvenida (aviso de seguridad + acceso a herramientas) -->
 <div id="welcome-modal" class="welcome-modal" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
@@ -384,6 +384,7 @@
 
     <!-- CORTE -->
     <section id="tab-cross" class="tab-content">
+      <div id="cross-section-wrap" class="cross-section-wrap-b1">
       <div class="toolbar">
         <span id="cross-info" class="chip"></span>
         <button id="btn-cross-clouds" class="btn btn-ghost" type="button">Cargar nubes (Open-Meteo)</button>
@@ -399,6 +400,7 @@
         </p>
       </div>
       <div id="gramet-container" class="gramet-container hidden"></div>
+      </div>
     </section>
 
     <!-- PLAN DE VUELO -->
@@ -512,7 +514,7 @@
           <div id="plan-meteo-content" class="plan-meteo-content"></div>
         </div>
 
-        <div class="plan-coords">
+        <div class="plan-coords" id="plan-coords-wrap">
           <h3>Waypoints y coordenadas</h3>
           <div class="table-scroll">
             <table id="plan-coords-table">
@@ -534,7 +536,7 @@
           </div>
         </div>
 
-        <div class="plan-log">
+        <div class="plan-log" id="plan-log-table-wrap">
           <h3>Log de vuelo y combustible</h3>
           <div id="plan-log-summary" class="plan-log-summary"></div>
           <div class="table-scroll">
@@ -770,15 +772,16 @@
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
 <script src="js/filters.js"></script>
-<script src="js/notamHub.js?v=183"></script>
-<script src="js/kmlIO.js?v=183"></script>
-<script src="js/notamView.js?v=183"></script>
-<script src="js/mapView.js?v=183"></script>
-<script src="js/trafficLayer.js?v=183"></script>
+<script src="js/notamHub.js?v=184"></script>
+<script src="js/kmlIO.js?v=184"></script>
+<script src="js/notamView.js?v=184"></script>
+<script src="js/mapView.js?v=184"></script>
+<script src="js/trafficLayer.js?v=184"></script>
 <script src="js/crossSection.js"></script>
 <script src="js/flightPlan.js"></script>
 <script src="js/pdfExport.js"></script>
 <script src="js/app.js"></script>
+<script src="js/b1Layout.js?v=184"></script>
 
 <!-- Service Worker (PWA) -->
 <script>
