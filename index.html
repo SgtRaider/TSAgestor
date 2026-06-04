@@ -566,15 +566,44 @@
       </div>
     </section>
 
-    <!-- LIVE — tracking de plan en vuelo: marca paso por waypoint, añade
-         holds en vivo, modifica IAS/Flow para tramos futuros, recalcula
-         ETA + combustible restante + chequeo vuelta a base. -->
+    <!-- LIVE — tracking de plan en vuelo. Flujo: plan calculado ->
+         preview con ETAs planificadas + card "Iniciar ruta". El operador
+         introduce hora de despegue (editable, pre-rellenada con la del
+         plan o "Despegue ahora"). Tras iniciar: marca paso por WP, anyade
+         holds, modifica IAS/Flow/FL, edita combustible restante por WP,
+         refetch viento en cada paso. -->
     <section id="tab-live" class="tab-content">
       <div id="live-no-plan" class="live-no-plan">
         <p><b>El modo Live necesita un plan calculado.</b></p>
         <p class="dim">Ve a la sección <b>Plan</b>, rellena el formulario y pulsa <b>Calcular ruta</b>. Cuando vuelvas aquí podrás iniciar el seguimiento en vivo.</p>
       </div>
 
+      <!-- Estado pre-flight: hay plan pero la sesion live aun no esta arrancada.
+           Muestra el reloj, una preview de ETAs planificadas en la tabla del
+           drawer, y la card de Iniciar ruta. -->
+      <div id="live-preflight" class="live-content hidden">
+        <div class="live-card live-preflight-card">
+          <div class="live-card-head">
+            <h3>Iniciar ruta</h3>
+            <div class="live-clock">
+              <span class="live-clock-label">UTC</span>
+              <span id="live-clock-utc" class="live-clock-value">--:--:--</span>
+            </div>
+          </div>
+          <p class="dim">Cuando estes listo para despegar, ajusta la hora real de despegue (UTC) y pulsa <b>Iniciar ruta</b>. La sesion live arrancara: cada "Estoy en proximo WP" registrara <code>Date.now()</code> y refrescara vientos para los WPs restantes.</p>
+          <div class="live-preflight-row">
+            <label class="live-override-label">
+              <span>Hora real de despegue (UTC)</span>
+              <input type="datetime-local" id="live-start-time">
+            </label>
+            <button id="btn-live-now"   class="btn btn-ghost btn-sm" type="button" title="Sustituir con la hora actual del reloj UTC">Despegue ahora</button>
+            <button id="btn-live-start" class="btn btn-primary" type="button">▶ Iniciar ruta</button>
+          </div>
+          <p class="dim">La tabla "Log live" del cajon muestra los waypoints planificados — los pasos reales aparecen en cuanto inicies.</p>
+        </div>
+      </div>
+
+      <!-- Estado en-vuelo: sesion arrancada -->
       <div id="live-content" class="live-content hidden">
         <!-- Estado actual -->
         <div class="live-card live-status-card">
@@ -582,7 +611,7 @@
             <h3>Estado actual</h3>
             <div class="live-clock">
               <span class="live-clock-label">UTC</span>
-              <span id="live-clock-utc" class="live-clock-value">--:--:--</span>
+              <span id="live-clock-utc-2" class="live-clock-value">--:--:--</span>
             </div>
           </div>
           <div class="live-status-grid">
@@ -619,7 +648,7 @@
             <h3>Acciones rápidas</h3>
           </div>
           <div class="live-actions">
-            <button id="btn-live-advance" class="btn btn-primary" type="button" title="Marca que has pasado por el próximo waypoint AHORA">
+            <button id="btn-live-advance" class="btn btn-primary" type="button" title="Marca que has pasado por el próximo waypoint AHORA y refresca vientos">
               ▶ Estoy en próximo WP
             </button>
             <button id="btn-live-back" class="btn btn-ghost" type="button" title="Retrocede al waypoint anterior (deshace el último paso)">
@@ -630,6 +659,9 @@
             </button>
             <button id="btn-live-rtb" class="btn btn-ghost" type="button" title="Evalúa la vuelta inmediata al aeródromo de origen desde la posición actual">
               ↩ Vuelta a base
+            </button>
+            <button id="btn-live-refetch-winds" class="btn btn-ghost" type="button" title="Forzar refresco manual del viento (Open-Meteo)">
+              ⟳ Refresh viento
             </button>
             <button id="btn-live-reset" class="btn btn-ghost" type="button" title="Resetea la sesión live al estado inicial del plan">
               ⟲ Reset sesión
@@ -672,7 +704,9 @@
         </div>
       </div>
 
-      <!-- Tabla del log live (vive en el drawer cuando entras en Live) -->
+      <!-- Tabla del log live (vive en el drawer cuando entras en Live).
+           Columnas: # / WP / FL / IAS / TAS / GS / Viento / ETA plan /
+           ETA live / Δ / Combustible (editable). -->
       <div id="live-log-table-wrap" class="table-wrap hidden">
         <div class="live-log-head">
           <h4>Log live</h4>
@@ -684,11 +718,14 @@
               <th>#</th>
               <th>Waypoint</th>
               <th>FL</th>
+              <th>IAS</th>
+              <th>TAS</th>
+              <th>GS</th>
+              <th>Viento</th>
               <th>ETA plan</th>
               <th>ETA live</th>
               <th>Δ</th>
-              <th>Combustible</th>
-              <th>Estado</th>
+              <th>Restante</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -902,17 +939,17 @@
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
 <script src="js/filters.js"></script>
-<script src="js/notamHub.js?v=210"></script>
-<script src="js/kmlIO.js?v=210"></script>
-<script src="js/notamView.js?v=210"></script>
-<script src="js/mapView.js?v=210"></script>
-<script src="js/trafficLayer.js?v=210"></script>
+<script src="js/notamHub.js?v=211"></script>
+<script src="js/kmlIO.js?v=211"></script>
+<script src="js/notamView.js?v=211"></script>
+<script src="js/mapView.js?v=211"></script>
+<script src="js/trafficLayer.js?v=211"></script>
 <script src="js/crossSection.js"></script>
 <script src="js/flightPlan.js"></script>
-<script src="js/livePlan.js?v=210"></script>
+<script src="js/livePlan.js?v=211"></script>
 <script src="js/pdfExport.js"></script>
 <script src="js/app.js"></script>
-<script src="js/b1Layout.js?v=210"></script>
+<script src="js/b1Layout.js?v=211"></script>
 
 <!-- Service Worker (PWA) -->
 <script>

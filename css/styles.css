@@ -4365,6 +4365,40 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
 @media (max-width: 600px) {
   .live-status-grid { grid-template-columns: repeat(2, 1fr); }
 }
+/* Card pre-flight: destaca para indicar que es el punto de entrada */
+.live-preflight-card {
+  border-color: var(--ea-amarillo, #fbbf24);
+  border-width: 2px;
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0.08), var(--bg-panel));
+}
+.live-preflight-card p { margin: var(--sp-2) 0; }
+.live-preflight-row {
+  display: flex; align-items: flex-end; gap: var(--sp-2); flex-wrap: wrap;
+  margin: var(--sp-2) 0;
+}
+.live-preflight-row .live-override-label input { width: 170px; }
+.live-preflight-row .btn-primary { font-size: 13px; padding: 8px 14px; }
+/* Sub-legs en la tabla: atenuados para diferenciarlos de WPs reales */
+.live-row-sub { opacity: 0.7; font-style: italic; }
+.live-row-sub td:nth-child(2) b { font-weight: 500; }
+/* Input editable de combustible restante en la tabla */
+.live-fuel-input {
+  width: 70px; padding: 2px 4px; font-size: 12px;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 3px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  text-align: right;
+}
+.live-fuel-input:focus {
+  outline: none;
+  border-color: var(--ea-amarillo, #fbbf24);
+}
+.live-fuel-overridden {
+  border-color: var(--ea-amarillo, #fbbf24);
+  background: rgba(251, 191, 36, 0.08);
+}
+.live-fuel-input.live-fuel-bingo { color: #ef4444; border-color: #ef4444; }
+.live-fuel-input.live-fuel-joker { color: #f59e0b; border-color: #f59e0b; }
 
 /* ============================================================
    Modal de ayuda
