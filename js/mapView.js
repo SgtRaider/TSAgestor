@@ -1614,9 +1614,15 @@ window.TSAgestor.mapView = (function () {
     L.polyline(pts, { color: '#1f2937', weight: 7, opacity: 0.35, pane: 'routePane' }).addTo(grp);
     L.polyline(pts, { color: '#fbbf24', weight: 4, opacity: 0.95, pane: 'routePane' }).addTo(grp);
 
+    // Contador de waypoints reales para la etiqueta permanente:
+    // saltamos sub-legs (isClimbDescentSub) y holds para que la
+    // numeracion coincida con la columna # del log y de la tabla
+    // de Waypoints y coordenadas.
+    let displayIdx = 0;
     plan.coords.forEach((c, i) => {
       const isExtreme = i === 0 || i === plan.coords.length - 1;
       const isSub = !!c.isClimbDescentSub;
+      const isHold = !!c.isHold;
       const m = L.circleMarker([c.lat, c.lon], {
         radius: isExtreme ? 6 : (isSub ? 3 : 4),
         color: isSub ? '#7c3aed' : '#1f2937',
@@ -1624,18 +1630,24 @@ window.TSAgestor.mapView = (function () {
         fillOpacity: 1, weight: isSub ? 1 : 1.5,
         pane: 'routePane',
       }).addTo(grp);
+      // Tooltip de hover: nombre / coordenada + aerovia + FL.
+      // Conserva la info textual para localizar el waypoint sin
+      // depender solo del numero de la etiqueta.
       const flLabel = Number.isFinite(c.fl) ? ` · FL${String(c.fl).padStart(3, '0')}` : '';
       const tip = c.name + (c.airway && c.airway !== '—' ? ' · ' + c.airway : '') + flLabel;
       m.bindTooltip(tip, { direction: 'top', offset: [0, -4] });
-      // Etiqueta permanente solo en waypoints "reales"; los sub-legs de
-      // ascenso/descenso saturarian el mapa. Su nombre sale en el tooltip
-      // (hover) y en la fila del log.
-      if (!isSub) {
+      // Etiqueta permanente: el NUMERO del waypoint (1, 2, 3...) en
+      // vez del nombre / coordenada. Los sub-legs y los holds no
+      // suman ni se etiquetan (la ruta dibujada puede llevar muchos
+      // sub-legs de cambio de FL y saturaria el mapa). El nombre
+      // completo sigue accesible en el tooltip y en la tabla.
+      if (!isSub && !isHold) {
+        displayIdx++;
         L.tooltip({
           permanent: true, direction: 'right', offset: [6, 0],
           className: 'route-label' + (isExtreme ? ' extreme' : ''),
           interactive: false,
-        }).setLatLng([c.lat, c.lon]).setContent(c.name).addTo(grp);
+        }).setLatLng([c.lat, c.lon]).setContent(String(displayIdx)).addTo(grp);
       }
     });
 
