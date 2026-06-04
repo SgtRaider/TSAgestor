@@ -349,11 +349,7 @@ window.TSAgestor.mapView = (function () {
       try {
         const cfg = window.TSAgestor.meteoApi.getEumetCthWMS();
         cloudCthTile = L.tileLayer.wms(cfg.url, Object.assign(
-          { opacity: settingsGet('opacity.cloudCTH', 0.7), maxZoom: 11, pane: 'meteoTiles',
-            // CORS: si EUMETSAT responde Access-Control-Allow-Origin la
-            // SW puede cachear los tiles. Si no, los tiles aparecen rotos
-            // y revertimos solo en esta capa (y en buildEumetWmsToggle).
-            crossOrigin: 'anonymous' },
+          { opacity: settingsGet('opacity.cloudCTH', 0.7), maxZoom: 11, pane: 'meteoTiles' },
           cfg.options
         ));
         let firstError = true;
