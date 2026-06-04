@@ -566,6 +566,136 @@
       </div>
     </section>
 
+    <!-- LIVE — tracking de plan en vuelo: marca paso por waypoint, añade
+         holds en vivo, modifica IAS/Flow para tramos futuros, recalcula
+         ETA + combustible restante + chequeo vuelta a base. -->
+    <section id="tab-live" class="tab-content">
+      <div id="live-no-plan" class="live-no-plan">
+        <p><b>El modo Live necesita un plan calculado.</b></p>
+        <p class="dim">Ve a la sección <b>Plan</b>, rellena el formulario y pulsa <b>Calcular ruta</b>. Cuando vuelvas aquí podrás iniciar el seguimiento en vivo.</p>
+      </div>
+
+      <div id="live-content" class="live-content hidden">
+        <!-- Estado actual -->
+        <div class="live-card live-status-card">
+          <div class="live-card-head">
+            <h3>Estado actual</h3>
+            <div class="live-clock">
+              <span class="live-clock-label">UTC</span>
+              <span id="live-clock-utc" class="live-clock-value">--:--:--</span>
+            </div>
+          </div>
+          <div class="live-status-grid">
+            <div class="live-stat">
+              <span class="live-stat-label">Posición</span>
+              <b id="live-current-wp">— · —</b>
+            </div>
+            <div class="live-stat">
+              <span class="live-stat-label">Paso real</span>
+              <b id="live-current-time">—</b>
+            </div>
+            <div class="live-stat">
+              <span class="live-stat-label">Próximo WP</span>
+              <b id="live-next-wp">—</b>
+            </div>
+            <div class="live-stat">
+              <span class="live-stat-label">ETA próximo</span>
+              <b id="live-next-eta">—</b>
+            </div>
+            <div class="live-stat">
+              <span class="live-stat-label">ETA destino</span>
+              <b id="live-dest-eta">—</b>
+            </div>
+            <div class="live-stat">
+              <span class="live-stat-label">Combustible</span>
+              <b id="live-fuel-remaining">—</b>
+            </div>
+          </div>
+        </div>
+
+        <!-- Acciones rápidas -->
+        <div class="live-card">
+          <div class="live-card-head">
+            <h3>Acciones rápidas</h3>
+          </div>
+          <div class="live-actions">
+            <button id="btn-live-advance" class="btn btn-primary" type="button" title="Marca que has pasado por el próximo waypoint AHORA">
+              ▶ Estoy en próximo WP
+            </button>
+            <button id="btn-live-back" class="btn btn-ghost" type="button" title="Retrocede al waypoint anterior (deshace el último paso)">
+              ◀ Retroceder
+            </button>
+            <button id="btn-live-hold" class="btn btn-ghost" type="button" title="Añade un hold en el WP actual">
+              + Hold
+            </button>
+            <button id="btn-live-rtb" class="btn btn-ghost" type="button" title="Evalúa la vuelta inmediata al aeródromo de origen desde la posición actual">
+              ↩ Vuelta a base
+            </button>
+            <button id="btn-live-reset" class="btn btn-ghost" type="button" title="Resetea la sesión live al estado inicial del plan">
+              ⟲ Reset sesión
+            </button>
+          </div>
+        </div>
+
+        <!-- Ajustes en vuelo -->
+        <div class="live-card">
+          <div class="live-card-head">
+            <h3>Ajustes en vuelo</h3>
+            <span class="dim">aplica a partir del próximo WP</span>
+          </div>
+          <div class="live-overrides">
+            <label class="live-override-label">
+              <span>IAS (kt)</span>
+              <input type="number" id="live-override-ias" min="50" max="900" step="5" placeholder="—">
+            </label>
+            <label class="live-override-label">
+              <span>Flow (/h)</span>
+              <input type="number" id="live-override-flow" min="0" step="10" placeholder="—">
+            </label>
+            <label class="live-override-label">
+              <span>FL</span>
+              <input type="number" id="live-override-fl" min="10" max="600" step="5" placeholder="—">
+            </label>
+            <button id="btn-live-apply-overrides" class="btn btn-primary btn-sm" type="button">Aplicar</button>
+            <button id="btn-live-clear-overrides" class="btn btn-ghost btn-sm" type="button">Limpiar</button>
+          </div>
+        </div>
+
+        <!-- Evaluación / alertas -->
+        <div class="live-card live-eval-card">
+          <div class="live-card-head">
+            <h3>Evaluación</h3>
+          </div>
+          <ul id="live-eval-list" class="live-eval-list">
+            <li class="dim">Sin datos aún. Marca tu posición para comenzar el seguimiento.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Tabla del log live (vive en el drawer cuando entras en Live) -->
+      <div id="live-log-table-wrap" class="table-wrap hidden">
+        <div class="live-log-head">
+          <h4>Log live</h4>
+          <span class="dim" id="live-log-info">—</span>
+        </div>
+        <table id="live-log-table" class="table table-compact">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Waypoint</th>
+              <th>FL</th>
+              <th>ETA plan</th>
+              <th>ETA live</th>
+              <th>Δ</th>
+              <th>Combustible</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
     <!-- NOTAMs -->
     <section id="tab-notams" class="tab-content">
       <div class="notam-toolbar-card">
@@ -772,16 +902,17 @@
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
 <script src="js/filters.js"></script>
-<script src="js/notamHub.js?v=208"></script>
-<script src="js/kmlIO.js?v=208"></script>
-<script src="js/notamView.js?v=208"></script>
-<script src="js/mapView.js?v=208"></script>
-<script src="js/trafficLayer.js?v=208"></script>
+<script src="js/notamHub.js?v=209"></script>
+<script src="js/kmlIO.js?v=209"></script>
+<script src="js/notamView.js?v=209"></script>
+<script src="js/mapView.js?v=209"></script>
+<script src="js/trafficLayer.js?v=209"></script>
 <script src="js/crossSection.js"></script>
 <script src="js/flightPlan.js"></script>
+<script src="js/livePlan.js?v=209"></script>
 <script src="js/pdfExport.js"></script>
 <script src="js/app.js"></script>
-<script src="js/b1Layout.js?v=208"></script>
+<script src="js/b1Layout.js?v=209"></script>
 
 <!-- Service Worker (PWA) -->
 <script>

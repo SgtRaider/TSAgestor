@@ -27,6 +27,7 @@ window.TSAgestor.b1Layout = (function () {
   // - data: stack de capas (KML / TSAs / mapas)
   // - plan: silueta delta de jet militar (vista superior)
   // - briefing: nube con rayo (meteo)
+  // - live: heartbeat / pulse line para tracking en vuelo
   // - settings: pinon clasico (8 brazos + circulo)
   // Todos heredan color via stroke=currentColor; CSS controla tamano.
   const ICONS = {
@@ -42,6 +43,9 @@ window.TSAgestor.b1Layout = (function () {
       'stroke-linecap="round" stroke-linejoin="round">' +
       '<path d="M7 18a5 5 0 0 1 0-10 7 7 0 0 1 13 4 4 4 0 0 1-2 7H7z"/>' +
       '<path d="M13 11l-3 5h4l-2 4"/></svg>',
+    live: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" ' +
+      'stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M3 12h4l2-6 4 12 3-9 2 3h3"/></svg>',
     settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" ' +
       'stroke-linecap="round" stroke-linejoin="round">' +
       '<circle cx="12" cy="12" r="3"/>' +
@@ -58,6 +62,9 @@ window.TSAgestor.b1Layout = (function () {
       { id: 'plan-log-table-wrap',   label: 'Log de combustible' },
       { id: 'cross-section-wrap',    label: 'Corte transversal' },
       { id: 'plan-coords-wrap',      label: 'Waypoints y coordenadas' },
+    ]},
+    { id: 'live',     icon: ICONS.live,     label: 'Live',     tabId: 'tab-live',    drawer: [
+      { id: 'live-log-table-wrap',   label: 'Log live' },
     ]},
     { id: 'briefing', icon: ICONS.briefing, label: 'Briefing', tabId: 'tab-notams',  drawer: [] },
     { id: 'settings', icon: ICONS.settings, label: 'Ajustes',  tabId: 'tab-settings', drawer: [] },
@@ -812,6 +819,7 @@ window.TSAgestor.b1Layout = (function () {
       if (newId === 'plan'     && appApi.initPlanTab)     appApi.initPlanTab();
       if (newId === 'settings' && appApi.initSettingsTab) appApi.initSettingsTab();
       if (newId === 'datos'    && appApi.refreshExportUI) appApi.refreshExportUI();
+      if (newId === 'live'     && appApi.initLiveTab)     appApi.initLiveTab();
       if (newId === 'briefing' && window.TSAgestor && window.TSAgestor.notamView
           && window.TSAgestor.notamView.onTabOpen) {
         window.TSAgestor.notamView.onTabOpen();

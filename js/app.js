@@ -2951,8 +2951,8 @@
   }
 
   // Expone hooks de pestania para que b1Layout pueda inicializar
-  // Plan / Ajustes / Briefing al cambiar de step (los IIFEs antiguos
-  // solo los llamaban desde switchTab, que B1 no usa).
+  // Plan / Ajustes / Briefing / Live al cambiar de step (los IIFEs
+  // antiguos solo los llamaban desde switchTab, que B1 no usa).
   window.TSAgestor = window.TSAgestor || {};
   window.TSAgestor.app = {
     initPlanTab,
@@ -2960,6 +2960,13 @@
     refreshExportUI,
     ensureMap,
     switchTab,
+    // Para el modo Live: acceso al ultimo plan calculado (state.lastPlan)
+    // que livePlan necesita para construir su sesion.
+    getLastPlan: () => state.lastPlan || null,
+    initLiveTab: () => {
+      const lp = window.TSAgestor && window.TSAgestor.livePlan;
+      if (lp && typeof lp.init === 'function') lp.init();
+    },
   };
 
   document.addEventListener('DOMContentLoaded', () => {
