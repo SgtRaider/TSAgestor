@@ -4323,13 +4323,45 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
 .b1-help-body details[open] > summary::before {
   transform: rotate(90deg);
 }
+/* Contenido de cada <details>: margenes horizontales unificados via
+   padding del propio details (a traves de un wrapper logico), y
+   margenes verticales aplicados a cada elemento. Evita la guerra de
+   padding/margin entre p, ul, ol y elementos custom (.b1-help-shortcuts,
+   .b1-help-glossary). */
 .b1-help-body details > *:not(summary) {
-  padding: 0 var(--sp-3) var(--sp-2) var(--sp-3);
+  margin-left: var(--sp-3);
+  margin-right: var(--sp-3);
 }
-.b1-help-body p { margin: var(--sp-2) 0; }
-.b1-help-body ul, .b1-help-body ol { margin: var(--sp-2) 0; padding-left: 22px; }
-.b1-help-body ul ul { margin: 4px 0; }
-.b1-help-body li { margin: 3px 0; }
+.b1-help-body details > *:last-child {
+  margin-bottom: var(--sp-2);
+}
+.b1-help-body p {
+  margin-top: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+.b1-help-body ul,
+.b1-help-body ol {
+  margin-top: var(--sp-2);
+  margin-bottom: var(--sp-2);
+  padding-left: 22px;       /* hueco para bullets/numeros */
+}
+.b1-help-body li { margin: 4px 0; padding-left: 2px; }
+.b1-help-body li > ul,
+.b1-help-body li > ol {
+  margin-top: 4px;
+  margin-bottom: 4px;
+  padding-left: 20px;        /* indent relativo al item padre */
+}
+/* Las listas anidadas usan otro marcador (dash) para que se distingan
+   visualmente del nivel exterior (disc por defecto). */
+.b1-help-body li > ul { list-style-type: '— '; }
+.b1-help-body li > ol { list-style-type: lower-alpha; }
+/* La etiqueta atenuada (<span class="dim">) usada en el Inicio rapido
+   para describir los iconos: gris suave en linea con el texto. */
+.b1-help-body .dim {
+  color: var(--text-mute, #94a3b8);
+  font-weight: normal;
+}
 .b1-help-body code {
   background: rgba(0, 0, 0, 0.3);
   border: 1px solid var(--border);

@@ -149,20 +149,20 @@ window.TSAgestor.b1Layout = (function () {
           <div class="b1-help-body">
             <details open>
               <summary>Inicio rapido</summary>
-              <p>TSAgestor es un planificador de vuelo tactico para aviacion militar / TSA. La interfaz se organiza en 5 secciones (stepper superior):</p>
+              <p>TSAgestor es un planificador de vuelo tactico para aviacion militar / TSA. La interfaz se organiza en 5 secciones, identificables por su icono en el stepper superior:</p>
               <ul>
-                <li><b>① Inicio</b> &mdash; Bienvenida.</li>
-                <li><b>② Datos</b> &mdash; Carga de KML/KMZ con TSAs detectadas y filtros.</li>
-                <li><b>③ Plan</b> &mdash; Configura el plan de vuelo y calcula ruta, log de combustible, corte transversal y tabla de waypoints.</li>
-                <li><b>④ Briefing</b> &mdash; NOTAMs y consulta meteo.</li>
-                <li><b>⑤ Ajustes</b> &mdash; Preferencias persistentes (velocidad base, consumo, BINGO/JOKER).</li>
+                <li><b>Inicio</b> <span class="dim">(icono de cocarda EA)</span> &mdash; Bienvenida.</li>
+                <li><b>Datos</b> <span class="dim">(icono de capas apiladas)</span> &mdash; Carga de KML/KMZ con TSAs detectadas y filtros.</li>
+                <li><b>Plan</b> <span class="dim">(icono de jet militar)</span> &mdash; Configura el plan de vuelo y calcula ruta, log de combustible, corte transversal y tabla de waypoints.</li>
+                <li><b>Briefing</b> <span class="dim">(icono de nube con rayo)</span> &mdash; NOTAMs y consulta meteo.</li>
+                <li><b>Ajustes</b> <span class="dim">(icono de pinion)</span> &mdash; Preferencias persistentes (velocidad base, consumo, BINGO/JOKER).</li>
               </ul>
               <p>El mapa ocupa toda la pantalla detras del panel y el drawer. El boton <b>⇔</b> del header (o la tecla <kbd>M</kbd>) cicla el panel <i>abierto &rarr; colapsado &rarr; oculto</i>.</p>
             </details>
 
             <details>
               <summary>Cargar datos (KML / KMZ)</summary>
-              <p>En la seccion <b>② Datos</b>:</p>
+              <p>En la seccion <b>Datos</b>:</p>
               <ol>
                 <li>Pulsa <b>Cargar archivo</b> o arrastra un KML/KMZ.</li>
                 <li>Las TSAs detectadas aparecen en la tabla del cajon inferior.</li>
@@ -173,7 +173,7 @@ window.TSAgestor.b1Layout = (function () {
 
             <details>
               <summary>Plan de vuelo</summary>
-              <p>En la seccion <b>③ Plan</b>, rellena el formulario:</p>
+              <p>En la seccion <b>Plan</b>, rellena el formulario:</p>
               <ul>
                 <li><b>Origen / Destino</b> &mdash; ICAOs de 4 letras (ej. LEMD, LEZG).</li>
                 <li><b>Via</b> &mdash; Waypoints separados por espacio o coma. Vacio = ruta automatica.</li>
@@ -235,7 +235,7 @@ window.TSAgestor.b1Layout = (function () {
 
             <details>
               <summary>Briefing (NOTAMs)</summary>
-              <p>La seccion <b>④ Briefing</b> consulta NOTAMs (EAD/EUROCONTROL):</p>
+              <p>La seccion <b>Briefing</b> consulta NOTAMs (EAD/EUROCONTROL):</p>
               <ul>
                 <li>Boton <b>Origen+destino del plan</b> &mdash; Carga NOTAMs de los ICAOs del plan actual.</li>
                 <li>Boton <b>Consultar</b> &mdash; ICAOs libres.</li>
