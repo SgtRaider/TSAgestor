@@ -3998,6 +3998,7 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   transform: translateX(-50%);
   z-index: 9000;
   pointer-events: auto;
+  max-width: calc(100vw - 2 * var(--sp-3));
   /* Sobreescribe el fondo casi transparente del .draw-banner original
      (rgba(251,191,36,0.15)) para que sea legible sobre el mapa. */
   background: var(--bg-panel);
@@ -4026,6 +4027,17 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
 }
 .b1-shell .b1-map-zone .leaflet-left {
   left: calc(var(--b1-panel-effective-w, var(--b1-panel-w)) + var(--sp-2));
+}
+
+/* Modo dibujo activo: ocultamos los overlays flotantes del lado derecho
+   del mapa (b1-map-toolbar con Centrar/Leyenda TSAs/Capas/Tráfico y la
+   leyenda TSAs si esta visible) para que no roben clicks al colocar
+   waypoints ni distraigan el flow. El draw-banner mantiene sus propias
+   acciones (Deshacer/Vuelta/Listo/Cancelar) y queda visible. Al salir
+   del modo (.drawing-route se quita) los overlays vuelven solos. */
+.b1-map-zone > #map.drawing-route ~ .b1-map-toolbar,
+.b1-map-zone > #map.drawing-route .leaflet-top.leaflet-right {
+  display: none;
 }
 
 /* Drawer inferior (tablas pesadas) — full-width: cruza por debajo
