@@ -244,12 +244,11 @@ window.TSAgestor.mapView = (function () {
     const mapi = window.TSAgestor.meteoApi;
     if (mapi) {
       overlays['Nubosidad (RainViewer IR)'] = buildRainviewerLayer();
-      // Orden de los toggles EUMETSAT en la lista: CTH, luego LI (rayos),
-      // luego RGB Convección. Tres productos via.eumetsat.int con el mismo
-      // patron WMS + access_token.
-      const cthCfg = mapi.getEumetCthWMS && mapi.getEumetCthWMS();
-      const cthTitle = cthCfg && cthCfg.title ? cthCfg.title : 'Cloud Top Height';
-      overlays[cthTitle] = buildCthLayer();
+      // Productos EUMETSAT en la lista: LI AFA (rayos) y RGB Convection
+      // (SEVIRI). El CTH (Cloud Top Height MSG 0°) se quito porque su
+      // producto base es de baja resolucion (3 km/px de MSG) y el WMS
+      // publico de EUMETSAT devuelve frecuentes 5xx fuera de su ventana
+      // de horas: como capa de briefing no aportaba.
       if (mapi.getEumetLightningWMS) {
         const liCfg = mapi.getEumetLightningWMS();
         overlays[(liCfg && liCfg.title) || 'Tormentas eléctricas (MTG · LI)'] =
