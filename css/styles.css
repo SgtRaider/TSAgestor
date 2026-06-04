@@ -4018,6 +4018,23 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   border: 1px solid var(--border);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
+/* Panel "Aerodromo ICAO" que aparece al pulsar Trafico. El estilo
+   original (.traffic-panel) tiene background rgba(255,255,255,0.04)
+   pensado para vivir en una toolbar oscura — sobre el mapa queda
+   ilegible. Lo opacamos aqui solo cuando esta dentro de la
+   b1-map-toolbar. La etiqueta "Aerodromo ICAO" tambien sube su
+   contraste (color de tema en vez de azul-cielo sobre transparente). */
+.b1-map-toolbar .traffic-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.b1-map-toolbar .traffic-panel-label {
+  color: var(--text);
+}
+.b1-map-toolbar .traffic-status {
+  color: var(--text);
+}
 
 /* Banner flotante de 'Dibujar ruta'. position:fixed + z-index 9000 +
    anclado a <body> directamente (b1Layout._moveMap lo saca de
