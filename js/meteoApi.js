@@ -225,27 +225,25 @@ window.TSAgestor.meteoApi = (function () {
 
   // Calcula el TIME mas reciente disponible para CTH MSG. EumetSat publica
   // un mosaico nuevo cada 15 min (HH:00, HH:15, HH:30, HH:45) con un retraso
-  // tipico de procesamiento de 5-8 min. Devolvemos el slot anterior al actual
-  // para garantizar que ya este publicado.
-  // Formato: 'YYYY-MM-DDTHH:MM:00Z' (ISO 8601 con segundos a 0).
-  function latestCthTimeISO() {
-    const now = new Date();
-    const minute = now.getUTCMinutes();
-    const slot = Math.floor(minute / 15) * 15;
-    now.setUTCMinutes(slot - 15, 0, 0); // un slot por detras
-    const pad = n => String(n).padStart(2, '0');
-    return `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}` +
-           `T${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:00Z`;
+  // Cache-bust por slot de 15 minutos: parametro `cb` ignorado por el
+  // servidor WMS pero que invalida la cache del navegador / SW cada vez
+  // que cambia. Reemplaza al antiguo `time=ISO`: pasar un TIME explicito
+  // hacia que EUMETSAT devolviese 5xx cuando el reloj del cliente caia
+  // fuera de la ventana de datos publicados (caso del usuario con la
+  // fecha del sistema en el futuro). Sin TIME, EUMETSAT sirve siempre
+  // el mosaico mas reciente disponible — comportamiento por defecto.
+  function eumetCacheBust(slotsBack) {
+    const n = Math.max(1, Number(slotsBack) || 1);
+    const slotMs = 15 * 60 * 1000;
+    return Math.floor(Date.now() / slotMs) - n;
   }
 
   // EUMETVIEW MSG CTH WMS — devuelve { url, options, title, legendUrl }
-  // para L.tileLayer.wms. Pasamos TIME explicito (slot de 15 min anterior
-  // al actual) por dos motivos: (1) forzar el mosaico mas reciente sin
-  // depender del "default" del servidor, (2) cache-bust automatico cada
-  // 15 min porque la URL cambia con TIME -> el navegador no sirve tiles
-  // viejos cacheados.
+  // para L.tileLayer.wms. Sin parametro TIME: el WMS devuelve el ultimo
+  // mosaico publicado. cb=<slot> rota cada 15 min para forzar refresh
+  // sin depender del reloj del cliente.
   function getEumetCthWMS() {
-    const time = latestCthTimeISO();
+    const cb = eumetCacheBust(1);
     const legendUrl = `${EUMET_WMS}?service=WMS&version=1.3.0` +
       `&request=GetLegendGraphic&format=image/png&width=640&height=80` +
       `&layer=${EUMET_LAYER}&access_token=${EUMET_TOKEN}`;
@@ -253,7 +251,6 @@ window.TSAgestor.meteoApi = (function () {
       url: EUMET_WMS,
       title: EUMET_TITLE,
       legendUrl,
-      time,
       options: {
         layers: EUMET_LAYER,
         format: 'image/png',
@@ -261,36 +258,22 @@ window.TSAgestor.meteoApi = (function () {
         version: '1.3.0',
         attribution: '© EUMETSAT · MSG CTH',
         access_token: EUMET_TOKEN,
-        time,
+        cb,
       },
     };
   }
 
-  // Como latestCthTimeISO pero parametrizable: cuantos slots de 15 min
-  // retrocedemos. CTH usa 1 (refresco rapido). LI AFA y Convection usan
-  // 2 porque su publicacion suele tardar mas y pedir el ultimo slot
-  // recien cerrado provoca tileerrors intermitentes.
-  function latestEumetTimeISO(slotsBack) {
-    const n = Math.max(1, Number(slotsBack) || 1);
-    const now = new Date();
-    const minute = now.getUTCMinutes();
-    const slot = Math.floor(minute / 15) * 15;
-    now.setUTCMinutes(slot - 15 * n, 0, 0);
-    const pad = nn => String(nn).padStart(2, '0');
-    return `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}` +
-           `T${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:00Z`;
-  }
-
   // Genera la config WMS para los otros dos productos EUMETVIEW (LI AFA y
-  // RGB Convection). Misma mecanica que getEumetCthWMS: TIME explicito al
-  // slot de 15 min anterior para cache-bust + access_token requerido.
+  // RGB Convection). Misma mecanica que getEumetCthWMS: cb para cache-
+  // bust + access_token requerido. LI AFA y Convection usan slotsBack=2
+  // porque su publicacion suele tardar mas que CTH.
   function buildEumetWmsCfg({ url, layer, title, attribution, format, transparent, slotsBack }) {
-    const time = latestEumetTimeISO(slotsBack || 1);
+    const cb = eumetCacheBust(slotsBack || 1);
     const legendUrl = `${url}?service=WMS&version=1.3.0` +
       `&request=GetLegendGraphic&format=image/png&width=400&height=200` +
       `&layer=${layer}&access_token=${EUMET_TOKEN}`;
     return {
-      url, title, legendUrl, time,
+      url, title, legendUrl,
       options: {
         layers: layer,
         format: format || 'image/png',
@@ -298,7 +281,7 @@ window.TSAgestor.meteoApi = (function () {
         version: '1.3.0',
         attribution,
         access_token: EUMET_TOKEN,
-        time,
+        cb,
       },
     };
   }

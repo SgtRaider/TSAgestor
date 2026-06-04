@@ -244,11 +244,12 @@ window.TSAgestor.mapView = (function () {
     const mapi = window.TSAgestor.meteoApi;
     if (mapi) {
       overlays['Nubosidad (RainViewer IR)'] = buildRainviewerLayer();
-      // Productos EUMETSAT en la lista: LI AFA (rayos) y RGB Convection
-      // (SEVIRI). El CTH (Cloud Top Height MSG 0°) se quito porque su
-      // producto base es de baja resolucion (3 km/px de MSG) y el WMS
-      // publico de EUMETSAT devuelve frecuentes 5xx fuera de su ventana
-      // de horas: como capa de briefing no aportaba.
+      // Orden de los toggles EUMETSAT en la lista: CTH, luego LI (rayos),
+      // luego RGB Convección. Tres productos via.eumetsat.int con el mismo
+      // patron WMS + access_token.
+      const cthCfg = mapi.getEumetCthWMS && mapi.getEumetCthWMS();
+      const cthTitle = cthCfg && cthCfg.title ? cthCfg.title : 'Cloud Top Height';
+      overlays[cthTitle] = buildCthLayer();
       if (mapi.getEumetLightningWMS) {
         const liCfg = mapi.getEumetLightningWMS();
         overlays[(liCfg && liCfg.title) || 'Tormentas eléctricas (MTG · LI)'] =
@@ -348,7 +349,11 @@ window.TSAgestor.mapView = (function () {
       try {
         const cfg = window.TSAgestor.meteoApi.getEumetCthWMS();
         cloudCthTile = L.tileLayer.wms(cfg.url, Object.assign(
-          { opacity: settingsGet('opacity.cloudCTH', 0.7), maxZoom: 11, pane: 'meteoTiles' },
+          { opacity: settingsGet('opacity.cloudCTH', 0.7), maxZoom: 11, pane: 'meteoTiles',
+            // detectRetina: pide tiles 512x512 al WMS y los pinta a su
+            // densidad nativa en pantallas HiDPI. Sin esto, EUMETSAT
+            // sirve 256x256 y Leaflet upscala (la capa se ve borrosa).
+            detectRetina: true },
           cfg.options
         ));
         let firstError = true;
@@ -447,7 +452,8 @@ window.TSAgestor.mapView = (function () {
         const cfg = getCfg();
         slot.tile = L.tileLayer.wms(cfg.url, Object.assign(
           { opacity: settingsGet(_eumetOpacityKey(key), 0.7), maxZoom: 11, pane: 'meteoTiles',
-            crossOrigin: 'anonymous' },
+            crossOrigin: 'anonymous',
+            detectRetina: true },
           cfg.options
         ));
         // Tileerror suele ser inocuo: tiles en el borde del disco MSG /
