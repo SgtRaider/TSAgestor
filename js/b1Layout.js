@@ -22,19 +22,45 @@ window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.b1Layout = (function () {
   'use strict';
 
+  // Iconos del stepper: SVG inline tematicos del Ejercito del Aire.
+  // - home: cocarda (3 circulos concentricos) — el roundel del EA
+  // - data: stack de capas (KML / TSAs / mapas)
+  // - plan: silueta delta de jet militar (vista superior)
+  // - briefing: nube con rayo (meteo)
+  // - settings: pinon clasico (8 brazos + circulo)
+  // Todos heredan color via stroke=currentColor; CSS controla tamano.
+  const ICONS = {
+    home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">' +
+      '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/>' +
+      '<circle cx="12" cy="12" r="2" fill="currentColor"/></svg>',
+    data: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" ' +
+      'stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/><path d="M3 18l9 5 9-5"/></svg>',
+    plan: '<svg viewBox="0 0 24 24" fill="currentColor">' +
+      '<path d="M12 2l1.5 6 8.5 4v1.5l-8.5-1v6l3 2v1l-4.5-1-4.5 1v-1l3-2v-6l-8.5 1V12l8.5-4z"/></svg>',
+    briefing: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" ' +
+      'stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M7 18a5 5 0 0 1 0-10 7 7 0 0 1 13 4 4 4 0 0 1-2 7H7z"/>' +
+      '<path d="M13 11l-3 5h4l-2 4"/></svg>',
+    settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" ' +
+      'stroke-linecap="round" stroke-linejoin="round">' +
+      '<circle cx="12" cy="12" r="3"/>' +
+      '<path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"/></svg>',
+  };
+
   // Configuracion del stepper. order = orden de aparicion en el header.
   const SECTIONS = [
-    { id: 'home',     num: '①', label: 'Inicio',   tabId: 'tab-home',    drawer: [] },
-    { id: 'datos',    num: '②', label: 'Datos',    tabId: 'tab-upload',  drawer: [
+    { id: 'home',     icon: ICONS.home,     label: 'Inicio',   tabId: 'tab-home',    drawer: [] },
+    { id: 'datos',    icon: ICONS.data,     label: 'Datos',    tabId: 'tab-upload',  drawer: [
       { id: 'tsa-table-wrap',     label: 'TSAs detectadas' },
     ]},
-    { id: 'plan',     num: '③', label: 'Plan',     tabId: 'tab-plan',    drawer: [
+    { id: 'plan',     icon: ICONS.plan,     label: 'Plan',     tabId: 'tab-plan',    drawer: [
       { id: 'plan-log-table-wrap',   label: 'Log de combustible' },
       { id: 'cross-section-wrap',    label: 'Corte transversal' },
       { id: 'plan-coords-wrap',      label: 'Waypoints y coordenadas' },
     ]},
-    { id: 'briefing', num: '④', label: 'Briefing', tabId: 'tab-notams',  drawer: [] },
-    { id: 'settings', num: '⑤', label: 'Ajustes',  tabId: 'tab-settings', drawer: [] },
+    { id: 'briefing', icon: ICONS.briefing, label: 'Briefing', tabId: 'tab-notams',  drawer: [] },
+    { id: 'settings', icon: ICONS.settings, label: 'Ajustes',  tabId: 'tab-settings', drawer: [] },
   ];
 
   const STORAGE_KEY = 'tsagestor_b1_layout';
@@ -158,7 +184,7 @@ window.TSAgestor.b1Layout = (function () {
       btn.className = 'b1-step';
       btn.setAttribute('role', 'tab');
       btn.setAttribute('data-section', sec.id);
-      btn.innerHTML = `<span class="b1-step-num">${sec.num}</span><span class="b1-step-label">${sec.label}</span>`;
+      btn.innerHTML = `<span class="b1-step-icon">${sec.icon}</span><span class="b1-step-label">${sec.label}</span>`;
       stepperEl.appendChild(btn);
       // Rail (modo colapsado): clon mas pequeno.
       const railBtn = btn.cloneNode(true);
