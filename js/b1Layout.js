@@ -264,24 +264,42 @@ window.TSAgestor.b1Layout = (function () {
 
             <details>
               <summary>Glosario</summary>
-              <dl class="b1-help-dl">
-                <dt>IAS</dt><dd>Indicated Airspeed &mdash; velocidad indicada por el anemometro.</dd>
-                <dt>TAS</dt><dd>True Airspeed &mdash; velocidad real respecto al aire.</dd>
-                <dt>GS</dt><dd>Ground Speed &mdash; velocidad respecto al suelo (TAS + viento).</dd>
-                <dt>PA</dt><dd>Pressure Altitude &mdash; FL &times; 100.</dd>
-                <dt>DA</dt><dd>Density Altitude &mdash; PA corregida por temperatura.</dd>
-                <dt>FL</dt><dd>Flight Level &mdash; altitud en centenares de pies (FL250 = 25 000 ft).</dd>
-                <dt>OAT</dt><dd>Outside Air Temperature.</dd>
-                <dt>ISA</dt><dd>International Standard Atmosphere.</dd>
-                <dt>BINGO</dt><dd>Combustible minimo para regresar a origen sin reservas.</dd>
-                <dt>JOKER</dt><dd>Combustible para empezar el regreso (BINGO + reserva).</dd>
-                <dt>TSA</dt><dd>Temporary Segregated Area &mdash; zona reservada temporalmente.</dd>
-                <dt>NOTAM</dt><dd>Notice to Air Missions.</dd>
-                <dt>ICAO</dt><dd>Codigo aeronautico de 4 letras (ej. LEMD).</dd>
-                <dt>WMS</dt><dd>Web Map Service &mdash; capas raster de EUMETSAT.</dd>
-                <dt>METAR / TAF</dt><dd>Observacion / pronostico aeronautico.</dd>
-                <dt>SIGMET</dt><dd>Significant Meteorological Information.</dd>
-              </dl>
+              <div class="b1-help-glossary">
+
+                <h4 class="b1-help-cat">Velocidades</h4>
+                <dl class="b1-help-dl">
+                  <dt><code>IAS</code></dt><dd><b>Indicated Airspeed</b><br><span class="dim">Velocidad indicada por el anemometro &mdash; sin corregir.</span></dd>
+                  <dt><code>TAS</code></dt><dd><b>True Airspeed</b><br><span class="dim">Velocidad real respecto al aire. Sube con la altitud porque baja la densidad.</span></dd>
+                  <dt><code>GS</code></dt><dd><b>Ground Speed</b><br><span class="dim">Velocidad respecto al suelo &mdash; TAS + componente de viento en el track.</span></dd>
+                </dl>
+
+                <h4 class="b1-help-cat">Altitudes y atmosfera</h4>
+                <dl class="b1-help-dl">
+                  <dt><code>FL</code></dt><dd><b>Flight Level</b><br><span class="dim">Altitud en centenares de pies con QNH 29.92" (ej. FL250 = 25 000 ft).</span></dd>
+                  <dt><code>PA</code></dt><dd><b>Pressure Altitude</b><br><span class="dim">Altitud calculada con presion estandar &mdash; equivale a FL &times; 100.</span></dd>
+                  <dt><code>DA</code></dt><dd><b>Density Altitude</b><br><span class="dim">PA corregida por temperatura. En dias calidos DA &gt; PA &rarr; aire menos denso &rarr; TAS mas alta para la misma IAS.</span></dd>
+                  <dt><code>OAT</code></dt><dd><b>Outside Air Temperature</b><br><span class="dim">Temperatura ambiente exterior, en &deg;C.</span></dd>
+                  <dt><code>ISA</code></dt><dd><b>International Standard Atmosphere</b><br><span class="dim">Atmosfera estandar de referencia. T_ISA(SL) = 15&deg;C, lapse rate &minus;1.98&deg;C/1000 ft hasta tropopausa (36 089 ft) &mdash; arriba constante a &minus;56.5&deg;C.</span></dd>
+                </dl>
+
+                <h4 class="b1-help-cat">Combustible</h4>
+                <dl class="b1-help-dl">
+                  <dt><code>BINGO</code></dt><dd><b>Combustible minimo</b><br><span class="dim">Cantidad para regresar a origen sin reservas. Si se cruza, hay que abortar.</span></dd>
+                  <dt><code>JOKER</code></dt><dd><b>Combustible de aviso</b><br><span class="dim">Marca el momento recomendado para empezar el regreso (BINGO + reserva).</span></dd>
+                </dl>
+
+                <h4 class="b1-help-cat">Aeronautico y meteo</h4>
+                <dl class="b1-help-dl">
+                  <dt><code>TSA</code></dt><dd><b>Temporary Segregated Area</b><br><span class="dim">Zona del espacio aereo reservada temporalmente para uso militar / ejercicios.</span></dd>
+                  <dt><code>NOTAM</code></dt><dd><b>Notice to Air Missions</b><br><span class="dim">Aviso sobre cambios o restricciones que afectan a la operacion.</span></dd>
+                  <dt><code>ICAO</code></dt><dd><b>Codigo OACI</b><br><span class="dim">Identificador aeronautico de 4 letras (ej. LEMD = Madrid-Barajas).</span></dd>
+                  <dt><code>METAR</code></dt><dd><b>Aviation Routine Weather Report</b><br><span class="dim">Observacion meteo horaria de un aerodromo.</span></dd>
+                  <dt><code>TAF</code></dt><dd><b>Terminal Aerodrome Forecast</b><br><span class="dim">Pronostico meteo (~24-30 h) para un aerodromo.</span></dd>
+                  <dt><code>SIGMET</code></dt><dd><b>Significant Meteorological Information</b><br><span class="dim">Aviso de fenomenos meteo significativos (tormentas, turbulencia, cenizas, etc.).</span></dd>
+                  <dt><code>WMS</code></dt><dd><b>Web Map Service</b><br><span class="dim">Protocolo OGC para servir tiles raster &mdash; usado por las capas EUMETSAT.</span></dd>
+                </dl>
+
+              </div>
             </details>
 
             <details>

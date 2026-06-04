@@ -4367,14 +4367,58 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   white-space: nowrap;
   width: 1%;
 }
+/* Glosario: subsecciones por categoria con subtitulos discretos
+   en amarillo EA. Cada entrada es term+def con jerarquia visual:
+   acronimo en code monospace destacado, definicion en bold,
+   descripcion expandida atenuada. */
+.b1-help-glossary { margin: var(--sp-2) 0; }
+.b1-help-cat {
+  margin: var(--sp-3) 0 var(--sp-2) 0;
+  padding-bottom: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--ea-amarillo, #fbbf24);
+  border-bottom: 1px solid var(--border);
+}
+.b1-help-cat:first-child { margin-top: var(--sp-2); }
 .b1-help-dl {
   display: grid;
-  grid-template-columns: minmax(80px, max-content) 1fr;
-  gap: 4px var(--sp-3);
-  margin: var(--sp-2) 0;
+  grid-template-columns: minmax(90px, max-content) 1fr;
+  gap: var(--sp-2) var(--sp-3);
+  margin: 0 0 var(--sp-2) 0;
 }
 .b1-help-dl dt {
+  align-self: start;
+  padding-top: 1px; /* alinea con el bold del dd */
+}
+.b1-help-dl dt code {
+  display: inline-block;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
   font-weight: 700;
   color: var(--ea-azul-cielo, #93c5fd);
+  letter-spacing: 0.5px;
 }
-.b1-help-dl dd { margin: 0; }
+.b1-help-dl dd {
+  margin: 0;
+  padding: 0 0 var(--sp-2) 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+  line-height: 1.5;
+}
+.b1-help-dl dd:last-of-type { border-bottom: 0; padding-bottom: 0; }
+.b1-help-dl dd b {
+  color: #fff;
+  font-size: 13px;
+}
+.b1-help-dl dd .dim {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-mute, #94a3b8);
+  font-size: 12px;
+}
