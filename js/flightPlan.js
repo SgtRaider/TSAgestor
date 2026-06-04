@@ -1104,6 +1104,11 @@ window.TSAgestor.flightPlan = (function () {
         if (Number.isFinite(res.avgTas)) legTas  = res.avgTas;
         if (Number.isFinite(res.avgDa))  legDaFt = res.avgDa;
         if (res.avgOatC != null)         legOatC = res.avgOatC;
+        // Si no hay viento utilizable pero si tenemos TAS corregida por
+        // DA, alineamos GS con avgTas para preservar GS=TAS+hw con hw=0.
+        // Sin esto, legSpeedKt (TAS DA) y legGS (TAS ISA pre-meteo)
+        // divergen ~1-2 kt incluso sin viento.
+        if (!res.avgWind && Number.isFinite(res.avgTas)) gs = res.avgTas;
         if (res.avgWind) {
           gs = res.avgGs;
           legHoursOverride = res.hours;

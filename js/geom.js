@@ -176,10 +176,17 @@ window.TSAgestor.geom = (function () {
   // ser >2000 ft por encima del FL (densidad menor -> TAS mas alta para
   // la misma KIAS).
   //
-  // ISA temp (°C) en altitud de presion PA (ft): 15 - 1.98 * PA/1000.
+  // ISA temp (°C) en altitud de presion PA (ft).
+  // Troposfera (hasta 36089 ft / 11 km): lapse rate -1.98°C/1000 ft.
+  // Tropopausa y estratosfera baja (36089 a 65617 ft / 11-20 km):
+  //   constante a -56.5°C. La estratosfera media (>20 km) sube de
+  //   nuevo, pero no nos interesa para aviacion civil/militar tactica.
+  // Sin esta clamp, a FL360+ T_ISA seguia bajando linealmente y DA
+  // salia disparada por una desviacion ISA artificial.
   function isaTempC(paFt) {
     if (!Number.isFinite(paFt)) return 15;
-    return 15 - 1.98 * (paFt / 1000);
+    if (paFt <= 36089) return 15 - 1.98 * (paFt / 1000);
+    return -56.5;
   }
   // Density Altitude (ft) por la regla estandar de aviacion:
   //   DA = PA + 118.8 * (OAT - ISA_temp(PA))
