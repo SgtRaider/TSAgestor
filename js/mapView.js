@@ -312,6 +312,11 @@ window.TSAgestor.mapView = (function () {
           opacity: settingsGet('opacity.cloudRV', 0.6),
           attribution: attr, maxZoom: 11,
           pane: 'meteoTiles',
+          // CORS: si el servidor responde con Access-Control-Allow-Origin,
+          // el SW puede cachear los tiles en RUNTIME_CACHE (res.ok pasa
+          // a true, deja de ser opaque). RainViewer admite CORS, asi que
+          // tras la primera activacion los tiles son instant.
+          crossOrigin: 'anonymous',
         });
         cloudRVTile.on('tileerror', function (ev) {
           console.warn('[meteo] RainViewer tileerror:', ev.tile && ev.tile.src);
@@ -344,7 +349,11 @@ window.TSAgestor.mapView = (function () {
       try {
         const cfg = window.TSAgestor.meteoApi.getEumetCthWMS();
         cloudCthTile = L.tileLayer.wms(cfg.url, Object.assign(
-          { opacity: settingsGet('opacity.cloudCTH', 0.7), maxZoom: 11, pane: 'meteoTiles' },
+          { opacity: settingsGet('opacity.cloudCTH', 0.7), maxZoom: 11, pane: 'meteoTiles',
+            // CORS: si EUMETSAT responde Access-Control-Allow-Origin la
+            // SW puede cachear los tiles. Si no, los tiles aparecen rotos
+            // y revertimos solo en esta capa (y en buildEumetWmsToggle).
+            crossOrigin: 'anonymous' },
           cfg.options
         ));
         let firstError = true;
@@ -442,7 +451,8 @@ window.TSAgestor.mapView = (function () {
       try {
         const cfg = getCfg();
         slot.tile = L.tileLayer.wms(cfg.url, Object.assign(
-          { opacity: settingsGet(_eumetOpacityKey(key), 0.7), maxZoom: 11, pane: 'meteoTiles' },
+          { opacity: settingsGet(_eumetOpacityKey(key), 0.7), maxZoom: 11, pane: 'meteoTiles',
+            crossOrigin: 'anonymous' },
           cfg.options
         ));
         // Tileerror suele ser inocuo: tiles en el borde del disco MSG /
