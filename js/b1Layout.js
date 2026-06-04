@@ -143,127 +143,418 @@ window.TSAgestor.b1Layout = (function () {
         <div class="b1-help-backdrop" id="b1-help-backdrop"></div>
         <div class="b1-help-content">
           <header class="b1-help-head">
-            <h2 id="b1-help-title">Ayuda TSAgestor</h2>
+            <h2 id="b1-help-title">Guia de TSAgestor</h2>
             <button class="b1-icon-btn" id="b1-help-close" title="Cerrar (Esc)" aria-label="Cerrar ayuda">✕</button>
           </header>
           <div class="b1-help-body">
-            <details open>
-              <summary>Inicio rapido</summary>
-              <p>TSAgestor es un planificador de vuelo tactico para aviacion militar / TSA. La interfaz se organiza en 5 secciones, identificables por su icono en el stepper superior:</p>
-              <ul>
-                <li><b>Inicio</b> <span class="dim">(icono de cocarda EA)</span> &mdash; Bienvenida.</li>
-                <li><b>Datos</b> <span class="dim">(icono de capas apiladas)</span> &mdash; Carga de KML/KMZ con TSAs detectadas y filtros.</li>
-                <li><b>Plan</b> <span class="dim">(icono de jet militar)</span> &mdash; Configura el plan de vuelo y calcula ruta, log de combustible, corte transversal y tabla de waypoints.</li>
-                <li><b>Briefing</b> <span class="dim">(icono de nube con rayo)</span> &mdash; NOTAMs y consulta meteo.</li>
-                <li><b>Ajustes</b> <span class="dim">(icono de pinion)</span> &mdash; Preferencias persistentes (velocidad base, consumo, BINGO/JOKER).</li>
-              </ul>
-              <p>El mapa ocupa toda la pantalla detras del panel y el drawer. El boton <b>⇔</b> del header (o la tecla <kbd>M</kbd>) cicla el panel <i>abierto &rarr; colapsado &rarr; oculto</i>.</p>
-            </details>
 
-            <details>
-              <summary>Cargar datos (KML / KMZ)</summary>
-              <p>En la seccion <b>Datos</b>:</p>
+            <nav class="b1-help-toc" aria-label="Indice">
+              <h3>Indice</h3>
               <ol>
-                <li>Pulsa <b>Cargar archivo</b> o arrastra un KML/KMZ.</li>
-                <li>Las TSAs detectadas aparecen en la tabla del cajon inferior.</li>
-                <li>Filtra con los chips <b>Trabajo</b> / <b>Transito</b> / <b>Active now</b>, o por rango de fecha/hora.</li>
+                <li><a href="#h-bienvenida" data-help-toc>Bienvenida y proposito</a></li>
+                <li><a href="#h-anatomia" data-help-toc>Anatomia de la interfaz</a></li>
+                <li><a href="#h-flujo" data-help-toc>Flujo de trabajo recomendado</a></li>
+                <li><a href="#h-inicio" data-help-toc>Seccion <b>Inicio</b></a></li>
+                <li><a href="#h-datos" data-help-toc>Seccion <b>Datos</b></a></li>
+                <li><a href="#h-plan" data-help-toc>Seccion <b>Plan</b></a></li>
+                <li><a href="#h-briefing" data-help-toc>Seccion <b>Briefing</b></a></li>
+                <li><a href="#h-ajustes" data-help-toc>Seccion <b>Ajustes</b></a></li>
+                <li><a href="#h-mapa" data-help-toc>El mapa: toolbar, leyendas, controles</a></li>
+                <li><a href="#h-dibujo" data-help-toc>Modo dibujo de ruta</a></li>
+                <li><a href="#h-motor" data-help-toc>Como se calcula el plan (motor)</a></li>
+                <li><a href="#h-da" data-help-toc>Density Altitude y TAS corregida</a></li>
+                <li><a href="#h-capas-meteo" data-help-toc>Capas meteorologicas en detalle</a></li>
+                <li><a href="#h-notams" data-help-toc>NOTAMs y briefing</a></li>
+                <li><a href="#h-pdf" data-help-toc>Exportar a PDF</a></li>
+                <li><a href="#h-atajos" data-help-toc>Atajos de teclado</a></li>
+                <li><a href="#h-persistencia" data-help-toc>Persistencia y datos guardados</a></li>
+                <li><a href="#h-glosario" data-help-toc>Glosario</a></li>
+                <li><a href="#h-faq" data-help-toc>Solucion de problemas (FAQ)</a></li>
+                <li><a href="#h-creditos" data-help-toc>Creditos y fuentes</a></li>
               </ol>
-              <p>Las TSAs activas se dibujan en el mapa con colores diferenciados (Trabajo verde, Transito rojo).</p>
+            </nav>
+
+            <details open id="h-bienvenida">
+              <summary>1. Bienvenida y proposito</summary>
+              <p><b>TSAgestor</b> es un planificador de vuelo tactico orientado a operacion en espacios aereos con TSAs (Temporary Segregated Areas) y a tripulaciones que necesitan integrar de forma rapida datos de aerovias, restricciones temporales, NOTAMs y meteo en un solo briefing.</p>
+              <p>Esta guia esta organizada en bloques tematicos accesibles desde el indice. Si es tu primera vez:</p>
+              <ol>
+                <li>Lee <b>Anatomia de la interfaz</b> para situarte en el layout B1 (mapa full-canvas + panel lateral + cajon inferior).</li>
+                <li>Sigue <b>Flujo de trabajo recomendado</b> para entender el ciclo basico (cargar KML &rarr; planificar &rarr; briefing).</li>
+                <li>Consulta el bloque concreto cuando lo necesites.</li>
+              </ol>
+              <p>La aplicacion funciona offline tras el primer arranque (Service Worker cachea recursos), excepto las llamadas a APIs externas (Open-Meteo, EUMETSAT, RainViewer, airplanes.live).</p>
             </details>
 
-            <details>
-              <summary>Plan de vuelo</summary>
-              <p>En la seccion <b>Plan</b>, rellena el formulario:</p>
+            <details id="h-anatomia">
+              <summary>2. Anatomia de la interfaz</summary>
+              <p>El layout B1 organiza la pantalla en cuatro zonas:</p>
               <ul>
-                <li><b>Origen / Destino</b> &mdash; ICAOs de 4 letras (ej. LEMD, LEZG).</li>
-                <li><b>Via</b> &mdash; Waypoints separados por espacio o coma. Vacio = ruta automatica.</li>
-                <li><b>Nivel (FL)</b> e <b>IAS (kt)</b> &mdash; Altitud y velocidad del cruise.</li>
-                <li><b>Salida (UTC)</b> &mdash; Fecha y hora UTC del despegue.</li>
-                <li><b>Combustible</b> &mdash; Inicial, Consumo (/h), Unidad, JOKER, BINGO.</li>
+                <li><b>Cabecera superior</b> &mdash; Logo TSAgestor a la izquierda, stepper con las 5 secciones en el centro, acciones a la derecha (<kbd>?</kbd> ayuda, <kbd>📄</kbd> PDF, <kbd>⇔</kbd> toggle panel).</li>
+                <li><b>Panel lateral izquierdo</b> &mdash; Contenido de la seccion activa: formularios, listas, cards. Redimensionable arrastrando el borde derecho. La tecla <kbd>M</kbd> cicla su estado entre abierto, colapsado (rail con iconos) y oculto.</li>
+                <li><b>Mapa (fondo)</b> &mdash; Ocupa toda la pantalla detras del panel y el drawer. Toolbar flotante en la esquina superior derecha (Centrar / Leyenda TSAs / Capas / Trafico) y controles nativos de Leaflet en las esquinas (zoom abajo-izquierda, capas en topleft).</li>
+                <li><b>Cajon inferior (drawer)</b> &mdash; Aparece automaticamente para tablas anchas. Pestanas configuradas por seccion: en Plan trae Log de combustible / Corte transversal / Waypoints. Redimensionable verticalmente. <kbd>Esc</kbd> lo cierra.</li>
               </ul>
-              <p>Botones:</p>
+              <p>La filosofia es mantener el mapa siempre visible. El panel y el drawer flotan encima, no recortan el mapa.</p>
+            </details>
+
+            <details id="h-flujo">
+              <summary>3. Flujo de trabajo recomendado</summary>
+              <p>Ciclo tipico de un briefing tactico:</p>
+              <ol>
+                <li><b>Carga datos</b> (seccion Datos): sube el KML/KMZ del dia con las TSAs publicadas. Las TSAs detectadas aparecen en el mapa y en la tabla del drawer.</li>
+                <li><b>Filtra TSAs</b>: usa los chips <i>Trabajo</i> / <i>Transito</i> / <i>Active now</i> y el rango fecha/hora para quedarte solo con las que aplican a tu ventana operativa.</li>
+                <li><b>Configura el plan</b> (seccion Plan): origen, destino, via opcional, FL y IAS, hora UTC de salida, combustible inicial y consumo.</li>
+                <li><b>Calcular ruta</b>: genera log de combustible, corte transversal y tabla de waypoints. Si no defines via, el planificador la calcula usando las aerovias activadas.</li>
+                <li><b>Carga vientos en altura</b> (boton <i>Cargar vientos</i> en el formulario): trae datos de Open-Meteo por waypoint en todos los niveles ISA. La GS y la TAS se recalculan con la densidad real (DA).</li>
+                <li><b>Activa capas meteo</b> (toolbar &rarr; Capas): RainViewer para nubes IR, EUMETSAT para tormentas / convencion, SIGMETs para avisos formales, METAR/TAF para aerodromos.</li>
+                <li><b>Consulta NOTAMs</b> (seccion Briefing): pulsa <i>Origen+destino del plan</i> para autocompletar, o introduce ICAOs libres.</li>
+                <li><b>Exporta PDF</b> (boton <kbd>📄</kbd> del header): genera el briefing completo con plan, log, corte, waypoints y NOTAMs en un PDF imprimible.</li>
+              </ol>
+            </details>
+
+            <details id="h-inicio">
+              <summary>4. Seccion Inicio</summary>
+              <p>Pantalla de bienvenida tras cargar la app. Resume el proposito y ofrece accesos rapidos a las acciones mas habituales (cargar KML, ver planes guardados, abrir ayuda).</p>
+              <p>Si la app detecta que es tu primera visita en esta sesion, muestra automaticamente este modal de ayuda y un breve overlay de bienvenida. Pulsando <i>No mostrar de nuevo</i> en ese overlay no aparece mas hasta que se borre <code>sessionStorage</code>.</p>
+            </details>
+
+            <details id="h-datos">
+              <summary>5. Seccion Datos</summary>
+
+              <h4>Cargar KML / KMZ</h4>
+              <p>Arrastra el fichero sobre la zona de carga, o usa el boton <i>Cargar archivo</i>. El parser detecta:</p>
               <ul>
-                <li><b>Dibujar en mapa</b> &mdash; Activa el modo dibujo (ver seccion).</li>
-                <li><b>Calcular ruta</b> &mdash; Genera la ruta, el log de combustible, el corte y la tabla de waypoints.</li>
-                <li><b>Limpiar</b> &mdash; Resetea el formulario.</li>
+                <li>Placemarks con poligonos (TSAs, zonas reservadas).</li>
+                <li>Atributos <code>name</code>, <code>description</code>, <code>TimeSpan</code>.</li>
+                <li>Estilos KML (colores, lineas) para diferenciar tipos.</li>
               </ul>
-              <p>Tras calcular, el cajon inferior trae 3 pestanas:</p>
+              <p>Soporta KMZ (KML comprimido en ZIP) y carga directamente desde URL si se especifica con drag desde otra pestana del navegador.</p>
+
+              <h4>Filtros</h4>
+              <p>El filter-bar contiene:</p>
               <ul>
-                <li><b>Log de combustible</b> &mdash; Tramo a tramo: IAS / TAS / Viento / GS / Tiempo / Combustible / Estado.</li>
-                <li><b>Corte transversal</b> &mdash; Perfil vertical del vuelo (FL vs distancia) con nubes Open-Meteo y GRAMET opcionales.</li>
-                <li><b>Waypoints y coordenadas</b> &mdash; Lat / Lon / FL / ETA por waypoint.</li>
+                <li><b>Chips por categoria</b> &mdash; Trabajo (verde) / Transito (rojo) / Active now (TSAs activas en este preciso instante UTC).</li>
+                <li><b>Rango fecha/hora</b> &mdash; Desde / Hasta. Limita las TSAs visibles a las que solapan el rango.</li>
+                <li><b>Quick-select chips</b> &mdash; Atajos: <i>Hoy</i>, <i>Manyana</i>, <i>Hoy+Manyana</i>, <i>Semana</i>.</li>
+              </ul>
+
+              <h4>Tabla de TSAs detectadas (drawer)</h4>
+              <p>Lista todas las TSAs cargadas con:</p>
+              <ul>
+                <li>Nombre, tipo (Trabajo/Transito), ventana temporal, FL inferior/superior, area.</li>
+                <li>Checkbox para activar/desactivar cada una en el mapa.</li>
+                <li>Boton para seleccionar todas / ninguna / solo activas-ahora.</li>
+                <li>Click en una fila &mdash; centra el mapa sobre esa TSA.</li>
               </ul>
             </details>
 
-            <details>
-              <summary>Modo dibujo de ruta</summary>
+            <details id="h-plan">
+              <summary>6. Seccion Plan</summary>
+
+              <h4>Formulario base</h4>
+              <ul>
+                <li><b>Origen / Destino</b> &mdash; ICAOs OACI de 4 letras (ej. LEMD, LEZG).</li>
+                <li><b>Via</b> &mdash; Waypoints intermedios separados por espacio o coma. Acepta codigos de waypoint estandar (CCS, NDB, VOR, fixes 5-letras). Si lo dejas vacio, el planificador calcula la ruta automatica usando las aerovias activadas en el mapa.</li>
+                <li><b>Nivel (FL)</b> &mdash; FL de cruise (FL100 = 10 000 ft).</li>
+                <li><b>IAS (kt)</b> &mdash; Velocidad indicada del cruise. Tipico para entrenamiento militar: 200&ndash;300 kt segun avion.</li>
+                <li><b>Salida (UTC)</b> &mdash; Fecha y hora UTC del despegue. Se usa para ETA de cada waypoint y para look-up de vientos por hora.</li>
+              </ul>
+
+              <h4>Combustible</h4>
+              <ul>
+                <li><b>Inicial</b> &mdash; Combustible a bordo al despegue.</li>
+                <li><b>Consumo (/h)</b> &mdash; Flujo base por hora a cruise. Puede sobreescribirse por tramo en el log.</li>
+                <li><b>Unidad</b> &mdash; lb o kg (la app convierte internamente, todas las cifras del PDF salen en la unidad seleccionada).</li>
+                <li><b>JOKER</b> &mdash; Combustible de aviso (momento recomendado para iniciar el regreso). Por debajo, el log marca el tramo en color naranja.</li>
+                <li><b>BINGO</b> &mdash; Combustible minimo absoluto. Por debajo, el log marca en rojo y muestra "COMBUSTIBLE INSUFICIENTE".</li>
+              </ul>
+
+              <h4>Acciones</h4>
+              <ul>
+                <li><b>Calcular ruta</b> &mdash; Genera el plan completo: ruta en el mapa, log de combustible, corte transversal y tabla de waypoints.</li>
+                <li><b>Dibujar en mapa</b> &mdash; Activa el modo dibujo para anyadir waypoints intermedios graficamente. Ver bloque dedicado.</li>
+                <li><b>Cargar vientos (Open-Meteo)</b> &mdash; Tras calcular, este boton aparece habilitado. Pide vientos en altura por waypoint en todos los niveles ISA disponibles. Una vez cargados, la GS y la TAS reflejan la densidad real (DA).</li>
+                <li><b>Limpiar</b> &mdash; Resetea el formulario a los valores guardados en Ajustes.</li>
+                <li><b>Guardar plan / Importar plan</b> &mdash; Persistencia en localStorage. Ver bloque dedicado.</li>
+              </ul>
+
+              <h4>Tabs del drawer (resultados)</h4>
+              <ul>
+                <li><b>Log de combustible</b> &mdash; Tabla tramo a tramo: # / Waypoint / Tramo NM / IAS kt / TAS kt / Viento / GS kt / Tiempo / Combustible / Restante / Estado. La columna IAS es editable por leg (override por tramo). La de TAS es read-only (se recalcula del IAS y la DA). El estado muestra <b>OK</b>, <b>JOKER</b> o <b>BINGO</b> en colores. <b>Hover</b> sobre TAS muestra DA y OAT usadas.</li>
+                <li><b>Corte transversal</b> &mdash; Perfil vertical del vuelo: eje X = distancia acumulada, eje Y = FL. Sobre el perfil se pintan opcionalmente las nubes (Open-Meteo) o el GRAMET (Autorouter, requiere credenciales).</li>
+                <li><b>Waypoints y coordenadas</b> &mdash; Lista de waypoints reales (sin holds): #, codigo, FL, aerovia, lat, lon, tramo, acumulado, ETA UTC.</li>
+              </ul>
+
+              <h4>Editar tramo a tramo (holds y overrides)</h4>
+              <ul>
+                <li>En el log, cada IAS es editable: introduce el valor para ese leg concreto (override).</li>
+                <li>El consumo (Flow) tambien es editable por tramo &mdash; util para configurar perfiles especificos (ascenso vs cruise vs descenso).</li>
+                <li>Boton <b>+ Espera</b> en cualquier fila &mdash; inserta una fila de hold despues. Edita los minutos de hold; la app suma el combustible al cumulativo y avanza la ETA del resto del plan.</li>
+                <li>Boton <b>X</b> en una fila de hold &mdash; la elimina.</li>
+              </ul>
+
+              <h4>Planes guardados</h4>
+              <p>Lista los planes guardados con su nombre y resumen. Acciones:</p>
+              <ul>
+                <li><b>Guardar plan actual</b> &mdash; Pide un nombre y guarda formulario + ruta + log en localStorage.</li>
+                <li><b>Importar plan</b> &mdash; Carga un plan guardado en el formulario (sin ejecutar Calcular automaticamente, para que puedas revisar antes).</li>
+                <li><b>Eliminar</b> &mdash; Borra el plan guardado.</li>
+              </ul>
+            </details>
+
+            <details id="h-briefing">
+              <summary>7. Seccion Briefing</summary>
+              <p>Bloque para consultar NOTAMs y meteo de aerodromos.</p>
+              <h4>NOTAMs</h4>
+              <ul>
+                <li><b>Origen+destino del plan</b> &mdash; Carga NOTAMs de los ICAOs del plan actual con una sola pulsacion.</li>
+                <li><b>Consultar</b> &mdash; Introduce ICAOs libres separados por espacio (hasta 10 por consulta).</li>
+                <li>Las cards muestran codigo NOTAM, tipo, vigencia (desde / hasta UTC), descripcion y un mini-mapa con la zona afectada cuando aplica.</li>
+              </ul>
+              <h4>Filtros de NOTAMs</h4>
+              <ul>
+                <li>Por tipo: Aerodromo, NAVAID, Espacios aereos, Otros.</li>
+                <li>Por severidad: urgent (rojo), info (azul).</li>
+                <li>Por texto libre en codigo o descripcion.</li>
+              </ul>
+              <h4>Meteo de aerodromo (METAR / TAF)</h4>
+              <p>Al consultar un ICAO se decodifica el METAR y TAF de aviationweather.gov. La card muestra el raw + el decode legible (visibilidad, viento, ceiling, temp, dewpoint).</p>
+            </details>
+
+            <details id="h-ajustes">
+              <summary>8. Seccion Ajustes</summary>
+              <p>Preferencias persistentes que se aplican como defaults al formulario del plan:</p>
+              <ul>
+                <li><b>Velocidad base (IAS kt)</b> &mdash; IAS preconfigurada al hacer <i>Limpiar</i>.</li>
+                <li><b>Consumo base (/h)</b> &mdash; Flow preconfigurado.</li>
+                <li><b>Unidad</b> &mdash; lb / kg.</li>
+                <li><b>FL preferido</b> &mdash; FL por defecto.</li>
+                <li><b>JOKER por defecto</b> y <b>BINGO por defecto</b>.</li>
+                <li><b>Opacidad de cada capa meteo</b> &mdash; sliders para RainViewer, CTH, LI AFA, RGB Convection.</li>
+              </ul>
+              <p>Estos valores se guardan en localStorage con clave <code>tsagestor_settings</code>.</p>
+            </details>
+
+            <details id="h-mapa">
+              <summary>9. El mapa: toolbar, leyendas y controles</summary>
+
+              <h4>Toolbar flotante (esquina superior derecha)</h4>
+              <ul>
+                <li><b>Centrar</b> &mdash; Encuadra el mapa sobre las TSAs visibles (o sobre el plan calculado).</li>
+                <li><b>Leyenda TSAs</b> &mdash; Toggle de la leyenda flotante. Lista en 3 columnas todas las TSAs activas hoy + manyana, agrupadas por nombre/lateral con la ventana temporal de cada una.</li>
+                <li><b>Capas</b> &mdash; Toggle del control nativo de Leaflet con todas las overlays disponibles.</li>
+                <li><b>Trafico</b> &mdash; Activa el panel para introducir un ICAO y mostrar trafico en vivo (airplanes.live).</li>
+              </ul>
+
+              <h4>Capas disponibles (control de Leaflet)</h4>
+              <ul>
+                <li><b>Aerovias alta NE / NW / SE / SW</b> &mdash; Aerovias de cota alta por sector. Util para planning IFR de alto nivel.</li>
+                <li><b>Aerovias baja NE / NW / SE / SW</b> &mdash; Aerovias de cota baja por sector.</li>
+                <li><b>TMAs (demo)</b> y <b>CTRs (demo)</b> &mdash; Espacios controlados demostrativos.</li>
+                <li><b>Nubosidad (RainViewer IR)</b>, <b>Cloud Top Height (EUMETSAT)</b>, <b>Tormentas electricas LI AFA</b>, <b>RGB Conveccion</b> &mdash; ver bloque Capas meteo en detalle.</li>
+                <li><b>SIGMETs</b> &mdash; Avisos de fenomenos significativos. Cobertura Iberia + Europa O. + N-Africa.</li>
+                <li><b>METAR / TAF</b> &mdash; Marcadores en aerodromos con tooltip al hover.</li>
+              </ul>
+
+              <h4>Controles nativos de Leaflet</h4>
+              <ul>
+                <li>Zoom +/- (esquina inferior-izquierda).</li>
+                <li>Attribution (esquina inferior-derecha).</li>
+                <li>Capas (esquina superior-izquierda) &mdash; el control que abre/cierra el boton <i>Capas</i>.</li>
+              </ul>
+
+              <h4>Interacciones</h4>
+              <ul>
+                <li>Click sobre una TSA &mdash; popup con detalles y boton <i>Anyadir al plan</i>.</li>
+                <li>Click sobre un marcador de waypoint &mdash; se anyade al campo Via del plan.</li>
+                <li>Click sobre un METAR/TAF &mdash; muestra el codigo crudo y decodificado.</li>
+              </ul>
+            </details>
+
+            <details id="h-dibujo">
+              <summary>10. Modo dibujo de ruta</summary>
               <ol>
                 <li>Pulsa <b>Dibujar en mapa</b> en la seccion Plan.</li>
-                <li>Haz click en el mapa para anyadir waypoints intermedios.</li>
-                <li>El banner inferior muestra el contador y las acciones:
+                <li>El cursor se vuelve cruz. La toolbar y los controles del mapa se ocultan automaticamente para no robar clicks.</li>
+                <li>Cada click en el mapa anyade un waypoint intermedio entre origen y destino.</li>
+                <li>El banner inferior muestra el contador (<i>N puntos</i>) y las acciones:
                   <ul>
-                    <li><b>Deshacer</b> &mdash; Quita el ultimo waypoint.</li>
-                    <li><b>Vuelta</b> &mdash; Anyade los waypoints en orden inverso para cerrar el circuito hasta origen.</li>
-                    <li><b>Listo</b> &mdash; Termina y vuelve a la seccion Plan.</li>
-                    <li><b>Cancelar</b> &mdash; Descarta el dibujo.</li>
+                    <li><b>Deshacer</b> &mdash; Quita el ultimo waypoint anyadido.</li>
+                    <li><b>Vuelta</b> &mdash; Anyade los waypoints en orden inverso para cerrar el circuito hasta origen (util para misiones IDA+VUELTA simetricas).</li>
+                    <li><b>Listo</b> &mdash; Termina el dibujo y rellena automaticamente el campo Via con los waypoints (codificados como lat,lon).</li>
+                    <li><b>Cancelar</b> &mdash; Descarta el dibujo sin tocar el formulario.</li>
                   </ul>
                 </li>
                 <li>Doble click sobre el mapa equivale a <b>Listo</b>.</li>
               </ol>
-              <p>Durante el modo dibujo se ocultan automaticamente las controles flotantes del mapa para no robar clicks.</p>
             </details>
 
-            <details>
-              <summary>Capas, leyendas y meteo</summary>
-              <p>La toolbar flotante (esquina superior derecha del mapa) ofrece:</p>
+            <details id="h-motor">
+              <summary>11. Como se calcula el plan (motor interno)</summary>
+
+              <h4>Construccion de la ruta</h4>
+              <p>El planificador toma origen, destino y los waypoints intermedios del campo Via. Si Via esta vacio, busca una ruta usando las aerovias activadas en el mapa (con un algoritmo de tipo A* sobre el grafo de waypoints + aerovias). Si no hay aerovias activadas, la ruta es <b>DCT</b> (directa) entre tus puntos.</p>
+
+              <h4>Distancias y rumbos</h4>
+              <p>Cada tramo se calcula con formulas geodesicas:</p>
               <ul>
-                <li><b>Centrar</b> &mdash; Encuadra el mapa sobre las TSAs visibles.</li>
-                <li><b>Leyenda TSAs</b> &mdash; Toggle de la leyenda flotante con las TSAs activas hoy/manyana (3 columnas).</li>
-                <li><b>Capas</b> &mdash; Abre/cierra el control nativo de Leaflet con todas las overlays:
-                  <ul>
-                    <li>Aerovias alta/baja por zona (NE, NW, SE, SW)</li>
-                    <li>TMAs / CTRs (demo)</li>
-                    <li>Nubosidad RainViewer IR</li>
-                    <li>EUMETSAT: Cloud Top Height, Tormentas electricas (LI AFA), RGB Conveccion</li>
-                    <li>SIGMETs (Iberia + Europa O. + N-Africa)</li>
-                    <li>METAR / TAF</li>
-                  </ul>
-                </li>
-                <li><b>Trafico</b> &mdash; Activa la capa de trafico aereo en vivo (airplanes.live) para un ICAO concreto.</li>
+                <li>Distancia &mdash; great-circle entre los dos waypoints (Haversine, precision sub-metro).</li>
+                <li>Track &mdash; rumbo geodesico inicial (sin correccion magnetica).</li>
+              </ul>
+
+              <h4>Velocidades: IAS &rarr; TAS &rarr; GS</h4>
+              <p>La velocidad indicada (IAS) que introduces en el formulario es la base. La TAS se calcula con una tabla bilineal KIAS &times; altitud densidad (ver Density Altitude). La GS suma la componente de viento sobre el track:</p>
+              <p><code>GS = TAS + componente_paralela_al_track</code></p>
+              <p>Si la componente es negativa (viento en cara) GS &lt; TAS. Si es positiva (cola) GS &gt; TAS.</p>
+
+              <h4>Vientos en altura</h4>
+              <p>Open-Meteo devuelve viento por nivel de presion (1000 hPa &rarr; 100 hPa). La app interpola entre los dos niveles ISA que bracketean el FL del tramo, usando componentes vectoriales (u, v) para no romper en 359&deg;/0&deg;. Luego mezcla los vientos de los dos extremos del tramo segun la posicion del sub-leg.</p>
+
+              <h4>Sub-legs en cambios de FL</h4>
+              <p>Si un tramo cambia &ge; 5000 ft (ascensos, descensos, FL adaptados por TSA), se subdivide en N sub-legs de 5000 ft cada uno. Cada sub-leg calcula su viento al FL medio. El resultado se integra (suma de horas) y se devuelve un viento medio representativo.</p>
+
+              <h4>Iteracion punto-fijo</h4>
+              <p>Como la GS depende del viento y el viento depende de la ETA (hora del lookup), hay un bucle:</p>
+              <ol>
+                <li>1.&ordf; pasada: TAS sin viento (estimacion ISA), ETA inicial.</li>
+                <li>2.&ordf; / 3.&ordf; / 4.&ordf; pasada: vuelve a calcular GS con vientos a las ETAs estimadas; refresca ETAs.</li>
+                <li>El bucle converge tipicamente en 3 iteraciones.</li>
+              </ol>
+
+              <h4>Combustible</h4>
+              <p>Por tramo: <code>fuel_leg = horas_leg &times; flow</code>. Acumulado y restante por waypoint. Compara con JOKER/BINGO para colorear el estado.</p>
+
+              <h4>Holds</h4>
+              <p>Una fila de hold es sintetica (no consume distancia). Su tiempo se suma al cumulativo y su combustible se calcula con el flow del tramo padre. La ETA del resto del plan se desplaza.</p>
+            </details>
+
+            <details id="h-da">
+              <summary>12. Density Altitude (DA) y TAS corregida</summary>
+              <p>La <b>DA</b> (altitud densidad) es la altitud equivalente en atmosfera estandar para la densidad real del aire actual. En dias calidos a la altitud de cruise, DA &gt; PA &rarr; aire menos denso &rarr; TAS mas alta para la misma IAS.</p>
+              <p>Formula estandar de aviacion:</p>
+              <p><code>DA = PA + 118.8 &times; (OAT &minus; ISA_temp(PA))</code></p>
+              <p>Donde:</p>
+              <ul>
+                <li><code>PA</code> &mdash; Pressure Altitude (= FL &times; 100).</li>
+                <li><code>OAT</code> &mdash; Outside Air Temperature, en &deg;C.</li>
+                <li><code>ISA_temp(PA)</code> &mdash; 15 &minus; 1.98 &times; (PA/1000) hasta tropopausa (36 089 ft). Por encima, constante a &minus;56.5&deg;C.</li>
+                <li><b>118.8</b> es el factor empirico estandar (a veces redondeado a 120).</li>
+              </ul>
+              <p>TSAgestor calcula DA por sub-leg: lookup de OAT en Open-Meteo (cuando hay vientos cargados), mezcla lineal de los dos extremos del tramo, aplica la formula y pasa la DA al lookup TAS = kiasToTAS(IAS, DA). El resultado se promedia para el tramo.</p>
+              <p><b>Hover</b> sobre cualquier celda TAS del log de combustible para ver la DA y la OAT media usadas. Ejemplo: <i>TAS = kiasToTAS(120 kt, DA 27450 ft) &middot; OAT media &minus;25.3&deg;C</i>.</p>
+              <p>Casos donde la correccion importa:</p>
+              <ul>
+                <li>Operacion estival sobre desiertos / sur de Espanya en verano: ISA+10/+15 facilmente &rarr; DA +1500/+2000 ft.</li>
+                <li>Cruise a FL250&ndash;FL300 con masa de aire calida.</li>
+                <li>Planificacion de altitud densidad sobre aerodromos elevados (Madrid 2 000 ft + verano = DA superficie &gt; 4 500 ft).</li>
               </ul>
             </details>
 
-            <details>
-              <summary>Briefing (NOTAMs)</summary>
-              <p>La seccion <b>Briefing</b> consulta NOTAMs (EAD/EUROCONTROL):</p>
+            <details id="h-capas-meteo">
+              <summary>13. Capas meteorologicas en detalle</summary>
+
+              <h4>Nubosidad RainViewer IR</h4>
+              <p>Mosaico satelite IR de RainViewer (<code>tilecache.rainviewer.com</code>). Refresco cada ~10 min. Util para ver cobertura nubosa global. Antes de pedir tiles, la app hace un fetch a <code>api.rainviewer.com/public/weather-maps.json</code> para descubrir el timestamp valido actual.</p>
+
+              <h4>Cloud Top Height (MSG &middot; EUMETSAT)</h4>
+              <p>WMS de <code>view.eumetsat.int</code>. Producto MSG (Meteosat Second Generation) con altura del tope de nubes en codigo de color (FL010 &rarr; FL525). Resolucion nativa ~3 km/px. Refresco cada 15 min.</p>
+              <p>Util para identificar tormentas convectivas en desarrollo (tops altos = celulas activas).</p>
+
+              <h4>Tormentas electricas (MTG &middot; LI AFA)</h4>
+              <p>WMS de EUMETSAT. Producto Lightning Imager Accumulated Flash Area de MTG-I (Meteosat Third Generation). Identifica celulas con actividad electrica reciente.</p>
+
+              <h4>RGB Conveccion (MSG &middot; SEVIRI)</h4>
+              <p>Composite RGB que destaca celulas convectivas (rojo brillante = topes muy frios + posible overshooting). Producto SEVIRI/MSG.</p>
+
+              <h4>SIGMETs (Iberia + Europa O. + N-Africa)</h4>
+              <p>Avisos formales de fenomenos significativos (tormentas, turbulencia severa, engelamiento, cenizas volcanicas). Fuente: aviationweather.gov. Las zonas se dibujan como poligonos con borde rojo y texto del aviso al hover.</p>
+
+              <h4>METAR / TAF</h4>
+              <p>Marcadores en aerodromos. Al hover muestra el codigo crudo y decodificado. Click para detalles ampliados. Fuente: aviationweather.gov.</p>
+
+              <h4>Performance y cache</h4>
+              <p>Las tiles usan <code>crossOrigin: 'anonymous'</code> donde el servidor soporta CORS (RainViewer y EUMETSAT LI/Convection) para que el Service Worker pueda cachearlas. Segundas activaciones de la misma capa son instantaneas. CTH no usa crossOrigin por compatibilidad con su producto base.</p>
+            </details>
+
+            <details id="h-notams">
+              <summary>14. NOTAMs y briefing (ver tambien seccion Briefing)</summary>
+              <p>Esta seccion del modal complementa la <i>seccion Briefing</i> de la app con detalle tecnico sobre como funciona la integracion:</p>
+              <h4>Origen de los datos</h4>
               <ul>
-                <li>Boton <b>Origen+destino del plan</b> &mdash; Carga NOTAMs de los ICAOs del plan actual.</li>
-                <li>Boton <b>Consultar</b> &mdash; ICAOs libres.</li>
-                <li>Filtros: tipo (Aerodromo, NAVAID, Espacios) y severidad.</li>
-                <li>Cards con codigo, descripcion, vigencia y mapa.</li>
+                <li><b>NOTAMs</b> &mdash; Pasarela al servicio EAD/EUROCONTROL (a traves de un proxy <code>/api/notamHub</code> en el servidor remoto, o consulta directa en local).</li>
+                <li><b>METAR / TAF</b> &mdash; aviationweather.gov, decodificado en cliente con <code>metarDecode.js</code>.</li>
               </ul>
+              <h4>Estructura de cada card de NOTAM</h4>
+              <ul>
+                <li>Codigo del NOTAM (A-series, D-series).</li>
+                <li>Aerodromo afectado (ICAO).</li>
+                <li>Vigencia: desde / hasta UTC.</li>
+                <li>Tipo: Aerodromo / NAVAID / Espacios / Otros.</li>
+                <li>Severidad: urgent (rojo, ej. cierres) / info (azul, ej. cambios de frecuencia).</li>
+                <li>Descripcion: texto plano del NOTAM.</li>
+                <li>Mini-mapa: cuando el NOTAM trae coordenadas, mapa pequenyo de la zona afectada.</li>
+              </ul>
+              <h4>Filtrado</h4>
+              <p>Los chips arriba de la lista filtran por tipo y severidad. El input de busqueda filtra por texto libre en codigo + descripcion.</p>
+              <p>El resultado se actualiza en vivo.</p>
             </details>
 
-            <details>
-              <summary>Density Altitude (DA) y TAS corregida</summary>
-              <p>La <b>DA</b> (altitud densidad) es la altitud equivalente en atmosfera estandar para la densidad real del aire actual. En dias calidos, DA &gt; PA &rarr; aire menos denso &rarr; TAS mas alta para la misma IAS.</p>
-              <p>Formula: <code>DA = PA + 118.8 &times; (OAT &minus; ISA_temp(PA))</code></p>
-              <p>TSAgestor calcula DA por waypoint usando la temperatura de Open-Meteo (cuando hay vientos cargados) y corrige la TAS via tabla bilineal KIAS&times;DA. La tropopausa (36089 ft) se respeta: arriba de ahi T_ISA es constante a &minus;56.5&deg;C.</p>
-              <p><b>Hover</b> sobre cualquier celda <b>TAS</b> del log de combustible para ver la DA y la OAT media usadas.</p>
+            <details id="h-pdf">
+              <summary>14. Exportar a PDF</summary>
+              <p>Pulsa el icono <kbd>📄</kbd> del header (junto al toggle del panel) para generar el briefing en PDF. Requiere haber calculado el plan al menos una vez. El PDF incluye:</p>
+              <ul>
+                <li><b>Portada</b> &mdash; ICAOs, FL, IAS, hora de salida UTC, fecha de generacion.</li>
+                <li><b>Resumen del plan</b> &mdash; Distancia total, tiempo, combustible inicial / consumido / restante.</li>
+                <li><b>Log de combustible</b> &mdash; Tabla con todas las columnas (incluye TAS corregida por DA si hay vientos cargados).</li>
+                <li><b>Corte transversal</b> &mdash; Imagen del SVG del corte (con nubes y GRAMET si se cargaron).</li>
+                <li><b>Tabla de waypoints</b> &mdash; Lat/lon/FL/ETA por punto.</li>
+                <li><b>Mapa</b> &mdash; Snapshot del mapa con la ruta y las TSAs activas.</li>
+                <li><b>NOTAMs</b> &mdash; Si has consultado NOTAMs, se incluyen como apendice.</li>
+              </ul>
+              <p>Generacion del PDF: jsPDF + jsPDF-AutoTable + html2canvas. El proceso dura unos segundos en planes grandes.</p>
             </details>
 
-            <details>
-              <summary>Atajos de teclado</summary>
+            <details id="h-atajos">
+              <summary>15. Atajos de teclado</summary>
               <table class="b1-help-shortcuts">
                 <tr><td><kbd>M</kbd></td><td>Cicla el panel lateral: abierto &rarr; colapsado (rail) &rarr; oculto.</td></tr>
-                <tr><td><kbd>Esc</kbd></td><td>Cierra el cajon inferior. Si hay modal abierto, lo cierra primero.</td></tr>
-                <tr><td>Doble click en el mapa</td><td>Durante modo dibujo: termina la ruta.</td></tr>
+                <tr><td><kbd>Esc</kbd></td><td>Cierra el modal de ayuda si esta abierto. Si no, cierra el cajon inferior. Si no, cancela el modo dibujo.</td></tr>
+                <tr><td>Doble click en el mapa</td><td>Durante modo dibujo: termina la ruta (equivale al boton Listo).</td></tr>
+                <tr><td><kbd>?</kbd> (boton header)</td><td>Abre esta guia.</td></tr>
+                <tr><td><kbd>📄</kbd> (boton header)</td><td>Exporta el plan a PDF.</td></tr>
+                <tr><td><kbd>⇔</kbd> (boton header)</td><td>Equivale a <kbd>M</kbd> &mdash; cicla el panel.</td></tr>
               </table>
-              <p>Las combinaciones <kbd>Ctrl</kbd>+<kbd>M</kbd>, <kbd>Cmd</kbd>+<kbd>M</kbd>, <kbd>Alt</kbd>+<kbd>M</kbd> NO se interceptan (son atajos del SO).</p>
+              <p>Las combinaciones con modificadores (<kbd>Ctrl</kbd>+<kbd>M</kbd>, <kbd>Cmd</kbd>+<kbd>M</kbd>, <kbd>Alt</kbd>+<kbd>M</kbd>) NO se interceptan &mdash; son atajos del sistema operativo y se respetan.</p>
+              <p>Los atajos NO se disparan cuando el foco esta en un input, textarea o select.</p>
             </details>
 
-            <details>
-              <summary>Glosario</summary>
+            <details id="h-persistencia">
+              <summary>16. Persistencia y datos guardados</summary>
+              <p>TSAgestor guarda en <code>localStorage</code>:</p>
+              <ul>
+                <li><code>tsagestor_b1_layout</code> &mdash; Estado del layout: seccion activa, estados del panel/drawer, anchos/altos.</li>
+                <li><code>tsagestor_settings</code> &mdash; Preferencias de la seccion Ajustes.</li>
+                <li><code>tsagestor_plans</code> &mdash; Planes guardados (nombre, formulario, ruta calculada).</li>
+                <li><code>tsagestor_ar_creds</code> y <code>tsagestor_ar_token</code> &mdash; Credenciales / token de Autorouter para GRAMET (opcional).</li>
+              </ul>
+              <p>El Service Worker cachea:</p>
+              <ul>
+                <li><b>App shell</b> &mdash; HTML, CSS, JS, iconos (cache-first, version <code>tsagestor-vNNN</code>).</li>
+                <li><b>Tiles meteo cacheables</b> &mdash; RainViewer y EUMETSAT LI/Convection con CORS (runtime cache).</li>
+                <li><b>Datos meteo</b> &mdash; Network-first con fallback a cache si la red falla.</li>
+              </ul>
+              <h4>Resetear / recuperar</h4>
+              <p>En DevTools (F12) &rarr; Console:</p>
+              <ul>
+                <li><code>localStorage.removeItem('tsagestor_b1_layout')</code> &rarr; resetea el layout al default y recarga.</li>
+                <li><code>localStorage.clear()</code> &rarr; borra TODO (planes, ajustes, credenciales). Solo si quieres empezar de cero.</li>
+                <li>Application &rarr; Service Workers &rarr; Unregister &rarr; recarga &rarr; fuerza el SW v actual.</li>
+              </ul>
+            </details>
+
+            <details id="h-glosario">
+              <summary>17. Glosario</summary>
               <div class="b1-help-glossary">
 
                 <h4 class="b1-help-cat">Velocidades</h4>
@@ -302,14 +593,90 @@ window.TSAgestor.b1Layout = (function () {
               </div>
             </details>
 
-            <details>
-              <summary>Persistencia y recuperacion</summary>
+            <details id="h-faq">
+              <summary>18. Solucion de problemas (FAQ)</summary>
+
+              <h4>El mapa no se ve / sale gris</h4>
               <ul>
-                <li>El estado del layout (seccion activa, anchos del panel/drawer) se guarda en <code>localStorage</code> bajo la clave <code>tsagestor_b1_layout</code>.</li>
-                <li>Los planes calculados pueden guardarse desde la seccion Plan (lista <b>Planes guardados</b>).</li>
-                <li>Para resetear el layout: borra la clave en DevTools o ejecuta <code>localStorage.removeItem('tsagestor_b1_layout')</code> y recarga.</li>
+                <li>Comprueba que tienes conexion (los tiles de OpenStreetMap requieren internet en la primera carga).</li>
+                <li>DevTools (F12) &rarr; Application &rarr; Service Workers &rarr; Unregister, luego recarga con <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>.</li>
+              </ul>
+
+              <h4>Una capa meteo no aparece o tarda mucho</h4>
+              <ul>
+                <li>EUMETSAT WMS es lento en hora punta. Es normal que cada activacion tarde varios segundos.</li>
+                <li>Si la capa <i>nunca</i> aparece, revisa Network (F12) buscando peticiones a <code>view.eumetsat.int</code> y comprueba el status (200 = ok, 5xx = servidor caido).</li>
+                <li>Si la pantalla del sistema esta mal sincronizada, las consultas WMS pueden caer fuera de la ventana de datos publicados.</li>
+              </ul>
+
+              <h4>La TAS calculada no me cuadra</h4>
+              <ul>
+                <li>Si no has cargado vientos, la TAS asume ISA (PA = DA). Pulsa <i>Cargar vientos</i> para usar la temperatura real.</li>
+                <li>Pasa el cursor sobre la celda TAS para ver la DA y OAT usadas &mdash; ahi se ve el origen de la diferencia.</li>
+                <li>En cruise alto (FL360+), la app respeta la tropopausa (T_ISA constante a &minus;56.5&deg;C). Esto puede dar diferencias respecto a planificadores que extrapolan linealmente.</li>
+              </ul>
+
+              <h4>El panel se quedo oculto y no puedo recuperarlo</h4>
+              <ul>
+                <li>Pulsa la tecla <kbd>M</kbd>: cicla el estado (oculto &rarr; abierto).</li>
+                <li>Si la tecla no responde, asegurate de no tener el foco en un input. Click sobre el mapa, luego <kbd>M</kbd>.</li>
+              </ul>
+
+              <h4>El plan no se calcula / da error</h4>
+              <ul>
+                <li>Verifica que origen y destino son ICAOs validos (4 letras, mayusculas).</li>
+                <li>Si usas Via, comprueba que todos los waypoints existen en la base. Codigos invalidos se ignoran &mdash; pero si TODOS son invalidos, el plan se queda en DCT.</li>
+                <li>Si no has activado ninguna capa de aerovias en el mapa, el planificador hace DCT entre tus waypoints (sin aerovias).</li>
+              </ul>
+
+              <h4>La leyenda TSAs no se muestra entera</h4>
+              <ul>
+                <li>Asegurate de que la app esta en SW v201+ (el bug del max-height inline esta fixed).</li>
+                <li>Cierra el drawer si esta abierto para liberar espacio vertical.</li>
+              </ul>
+
+              <h4>El boton de PDF no responde</h4>
+              <ul>
+                <li>El PDF requiere haber calculado el plan al menos una vez. Sin plan calculado, el boton no hace nada.</li>
+                <li>En navegadores antiguos (Chrome &lt; 90, Firefox &lt; 90) puede fallar la generacion. Usa una version reciente.</li>
+              </ul>
+
+              <h4>He perdido planes guardados / preferencias</h4>
+              <ul>
+                <li>Comprueba si has cambiado de navegador o limpiado datos del sitio &mdash; los datos viven en localStorage.</li>
+                <li>El modo incognito no persiste &mdash; usa una ventana normal.</li>
               </ul>
             </details>
+
+            <details id="h-creditos">
+              <summary>19. Creditos y fuentes de datos</summary>
+              <h4>Fuentes de datos</h4>
+              <ul>
+                <li><b>Aerovias y waypoints</b> &mdash; Compilados a partir de AIP de Espanya (datos demo / educativos).</li>
+                <li><b>TSAs</b> &mdash; Aportadas por el usuario via KML / KMZ.</li>
+                <li><b>Vientos y temperatura en altura</b> &mdash; <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> (modelo GFS, gratis, sin API key, CORS abierto).</li>
+                <li><b>Tiles meteo IR</b> &mdash; <a href="https://www.rainviewer.com" target="_blank" rel="noopener">RainViewer</a>.</li>
+                <li><b>Productos satelite</b> &mdash; <a href="https://view.eumetsat.int" target="_blank" rel="noopener">EUMETSAT</a> (MSG &middot; CTH, MTG &middot; LI AFA, SEVIRI &middot; RGB Convection).</li>
+                <li><b>NOTAMs y METAR/TAF</b> &mdash; EAD/EUROCONTROL y <a href="https://aviationweather.gov" target="_blank" rel="noopener">aviationweather.gov</a>.</li>
+                <li><b>SIGMETs</b> &mdash; aviationweather.gov.</li>
+                <li><b>Trafico en vivo</b> &mdash; <a href="https://airplanes.live" target="_blank" rel="noopener">airplanes.live</a>.</li>
+                <li><b>GRAMET</b> (corte meteo opcional) &mdash; <a href="https://www.autorouter.aero" target="_blank" rel="noopener">Autorouter.aero</a> (requiere cuenta).</li>
+                <li><b>Cartografia base</b> &mdash; <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a> contributors.</li>
+              </ul>
+
+              <h4>Librerias open source</h4>
+              <ul>
+                <li><a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet 1.9</a> &mdash; Motor cartografico.</li>
+                <li><a href="https://github.com/parallax/jsPDF" target="_blank" rel="noopener">jsPDF</a> + <a href="https://github.com/simonbengtsson/jsPDF-AutoTable" target="_blank" rel="noopener">jsPDF-AutoTable</a> &mdash; Generacion del briefing PDF.</li>
+                <li><a href="https://html2canvas.hertzen.com" target="_blank" rel="noopener">html2canvas</a> &mdash; Snapshot del mapa para el PDF.</li>
+                <li><a href="https://mozilla.github.io/pdf.js/" target="_blank" rel="noopener">pdf.js</a> &mdash; Render de PDFs embebidos.</li>
+              </ul>
+
+              <h4>Sobre el codigo</h4>
+              <p>TSAgestor es una aplicacion web estatica (HTML + CSS + JS vanilla, sin build, sin framework) que aprovecha el navegador moderno. Funciona offline tras el primer arranque (PWA con Service Worker).</p>
+              <p>Codigo fuente, issues y contribuciones en el repositorio Git asociado.</p>
+            </details>
+
           </div>
         </div>
       </div>
@@ -586,14 +953,34 @@ window.TSAgestor.b1Layout = (function () {
         return;
       }
     });
-    // Cierre del modal de ayuda: boton X o backdrop. Esc lo cubre el
+    // Cierre del modal de ayuda + navegacion TOC. Esc lo cubre el
     // handler de teclado via la clase .modal:not(.hidden).
     const helpModal = _shell.querySelector('#b1-help-modal');
     if (helpModal) {
       helpModal.addEventListener('click', (e) => {
+        // Cierre
         if (e.target.id === 'b1-help-close' || e.target.id === 'b1-help-backdrop'
             || (e.target.closest && e.target.closest('#b1-help-close'))) {
           _closeHelpModal();
+          return;
+        }
+        // TOC: click en un link con data-help-toc -> abre el <details>
+        // correspondiente, lo asegura visible, y scrollea hasta el.
+        const tocLink = e.target.closest && e.target.closest('a[data-help-toc]');
+        if (tocLink) {
+          e.preventDefault();
+          const href = tocLink.getAttribute('href') || '';
+          const id = href.replace(/^#/, '');
+          if (!id) return;
+          const target = helpModal.querySelector('#' + CSS.escape(id));
+          if (!target) return;
+          // Si es un <details>, lo abrimos.
+          if (target.tagName === 'DETAILS') target.open = true;
+          // Pintamos antes de scrollear para que la altura ya sea la
+          // del details abierto.
+          requestAnimationFrame(() => {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          });
         }
       });
     }
@@ -601,7 +988,12 @@ window.TSAgestor.b1Layout = (function () {
 
   function _openHelpModal() {
     const m = _shell && _shell.querySelector('#b1-help-modal');
-    if (m) m.classList.remove('hidden');
+    if (m) {
+      m.classList.remove('hidden');
+      // Resetea el scroll al abrir, para que el indice quede arriba.
+      const body = m.querySelector('.b1-help-body');
+      if (body) body.scrollTop = 0;
+    }
   }
   function _closeHelpModal() {
     const m = _shell && _shell.querySelector('#b1-help-modal');

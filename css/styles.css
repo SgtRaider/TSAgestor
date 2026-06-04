@@ -4323,6 +4323,73 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
 .b1-help-body details[open] > summary::before {
   transform: rotate(90deg);
 }
+/* Indice de la ayuda: numerado con bordes sutiles, links amarillos
+   al hover, layout en 2 columnas en pantallas anchas. */
+.b1-help-toc {
+  margin: 0 0 var(--sp-3) 0;
+  padding: var(--sp-3);
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 6px);
+}
+.b1-help-toc h3 {
+  margin: 0 0 var(--sp-2) 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--ea-amarillo, #fbbf24);
+}
+.b1-help-toc ol {
+  margin: 0;
+  padding: 0 0 0 22px;
+  columns: 2;
+  column-gap: var(--sp-4, 16px);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.b1-help-toc li {
+  margin: 0;
+  break-inside: avoid;
+}
+.b1-help-toc a {
+  color: var(--ea-azul-cielo, #93c5fd);
+  text-decoration: none;
+}
+.b1-help-toc a:hover {
+  color: var(--ea-amarillo, #fbbf24);
+  text-decoration: underline;
+}
+@media (max-width: 600px) {
+  .b1-help-toc ol { columns: 1; }
+}
+
+/* Subsecciones dentro de un <details>: titulos pequenyos en color
+   acento, con un margen superior generoso para diferenciar bloques
+   conceptualmente distintos sin necesidad de un sub-details. */
+.b1-help-body details h4 {
+  margin: var(--sp-3) var(--sp-3) var(--sp-2) var(--sp-3);
+  padding-bottom: 2px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.b1-help-body details h4:first-of-type {
+  margin-top: var(--sp-2);
+}
+.b1-help-body details h4.b1-help-cat {
+  /* Las cabeceras del glosario llevan su propio estilo (amarillo,
+     uppercase) — no las pisamos. */
+  border-bottom-color: var(--border);
+}
+.b1-help-body details a {
+  color: var(--ea-azul-cielo, #93c5fd);
+}
+.b1-help-body details a:hover {
+  color: var(--ea-amarillo, #fbbf24);
+}
+
 /* Contenido de cada <details>: margenes horizontales unificados via
    padding del propio details (a traves de un wrapper logico), y
    margenes verticales aplicados a cada elemento. Evita la guerra de
