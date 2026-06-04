@@ -4043,6 +4043,16 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   left: calc(var(--b1-panel-effective-w, var(--b1-panel-w)) + var(--sp-2));
 }
 
+/* La leyenda flotante de TSAs vive en leaflet-top.leaflet-right, que en
+   B1 esta a top: calc(--b1-header-h + 56px). Su max-height heredado del
+   CSS original (calc(100vh - 100px)) no descuenta ese offset NI el
+   drawer inferior, asi que su borde inferior cae por debajo del viewport
+   o se mete bajo el drawer (z-index 60). Reducimos max-height para
+   que respete el espacio realmente disponible. */
+.b1-shell .b1-map-zone .tsa-legend {
+  max-height: calc(100vh - var(--b1-header-h, 80px) - 56px - var(--b1-drawer-effective-h, 0px) - var(--sp-3) - 16px);
+}
+
 /* Modo dibujo activo: ocultamos TODOS los controles flotantes que
    viven sobre el mapa (b1-map-toolbar derecho + todos los corners de
    Leaflet: topleft Capas, topright Leyenda TSAs, bottomleft leyenda
