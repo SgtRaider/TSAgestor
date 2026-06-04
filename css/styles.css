@@ -1196,8 +1196,13 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
 }
 .plan-fields {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: 12px;
+}
+.plan-fields input {
+  min-width: 0; /* deja que datetime-local se encoja sin romper el track del grid */
+  width: 100%;
+  box-sizing: border-box;
 }
 .plan-fields label {
   display: flex;
@@ -1580,6 +1585,7 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap; /* coherencia con .plan-actions; evita desborde en .b1-panel estrecho */
 }
 .plan-meteo-radius {
   font-size: 12px;
@@ -2121,6 +2127,7 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   display: flex;
   gap: 8px;
   align-items: stretch;
+  flex-wrap: wrap;
 }
 .save-row input {
   background: var(--bg);
@@ -2130,7 +2137,8 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   border-radius: 4px;
   font-family: inherit;
   font-size: 13px;
-  min-width: 220px;
+  flex: 1 1 140px;
+  min-width: 140px;
 }
 .save-row input:focus {
   outline: none;
@@ -4234,6 +4242,29 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
     bottom: calc(var(--b1-drawer-effective-h, 0px) + 38vh + var(--sp-2));
   }
 }
+
+/* ============================================================
+   Plan form dentro del panel lateral B1
+   ------------------------------------------------------------
+   El formulario de Plan fue disenyado para tab-content
+   full-width pero en B1 vive dentro de .b1-panel (~320-400px).
+   Ajustes defensivos para que todos los controles se adapten
+   al ancho del panel sin desbordar. Se aplica SIEMPRE que el
+   form vive dentro del panel (no por media query de viewport)
+   porque --b1-panel-effective-w es ajustable por el usuario.
+   ============================================================ */
+.b1-panel .plan-form { padding: 12px; }
+.b1-panel .plan-fields {
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 10px;
+}
+.b1-panel .plan-via-row { flex-wrap: wrap; }
+.b1-panel .plan-via-row input { min-width: 0; flex: 1 1 160px; }
+.b1-panel .save-row { flex-wrap: wrap; }
+.b1-panel .save-row input { flex: 1 1 100%; min-width: 0; }
+.b1-panel .plan-meteo-actions { flex-wrap: wrap; }
+.b1-panel .plan-actions { gap: 8px; }
+.b1-panel .plan-actions .btn { flex: 1 1 auto; }
 
 /* ============================================================
    Live tracking (seccion Live del stepper)
