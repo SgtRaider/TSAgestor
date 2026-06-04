@@ -963,17 +963,25 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
    directamente del mapa o de sus grupos. No hace falta CSS. */
 
 /* Leyenda flotante de TSAs activas (toggle desde la pestana Mapa).
-   Layout: panel mas ancho con cuerpo en grid 2 columnas y filas finas para
-   poder ver todas las TSAs activas hoy+manyana sin scrollear. */
+   Layout: panel ancho (720px por defecto en B1) con cuerpo en grid
+   auto-fit (minmax(220px, 1fr)). El numero real de columnas depende
+   del ancho del panel: <440px -> 1 col, 440-659px -> 2 col,
+   >=660px -> 3 col. El usuario puede redimensionar arrastrando
+   la esquina inferior derecha (CSS resize:both). */
 .tsa-legend {
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--border, #cbd5e1);
   border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  /* Width pasa a ser dinamica: JS asigna el inicial (1/2/3 cols segun
-     count) y CSS la mantiene resizable por la esquina inf-der. */
+  /* Width pasa a ser dinamica: JS asigna el inicial (720 en B1,
+     escalonado 240/480/720 en legacy) y CSS la mantiene resizable
+     por la esquina inf-der. */
   width: 720px;
   max-width: calc(100vw - 60px);
+  /* max-height legacy: en B1 lo sobreescribe la regla de
+     .b1-shell .b1-map-zone .tsa-legend con !important descontando
+     header + toolbar + drawer. Aqui dejamos un fallback amplio para
+     no recortar de mas en vistas no-B1. */
   max-height: calc(100vh - 100px);
   min-width: 240px;
   min-height: 120px;
@@ -3775,13 +3783,17 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   grid-template-rows: auto 1fr;
   grid-template-columns: 100%;
   background: var(--bg);
-  /* Tokens del layout */
-  --b1-header-h:         80px;
+  /* Tokens del layout.
+     Alto REAL del header: min-height 80 + padding-y (var(--sp-2) x2 = 16) = 96.
+     Antes habia dos declaraciones consecutivas (80px y var(--sp-8)=32px); la
+     segunda ganaba por cascada y rompia el calc de la leyenda y de los
+     controles leaflet-top, que quedaban detras del header real. */
+  --b1-header-h:         96px;
   --b1-panel-w:          480px;
   --b1-panel-w-collapsed: 48px;
   --b1-drawer-h:         42vh;
   --b1-drawer-h-collapsed: 38px;
-  --b1-header-h:         var(--sp-8);
+  --b1-toolbar-h:        44px; /* alto base de la b1-map-toolbar en 1 fila */
   --b1-transition:       0.18s ease;
 }
 
@@ -3964,15 +3976,25 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   border-radius: 0;
 }
 
-/* Toolbar flotante del mapa */
+/* Toolbar flotante del mapa.
+   IMPORTANTE: position:fixed + z-index 9100 para SACAR la toolbar del
+   stacking context de .b1-map-zone (z-index:1). Si no, aunque le subas
+   el z-index a 500 sigue capada a "nivel 1" desde root y la leyenda TSAs
+   (fixed, z-index 9000) la tapa. Anclamos al viewport con el mismo
+   patron que .leaflet-top.leaflet-right: top = header + sp-2. Asi
+   queda 8px por debajo del header REAL (96px) y se mantiene siempre
+   por encima de la leyenda (9000), del panel (50) y del drawer (60),
+   pero por debajo de modales (9999+). flex-wrap:nowrap fuerza 1 sola
+   fila para que --b1-toolbar-h=44px siga siendo fiable y la leyenda
+   reserve el espacio correcto. */
 .b1-map-toolbar {
-  position: absolute;
-  top: var(--sp-2);
+  position: fixed;
+  top: calc(var(--b1-header-h, 96px) + var(--sp-2));
   right: var(--sp-2);
-  z-index: 500; /* por encima de leaflet-control (400) y leaflet-top (~1000) */
+  z-index: 9100;
   display: flex;
   gap: 6px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
   pointer-events: auto;
 }
@@ -4028,21 +4050,22 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
    detras del header; la leyenda de TSAs (topright) queda detras del
    header + toolbar; la leyenda del corte (bottomleft) queda detras
    del panel y del drawer. */
+/* leaflet-top (Capas en topleft) tambien debe descontar el header
+   real. El fallback 52px era residuo de un experimento; ahora 96px
+   sincronizado con --b1-header-h corregido. */
 .b1-shell .b1-map-zone .leaflet-top {
-  top: calc(var(--b1-header-h, 52px) + var(--sp-2));
+  top: calc(var(--b1-header-h, 96px) + var(--sp-2));
 }
-/* En topright dejamos sitio para la b1-map-toolbar (4 botones, ~44px
-   alto + gap) ademas del header.
-   IMPORTANTE: position: fixed + z-index 9000 para SACAR la esquina
-   del stacking context de .b1-map-zone (z-index 1). Sin esto la
-   leyenda flotante TSAs (720px de ancho) queda detras del b1-panel
-   (z-index 50) y solo se ve la franja a la derecha del panel — el
-   usuario ve "una sola columna" cuando deberian ser 3. Position
-   fixed la hace escapar al root stacking context y aparece encima
-   del panel/drawer (sigue bajo modales que estan en 9999/99999). */
+/* La leyenda TSAs se ancla DEBAJO de la b1-map-toolbar, que ahora
+   tambien es fixed (z-index 9100). Reservamos espacio con
+   --b1-toolbar-h (token) + sp-2 * 2 de gap, evitando el +56px hardcoded
+   que no contemplaba toolbars de mas de 1 fila ni el alto real.
+   position: fixed + z-index 9000 saca la esquina del stacking context
+   de .b1-map-zone (z 1) para que la leyenda quede sobre panel (50)
+   y drawer (60), pero debajo de la toolbar (9100) y de modales. */
 .b1-shell .b1-map-zone .leaflet-top.leaflet-right {
   position: fixed;
-  top: calc(var(--b1-header-h, 80px) + 56px);
+  top: calc(var(--b1-header-h, 96px) + var(--b1-toolbar-h, 44px) + var(--sp-2) * 2);
   right: 0;
   z-index: 9000;
 }
@@ -4053,14 +4076,22 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   left: calc(var(--b1-panel-effective-w, var(--b1-panel-w)) + var(--sp-2));
 }
 
-/* La leyenda flotante de TSAs vive en leaflet-top.leaflet-right, que en
-   B1 esta a top: calc(--b1-header-h + 56px). Su max-height heredado del
-   CSS original (calc(100vh - 100px)) no descuenta ese offset NI el
-   drawer inferior, asi que su borde inferior cae por debajo del viewport
-   o se mete bajo el drawer (z-index 60). Reducimos max-height para
-   que respete el espacio realmente disponible. */
+/* La leyenda flotante TSAs descuenta: header real, toolbar fixed,
+   gaps verticales (sp-2 x2), drawer inferior efectivo (0px cuando
+   cerrado, --b1-drawer-h o --b1-drawer-h-collapsed cuando abierto) y
+   un margen visual de 16px para la attribution de Leaflet.
+   !important: gana al inline-style residual que pueda haber dejado
+   fitLegendToMap (mapView.js); el fix de JS lo elimina en B1, pero
+   esto es cinturon-y-tirantes durante la migracion. */
 .b1-shell .b1-map-zone .tsa-legend {
-  max-height: calc(100vh - var(--b1-header-h, 80px) - 56px - var(--b1-drawer-effective-h, 0px) - var(--sp-3) - 16px);
+  max-height: calc(
+    100vh
+    - var(--b1-header-h, 96px)
+    - var(--b1-toolbar-h, 44px)
+    - var(--sp-2) * 2
+    - var(--b1-drawer-effective-h, 0px)
+    - 16px
+  ) !important;
 }
 
 /* Modo dibujo activo: ocultamos TODOS los controles flotantes que

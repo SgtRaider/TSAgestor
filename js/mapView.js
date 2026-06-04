@@ -926,10 +926,23 @@ window.TSAgestor.mapView = (function () {
   // pequenyo, el div se sale del viewport y la leyenda lo seguia, dejando
   // filas inferiores inalcanzables). Restamos margen para la attribution
   // de Leaflet y aire visual.
+  // En B1 el max-height lo controla la regla CSS
+  // (.b1-shell .b1-map-zone .tsa-legend) usando los tokens
+  // --b1-header-h, --b1-toolbar-h y --b1-drawer-effective-h. Pisar
+  // max-height con un inline-style aqui hacia que la leyenda NO se
+  // acortara al abrir el drawer (el inline gana al CSS) y se saliera
+  // por debajo del viewport. Por compat con vistas legacy (no-B1):
+  // si NO estamos en body.b1, mantenemos el calculo viejo; si SI lo
+  // estamos, limpiamos cualquier max-height inline residual y dejamos
+  // mandar al CSS.
   function fitLegendToMap() {
     if (!tsaLegendCtl || !map) return;
     const cont = tsaLegendCtl.getContainer();
     if (!cont) return;
+    if (document.body.classList.contains('b1')) {
+      cont.style.removeProperty('max-height');
+      return;
+    }
     const r = map.getContainer().getBoundingClientRect();
     const top = Math.max(0, r.top);
     const bottom = Math.min(window.innerHeight, r.bottom);
@@ -943,7 +956,12 @@ window.TSAgestor.mapView = (function () {
   // dejando mas mapa visible. El usuario puede ampliar/reducir despues
   // arrastrando la esquina inferior derecha (CSS resize:both).
   // 240 px aproxima una celda; cada nueva columna anyade ese ancho.
+  // En B1 queremos SIEMPRE 3 columnas (panel a 720px) para mostrar todas
+  // las TSAs activas hoy/manyana sin scrollear. El usuario puede seguir
+  // reduciendolo arrastrando la esquina (CSS resize:both). En layouts
+  // legacy mantenemos el escalonado por count.
   function pickInitialLegendWidth(groupCount) {
+    if (document.body.classList.contains('b1')) return 720;
     if (groupCount <= 5)  return 240;   // 1 col
     if (groupCount <= 12) return 480;   // 2 cols
     return 720;                          // 3 cols (limite)
