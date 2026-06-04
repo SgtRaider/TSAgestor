@@ -3776,7 +3776,7 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   grid-template-columns: 100%;
   background: var(--bg);
   /* Tokens del layout */
-  --b1-header-h:         52px;
+  --b1-header-h:         80px;
   --b1-panel-w:          480px;
   --b1-panel-w-collapsed: 48px;
   --b1-drawer-h:         42vh;
@@ -3793,7 +3793,7 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   padding: var(--sp-2) var(--sp-3);
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
-  min-height: 52px;
+  min-height: 80px;
   z-index: 100;
 }
 .b1-brand {
@@ -3802,10 +3802,10 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   gap: var(--sp-2);
   flex: 0 0 auto;
 }
-.b1-brand img { height: 48px; width: auto; }
+.b1-brand img { height: 64px; width: auto; }
 .b1-brand-name {
   font-weight: 700;
-  font-size: var(--fs-lg);
+  font-size: 22px;
   color: #fff;
   letter-spacing: 0.5px;
 }
