@@ -4032,9 +4032,19 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   top: calc(var(--b1-header-h, 52px) + var(--sp-2));
 }
 /* En topright dejamos sitio para la b1-map-toolbar (4 botones, ~44px
-   alto + gap) ademas del header. */
+   alto + gap) ademas del header.
+   IMPORTANTE: position: fixed + z-index 9000 para SACAR la esquina
+   del stacking context de .b1-map-zone (z-index 1). Sin esto la
+   leyenda flotante TSAs (720px de ancho) queda detras del b1-panel
+   (z-index 50) y solo se ve la franja a la derecha del panel — el
+   usuario ve "una sola columna" cuando deberian ser 3. Position
+   fixed la hace escapar al root stacking context y aparece encima
+   del panel/drawer (sigue bajo modales que estan en 9999/99999). */
 .b1-shell .b1-map-zone .leaflet-top.leaflet-right {
-  top: calc(var(--b1-header-h, 52px) + 56px);
+  position: fixed;
+  top: calc(var(--b1-header-h, 80px) + 56px);
+  right: 0;
+  z-index: 9000;
 }
 .b1-shell .b1-map-zone .leaflet-bottom {
   bottom: calc(var(--b1-drawer-effective-h, 0px) + var(--sp-2));
