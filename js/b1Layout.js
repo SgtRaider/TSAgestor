@@ -244,10 +244,16 @@ window.TSAgestor.b1Layout = (function () {
         const origin = _drawerItemOrigin.get(it.id);
         const parentTab = document.getElementById(sec.tabId);
         const target = origin || parentTab || oldMain;
-        if (target) target.appendChild(el);
+        if (target) {
+          target.appendChild(el);
+          el.style.display = '';
+        }
       }
     }
-    _drawerBody.innerHTML = '';
+    // No usar _drawerBody.innerHTML = '' aqui: destruiria nodos que
+    // todavia podriamos haber dejado dentro del drawer (p.ej. si
+    // origin/parentTab no se encontraron). El bucle de arriba ya
+    // limpia los items que tenian destino.
   }
 
   function _renderDrawerTabs(sec) {
@@ -281,15 +287,21 @@ window.TSAgestor.b1Layout = (function () {
   function _activateDrawerItem(itemId, sec) {
     sec = sec || SECTIONS.find(s => s.id === state.section);
     if (!sec) return;
-    _drawerBody.innerHTML = '';
-    const target = document.getElementById(itemId);
-    if (target) {
-      // Cachea la ubicacion original la primera vez que viaja al drawer.
-      if (!_drawerItemOrigin.has(itemId) && target.parentElement && target.parentElement !== _drawerBody) {
-        _drawerItemOrigin.set(itemId, target.parentElement);
+    // Movemos TODOS los items del drawer al body una vez y luego
+    // togleamos display. El enfoque anterior (innerHTML='' + appendChild
+    // del nuevo) destruia el nodo del item previo: tras un cambio de
+    // tab, ningun calculo posterior podia repoblar Log/Corte/Waypoints
+    // porque sus tablas habian sido eliminadas del DOM.
+    for (const it of (sec.drawer || [])) {
+      const el = document.getElementById(it.id);
+      if (!el) continue;
+      if (el.parentElement !== _drawerBody) {
+        if (!_drawerItemOrigin.has(it.id)) {
+          _drawerItemOrigin.set(it.id, el.parentElement);
+        }
+        _drawerBody.appendChild(el);
       }
-      _drawerBody.appendChild(target);
-      target.style.display = '';
+      el.style.display = (it.id === itemId) ? '' : 'none';
     }
     state.drawerItem = itemId;
     _shell.querySelectorAll('.b1-drawer-tab').forEach(b => {

@@ -3776,6 +3776,7 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   grid-template-columns: 100%;
   background: var(--bg);
   /* Tokens del layout */
+  --b1-header-h:         52px;
   --b1-panel-w:          480px;
   --b1-panel-w-collapsed: 48px;
   --b1-drawer-h:         42vh;
@@ -3963,15 +3964,65 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   justify-content: flex-end;
   pointer-events: auto;
 }
+/* Los botones de la toolbar son `.btn.btn-ghost` (fondo transparente
+   en su contexto original). Sobre el mapa son ilegibles, asi que les
+   damos un fondo opaco y un borde sutil para que se vean. */
+.b1-map-toolbar .btn {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.b1-map-toolbar .btn:hover { filter: brightness(1.15); }
+.b1-map-toolbar .btn.is-active {
+  background: var(--accent, #fbbf24);
+  color: #1f2937;
+  border-color: var(--accent, #fbbf24);
+}
+.b1-map-toolbar .chip {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
 
-/* Banner flotante de 'Dibujar ruta' encima del mapa */
+/* Banner flotante de 'Dibujar ruta' encima del mapa. Se posiciona
+   por ENCIMA del drawer inferior (sumando --b1-drawer-effective-h
+   al bottom) para que no quede tapado al abrir el drawer. */
 .b1-map-zone > .b1-draw-banner {
   position: absolute;
   left: 50%;
-  bottom: var(--sp-3);
+  bottom: calc(var(--b1-drawer-effective-h, 0px) + var(--sp-3));
   transform: translateX(-50%);
   z-index: 70;
   pointer-events: auto;
+  /* Sobreescribe el fondo casi transparente del .draw-banner original
+     (rgba(251,191,36,0.15)) para que sea legible sobre el mapa. */
+  background: var(--bg-panel);
+  border: 1px solid #fbbf24;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  margin-bottom: 0;
+}
+
+/* Empuja los controles nativos de Leaflet (.leaflet-top / -bottom /
+   -left / -right) hacia DENTRO del area de mapa visible, para que no
+   queden tapados por el header, el panel lateral, el drawer inferior
+   ni la b1-map-toolbar. Sin esto: el control de Capas (topleft) cae
+   detras del header; la leyenda de TSAs (topright) queda detras del
+   header + toolbar; la leyenda del corte (bottomleft) queda detras
+   del panel y del drawer. */
+.b1-shell .b1-map-zone .leaflet-top {
+  top: calc(var(--b1-header-h, 52px) + var(--sp-2));
+}
+/* En topright dejamos sitio para la b1-map-toolbar (4 botones, ~44px
+   alto + gap) ademas del header. */
+.b1-shell .b1-map-zone .leaflet-top.leaflet-right {
+  top: calc(var(--b1-header-h, 52px) + 56px);
+}
+.b1-shell .b1-map-zone .leaflet-bottom {
+  bottom: calc(var(--b1-drawer-effective-h, 0px) + var(--sp-2));
+}
+.b1-shell .b1-map-zone .leaflet-left {
+  left: calc(var(--b1-panel-effective-w, var(--b1-panel-w)) + var(--sp-2));
 }
 
 /* Drawer inferior (tablas pesadas) — full-width: cruza por debajo
@@ -4077,4 +4128,11 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   }
   .b1-stepper { display: none; }
   .b1-shell[data-panel-state="collapsed"] .b1-panel-rail { display: flex !important; }
+  /* En mobile el panel esta abajo (encima del drawer), no a la izquierda.
+     Restaura left:0 para los controles Leaflet y empuja el bottom para
+     que esquiven panel+drawer apilados. */
+  .b1-shell .b1-map-zone .leaflet-left { left: var(--sp-2); }
+  .b1-shell .b1-map-zone .leaflet-bottom {
+    bottom: calc(var(--b1-drawer-effective-h, 0px) + 38vh + var(--sp-2));
+  }
 }
