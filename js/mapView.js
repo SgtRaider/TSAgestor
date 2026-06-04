@@ -1379,6 +1379,18 @@ window.TSAgestor.mapView = (function () {
       return div;
     };
     legend.addTo(map);
+    // Si arrancamos sin TSAs, la leyenda no aporta nada — la
+    // ocultamos hasta que render() reciba una lista no vacia.
+    _setAreasLegendVisible(false);
+  }
+
+  // Muestra/oculta la leyenda "Areas" sin destruir el control para
+  // preservar su posicion y no provocar reflows del map.
+  function _setAreasLegendVisible(visible) {
+    if (!legend || !legend.getContainer) return;
+    const el = legend.getContainer();
+    if (!el) return;
+    el.style.display = visible ? '' : 'none';
   }
 
   function formatSchedule(sch) {
@@ -1443,7 +1455,14 @@ window.TSAgestor.mapView = (function () {
   function render(tsas) {
     if (!map) return;
     layerGroup.clearLayers();
-    if (!tsas || tsas.length === 0) return;
+    if (!tsas || tsas.length === 0) {
+      // Sin TSAs visibles, la leyenda "Areas" Trabajo/Transito no
+      // aporta info — la ocultamos.
+      _setAreasLegendVisible(false);
+      return;
+    }
+    // Hay TSAs en el mapa: muestra la leyenda de colores.
+    _setAreasLegendVisible(true);
 
     const allLatLngs = [];
     const tsaOpacity = settingsGet('opacity.tsaFill', 0.30);
