@@ -3985,13 +3985,15 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
-/* Banner flotante de 'Dibujar ruta' encima del mapa. position: fixed
-   para SACARLO del stacking context de .b1-map-zone (z-index:1) y
-   poder superponerlo a panel (50), drawer (60), header (100) y la
-   b1-map-toolbar (500). z-index 9000 lo deja justo por debajo de los
-   modales (9999/99999) - no debe taparlos. Se posiciona por encima
-   del drawer sumando --b1-drawer-effective-h al bottom. */
-.b1-map-zone > .b1-draw-banner {
+/* Banner flotante de 'Dibujar ruta'. position:fixed + z-index 9000 +
+   anclado a <body> directamente (b1Layout._moveMap lo saca de
+   .b1-map-zone y lo cuelga de body) para evitar que .b1-main con
+   overflow:hidden lo recorte o que el stacking context de
+   .b1-map-zone (z-index 1) le ponga techo. Asi cubre panel (50),
+   drawer (60), header (100), b1-map-toolbar (500) y los controles
+   Leaflet (topleft Capas / topright TSAs / etc.). Modales 9999/99999
+   siguen por encima. Se sienta sobre el drawer via --b1-drawer-effective-h. */
+.b1-draw-banner {
   position: fixed;
   left: 50%;
   bottom: calc(var(--b1-drawer-effective-h, 0px) + var(--sp-3));
@@ -4029,14 +4031,15 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   left: calc(var(--b1-panel-effective-w, var(--b1-panel-w)) + var(--sp-2));
 }
 
-/* Modo dibujo activo: ocultamos los overlays flotantes del lado derecho
-   del mapa (b1-map-toolbar con Centrar/Leyenda TSAs/Capas/Tráfico y la
-   leyenda TSAs si esta visible) para que no roben clicks al colocar
-   waypoints ni distraigan el flow. El draw-banner mantiene sus propias
-   acciones (Deshacer/Vuelta/Listo/Cancelar) y queda visible. Al salir
+/* Modo dibujo activo: ocultamos TODOS los controles flotantes que
+   viven sobre el mapa (b1-map-toolbar derecho + todos los corners de
+   Leaflet: topleft Capas, topright Leyenda TSAs, bottomleft leyenda
+   del corte / nubes, bottomright atribucion) para que no roben clicks
+   al colocar waypoints ni distraigan el flow. El draw-banner mantiene
+   sus propias acciones (Deshacer/Vuelta/Listo/Cancelar). Al salir
    del modo (.drawing-route se quita) los overlays vuelven solos. */
 .b1-map-zone > #map.drawing-route ~ .b1-map-toolbar,
-.b1-map-zone > #map.drawing-route .leaflet-top.leaflet-right {
+#map.drawing-route .leaflet-control-container {
   display: none;
 }
 

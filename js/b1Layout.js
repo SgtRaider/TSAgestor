@@ -500,13 +500,17 @@ window.TSAgestor.b1Layout = (function () {
       toolbar.classList.add('b1-map-toolbar');
       _mapZone.appendChild(toolbar);
     }
-    // Mueve tambien el banner del modo 'Dibujar ruta' al map-zone
-    // para que sea visible mientras se trazan waypoints (vive
-    // originalmente dentro de #tab-map, ahora oculto en B1).
+    // Mueve el banner de 'Dibujar ruta' DIRECTAMENTE A BODY (no a
+    // _mapZone). Aunque position:fixed deberia hacerlo independiente
+    // del ancestro, .b1-main lleva overflow:hidden y eso puede
+    // recortar el banner en algunos navegadores y reducir su z-index
+    // efectivo al stacking context interno del shell. En body queda
+    // fuera de toda jerarquia B1, asi que su z-index 9000 cubre
+    // panel, drawer, header, toolbar y los controles Leaflet.
     const drawBanner = document.getElementById('draw-banner');
     if (drawBanner) {
       drawBanner.classList.add('b1-draw-banner');
-      _mapZone.appendChild(drawBanner);
+      document.body.appendChild(drawBanner);
     }
     _invalidateMapSize();
   }
