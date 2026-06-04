@@ -232,6 +232,10 @@ window.TSAgestor.b1Layout = (function () {
       }
     } catch (err) { console.warn('[b1Layout] init de seccion fallo:', err); }
     _saveState();
+    // _renderDrawerTabs puede haber cerrado el drawer (si la nueva
+    // seccion no tiene items) o haberlo abierto. El alto efectivo del
+    // mapa cambia y Leaflet necesita recalcular para las capas WMS.
+    setTimeout(_invalidateMapSize, 250);
   }
 
   function _devolverDrawerItems(sec) {
@@ -311,6 +315,8 @@ window.TSAgestor.b1Layout = (function () {
     if (state.drawerState === 'closed') {
       state.drawerState = 'open';
       _shell.setAttribute('data-drawer-state', 'open');
+      // Abrir el drawer cambia el alto del mapa: refresca Leaflet.
+      setTimeout(_invalidateMapSize, 250);
     }
     _saveState();
   }
@@ -330,6 +336,10 @@ window.TSAgestor.b1Layout = (function () {
         state.drawerState = state.drawerState === 'collapsed' ? 'open' : 'collapsed';
         _shell.setAttribute('data-drawer-state', state.drawerState);
         _saveState();
+        // El alto efectivo del mapa cambia: Leaflet necesita saberlo
+        // o las capas WMS (EUMETSAT, RainViewer) pediran tiles para
+        // un viewport obsoleto.
+        setTimeout(_invalidateMapSize, 250);
         return;
       }
       // Boton cerrar drawer
@@ -337,6 +347,7 @@ window.TSAgestor.b1Layout = (function () {
         state.drawerState = 'closed';
         _shell.setAttribute('data-drawer-state', 'closed');
         _saveState();
+        setTimeout(_invalidateMapSize, 250);
         return;
       }
       // Boton toggle del panel (en header)

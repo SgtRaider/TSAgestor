@@ -296,6 +296,13 @@ window.TSAgestor.mapView = (function () {
     const grp = L.layerGroup();
     grp.on('add', async function () {
       if (cloudRVTile) return;
+      // Defensivo: en B1 el contenedor del mapa cambia de tamano cuando
+      // el usuario abre/cierra/redimensiona el drawer o el panel sin
+      // notificar a Leaflet. Si activa esta capa con el getSize() viejo,
+      // L.tileLayer pide tiles para una grid fuera del viewport real
+      // y la capa parece no aparecer. Forzamos refresh ANTES de
+      // instanciar el tileLayer.
+      try { if (map) map.invalidateSize({ pan: false }); } catch (_) {}
       try {
         const data = await window.TSAgestor.meteoApi.getRainviewerCloudUrl();
         const attr = data.kind === 'satellite'
@@ -330,6 +337,10 @@ window.TSAgestor.mapView = (function () {
     const grp = L.layerGroup();
     grp.on('add', function () {
       if (cloudCthTile) return;
+      // Defensivo: invalidateSize antes de instanciar el WMS para que
+      // calcule la grid de tiles con el tamano real del contenedor en
+      // el momento de activacion (ver buildRainviewerLayer).
+      try { if (map) map.invalidateSize({ pan: false }); } catch (_) {}
       try {
         const cfg = window.TSAgestor.meteoApi.getEumetCthWMS();
         cloudCthTile = L.tileLayer.wms(cfg.url, Object.assign(
@@ -425,6 +436,9 @@ window.TSAgestor.mapView = (function () {
     grp.on('add', function () {
       const slot = _eumetWmsLayers[key] || (_eumetWmsLayers[key] = { tile: null, legendCtl: null });
       if (slot.tile) return;
+      // Defensivo (igual que buildRainviewerLayer / buildCthLayer): el
+      // mismo factory cubre LI AFA y RGB Convection.
+      try { if (map) map.invalidateSize({ pan: false }); } catch (_) {}
       try {
         const cfg = getCfg();
         slot.tile = L.tileLayer.wms(cfg.url, Object.assign(
