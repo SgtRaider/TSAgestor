@@ -131,6 +131,173 @@ window.TSAgestor.b1Layout = (function () {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_) {}
   }
 
+  // ── Modal de ayuda ───────────────────────────────────────────────
+  // Contenido completo de "como operar la app", estructurado en
+  // secciones <details>/<summary> colapsables para que el usuario
+  // localice rapido lo que busca. Se monta dentro de .b1-shell con
+  // class "modal" para que herede el patron de cierre por Esc
+  // (b1Layout._wireKeyboard ya respeta cualquier .modal:not(.hidden)).
+  function _buildHelpModalHTML() {
+    return `
+      <div class="b1-help-modal modal hidden" id="b1-help-modal" role="dialog" aria-modal="true" aria-labelledby="b1-help-title">
+        <div class="b1-help-backdrop" id="b1-help-backdrop"></div>
+        <div class="b1-help-content">
+          <header class="b1-help-head">
+            <h2 id="b1-help-title">Ayuda TSAgestor</h2>
+            <button class="b1-icon-btn" id="b1-help-close" title="Cerrar (Esc)" aria-label="Cerrar ayuda">✕</button>
+          </header>
+          <div class="b1-help-body">
+            <details open>
+              <summary>Inicio rapido</summary>
+              <p>TSAgestor es un planificador de vuelo tactico para aviacion militar / TSA. La interfaz se organiza en 5 secciones (stepper superior):</p>
+              <ul>
+                <li><b>① Inicio</b> &mdash; Bienvenida.</li>
+                <li><b>② Datos</b> &mdash; Carga de KML/KMZ con TSAs detectadas y filtros.</li>
+                <li><b>③ Plan</b> &mdash; Configura el plan de vuelo y calcula ruta, log de combustible, corte transversal y tabla de waypoints.</li>
+                <li><b>④ Briefing</b> &mdash; NOTAMs y consulta meteo.</li>
+                <li><b>⑤ Ajustes</b> &mdash; Preferencias persistentes (velocidad base, consumo, BINGO/JOKER).</li>
+              </ul>
+              <p>El mapa ocupa toda la pantalla detras del panel y el drawer. El boton <b>⇔</b> del header (o la tecla <kbd>M</kbd>) cicla el panel <i>abierto &rarr; colapsado &rarr; oculto</i>.</p>
+            </details>
+
+            <details>
+              <summary>Cargar datos (KML / KMZ)</summary>
+              <p>En la seccion <b>② Datos</b>:</p>
+              <ol>
+                <li>Pulsa <b>Cargar archivo</b> o arrastra un KML/KMZ.</li>
+                <li>Las TSAs detectadas aparecen en la tabla del cajon inferior.</li>
+                <li>Filtra con los chips <b>Trabajo</b> / <b>Transito</b> / <b>Active now</b>, o por rango de fecha/hora.</li>
+              </ol>
+              <p>Las TSAs activas se dibujan en el mapa con colores diferenciados (Trabajo verde, Transito rojo).</p>
+            </details>
+
+            <details>
+              <summary>Plan de vuelo</summary>
+              <p>En la seccion <b>③ Plan</b>, rellena el formulario:</p>
+              <ul>
+                <li><b>Origen / Destino</b> &mdash; ICAOs de 4 letras (ej. LEMD, LEZG).</li>
+                <li><b>Via</b> &mdash; Waypoints separados por espacio o coma. Vacio = ruta automatica.</li>
+                <li><b>Nivel (FL)</b> e <b>IAS (kt)</b> &mdash; Altitud y velocidad del cruise.</li>
+                <li><b>Salida (UTC)</b> &mdash; Fecha y hora UTC del despegue.</li>
+                <li><b>Combustible</b> &mdash; Inicial, Consumo (/h), Unidad, JOKER, BINGO.</li>
+              </ul>
+              <p>Botones:</p>
+              <ul>
+                <li><b>Dibujar en mapa</b> &mdash; Activa el modo dibujo (ver seccion).</li>
+                <li><b>Calcular ruta</b> &mdash; Genera la ruta, el log de combustible, el corte y la tabla de waypoints.</li>
+                <li><b>Limpiar</b> &mdash; Resetea el formulario.</li>
+              </ul>
+              <p>Tras calcular, el cajon inferior trae 3 pestanas:</p>
+              <ul>
+                <li><b>Log de combustible</b> &mdash; Tramo a tramo: IAS / TAS / Viento / GS / Tiempo / Combustible / Estado.</li>
+                <li><b>Corte transversal</b> &mdash; Perfil vertical del vuelo (FL vs distancia) con nubes Open-Meteo y GRAMET opcionales.</li>
+                <li><b>Waypoints y coordenadas</b> &mdash; Lat / Lon / FL / ETA por waypoint.</li>
+              </ul>
+            </details>
+
+            <details>
+              <summary>Modo dibujo de ruta</summary>
+              <ol>
+                <li>Pulsa <b>Dibujar en mapa</b> en la seccion Plan.</li>
+                <li>Haz click en el mapa para anyadir waypoints intermedios.</li>
+                <li>El banner inferior muestra el contador y las acciones:
+                  <ul>
+                    <li><b>Deshacer</b> &mdash; Quita el ultimo waypoint.</li>
+                    <li><b>Vuelta</b> &mdash; Anyade los waypoints en orden inverso para cerrar el circuito hasta origen.</li>
+                    <li><b>Listo</b> &mdash; Termina y vuelve a la seccion Plan.</li>
+                    <li><b>Cancelar</b> &mdash; Descarta el dibujo.</li>
+                  </ul>
+                </li>
+                <li>Doble click sobre el mapa equivale a <b>Listo</b>.</li>
+              </ol>
+              <p>Durante el modo dibujo se ocultan automaticamente las controles flotantes del mapa para no robar clicks.</p>
+            </details>
+
+            <details>
+              <summary>Capas, leyendas y meteo</summary>
+              <p>La toolbar flotante (esquina superior derecha del mapa) ofrece:</p>
+              <ul>
+                <li><b>Centrar</b> &mdash; Encuadra el mapa sobre las TSAs visibles.</li>
+                <li><b>Leyenda TSAs</b> &mdash; Toggle de la leyenda flotante con las TSAs activas hoy/manyana (3 columnas).</li>
+                <li><b>Capas</b> &mdash; Abre/cierra el control nativo de Leaflet con todas las overlays:
+                  <ul>
+                    <li>Aerovias alta/baja por zona (NE, NW, SE, SW)</li>
+                    <li>TMAs / CTRs (demo)</li>
+                    <li>Nubosidad RainViewer IR</li>
+                    <li>EUMETSAT: Cloud Top Height, Tormentas electricas (LI AFA), RGB Conveccion</li>
+                    <li>SIGMETs (Iberia + Europa O. + N-Africa)</li>
+                    <li>METAR / TAF</li>
+                  </ul>
+                </li>
+                <li><b>Trafico</b> &mdash; Activa la capa de trafico aereo en vivo (airplanes.live) para un ICAO concreto.</li>
+              </ul>
+            </details>
+
+            <details>
+              <summary>Briefing (NOTAMs)</summary>
+              <p>La seccion <b>④ Briefing</b> consulta NOTAMs (EAD/EUROCONTROL):</p>
+              <ul>
+                <li>Boton <b>Origen+destino del plan</b> &mdash; Carga NOTAMs de los ICAOs del plan actual.</li>
+                <li>Boton <b>Consultar</b> &mdash; ICAOs libres.</li>
+                <li>Filtros: tipo (Aerodromo, NAVAID, Espacios) y severidad.</li>
+                <li>Cards con codigo, descripcion, vigencia y mapa.</li>
+              </ul>
+            </details>
+
+            <details>
+              <summary>Density Altitude (DA) y TAS corregida</summary>
+              <p>La <b>DA</b> (altitud densidad) es la altitud equivalente en atmosfera estandar para la densidad real del aire actual. En dias calidos, DA &gt; PA &rarr; aire menos denso &rarr; TAS mas alta para la misma IAS.</p>
+              <p>Formula: <code>DA = PA + 118.8 &times; (OAT &minus; ISA_temp(PA))</code></p>
+              <p>TSAgestor calcula DA por waypoint usando la temperatura de Open-Meteo (cuando hay vientos cargados) y corrige la TAS via tabla bilineal KIAS&times;DA. La tropopausa (36089 ft) se respeta: arriba de ahi T_ISA es constante a &minus;56.5&deg;C.</p>
+              <p><b>Hover</b> sobre cualquier celda <b>TAS</b> del log de combustible para ver la DA y la OAT media usadas.</p>
+            </details>
+
+            <details>
+              <summary>Atajos de teclado</summary>
+              <table class="b1-help-shortcuts">
+                <tr><td><kbd>M</kbd></td><td>Cicla el panel lateral: abierto &rarr; colapsado (rail) &rarr; oculto.</td></tr>
+                <tr><td><kbd>Esc</kbd></td><td>Cierra el cajon inferior. Si hay modal abierto, lo cierra primero.</td></tr>
+                <tr><td>Doble click en el mapa</td><td>Durante modo dibujo: termina la ruta.</td></tr>
+              </table>
+              <p>Las combinaciones <kbd>Ctrl</kbd>+<kbd>M</kbd>, <kbd>Cmd</kbd>+<kbd>M</kbd>, <kbd>Alt</kbd>+<kbd>M</kbd> NO se interceptan (son atajos del SO).</p>
+            </details>
+
+            <details>
+              <summary>Glosario</summary>
+              <dl class="b1-help-dl">
+                <dt>IAS</dt><dd>Indicated Airspeed &mdash; velocidad indicada por el anemometro.</dd>
+                <dt>TAS</dt><dd>True Airspeed &mdash; velocidad real respecto al aire.</dd>
+                <dt>GS</dt><dd>Ground Speed &mdash; velocidad respecto al suelo (TAS + viento).</dd>
+                <dt>PA</dt><dd>Pressure Altitude &mdash; FL &times; 100.</dd>
+                <dt>DA</dt><dd>Density Altitude &mdash; PA corregida por temperatura.</dd>
+                <dt>FL</dt><dd>Flight Level &mdash; altitud en centenares de pies (FL250 = 25 000 ft).</dd>
+                <dt>OAT</dt><dd>Outside Air Temperature.</dd>
+                <dt>ISA</dt><dd>International Standard Atmosphere.</dd>
+                <dt>BINGO</dt><dd>Combustible minimo para regresar a origen sin reservas.</dd>
+                <dt>JOKER</dt><dd>Combustible para empezar el regreso (BINGO + reserva).</dd>
+                <dt>TSA</dt><dd>Temporary Segregated Area &mdash; zona reservada temporalmente.</dd>
+                <dt>NOTAM</dt><dd>Notice to Air Missions.</dd>
+                <dt>ICAO</dt><dd>Codigo aeronautico de 4 letras (ej. LEMD).</dd>
+                <dt>WMS</dt><dd>Web Map Service &mdash; capas raster de EUMETSAT.</dd>
+                <dt>METAR / TAF</dt><dd>Observacion / pronostico aeronautico.</dd>
+                <dt>SIGMET</dt><dd>Significant Meteorological Information.</dd>
+              </dl>
+            </details>
+
+            <details>
+              <summary>Persistencia y recuperacion</summary>
+              <ul>
+                <li>El estado del layout (seccion activa, anchos del panel/drawer) se guarda en <code>localStorage</code> bajo la clave <code>tsagestor_b1_layout</code>.</li>
+                <li>Los planes calculados pueden guardarse desde la seccion Plan (lista <b>Planes guardados</b>).</li>
+                <li>Para resetear el layout: borra la clave en DevTools o ejecuta <code>localStorage.removeItem('tsagestor_b1_layout')</code> y recarga.</li>
+              </ul>
+            </details>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   // ── Construye la estructura B1 e inyecta antes del primer hijo ───
   function _buildShell() {
     _shell = document.createElement('div');
@@ -145,6 +312,13 @@ window.TSAgestor.b1Layout = (function () {
         </div>
         <nav class="b1-stepper" role="tablist" aria-label="Secciones de la aplicación"></nav>
         <div class="b1-actions">
+          <button class="b1-icon-btn" id="b1-help-btn" title="Ayuda" aria-label="Abrir ayuda">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          </button>
           <button class="b1-icon-btn" id="b1-export-btn" title="Exportar PDF" aria-label="Exportar PDF">📄</button>
           <button class="b1-icon-btn" id="b1-toggle-panel" title="Tecla M: cicla panel" aria-label="Alternar panel">⇔</button>
         </div>
@@ -166,6 +340,7 @@ window.TSAgestor.b1Layout = (function () {
           <div class="b1-drawer-body" id="b1-drawer-body"></div>
         </section>
       </div>
+      ${_buildHelpModalHTML()}
     `;
     document.body.insertBefore(_shell, document.body.firstChild);
     // Aplica ancho persistido al panel.
@@ -387,7 +562,32 @@ window.TSAgestor.b1Layout = (function () {
         if (exp) exp.click();
         return;
       }
+      // Boton ayuda (?) -> abre modal
+      if (e.target.closest && e.target.closest('#b1-help-btn')) {
+        _openHelpModal();
+        return;
+      }
     });
+    // Cierre del modal de ayuda: boton X o backdrop. Esc lo cubre el
+    // handler de teclado via la clase .modal:not(.hidden).
+    const helpModal = _shell.querySelector('#b1-help-modal');
+    if (helpModal) {
+      helpModal.addEventListener('click', (e) => {
+        if (e.target.id === 'b1-help-close' || e.target.id === 'b1-help-backdrop'
+            || (e.target.closest && e.target.closest('#b1-help-close'))) {
+          _closeHelpModal();
+        }
+      });
+    }
+  }
+
+  function _openHelpModal() {
+    const m = _shell && _shell.querySelector('#b1-help-modal');
+    if (m) m.classList.remove('hidden');
+  }
+  function _closeHelpModal() {
+    const m = _shell && _shell.querySelector('#b1-help-modal');
+    if (m) m.classList.add('hidden');
   }
 
   // ── Tecla M cicla panel; Esc cierra drawer ───────────────────────
@@ -402,13 +602,21 @@ window.TSAgestor.b1Layout = (function () {
       if ((e.key === 'm' || e.key === 'M') && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         _cyclePanelState();
-      } else if (e.key === 'Escape' && state.drawerState !== 'closed') {
-        // Si hay un modal visible delante, deja que el modal capture Esc.
+      } else if (e.key === 'Escape') {
+        // Prioridad de Esc: 1) cerrar modal de ayuda si esta abierto,
+        // 2) dejar pasar a otros modals visibles, 3) cerrar drawer.
+        const helpModal = _shell && _shell.querySelector('#b1-help-modal');
+        if (helpModal && !helpModal.classList.contains('hidden')) {
+          _closeHelpModal();
+          return;
+        }
         const modalOpen = document.querySelector('.modal:not(.hidden), [role="dialog"]:not(.hidden)');
         if (modalOpen) return;
-        state.drawerState = 'closed';
-        _shell.setAttribute('data-drawer-state', 'closed');
-        _saveState();
+        if (state.drawerState !== 'closed') {
+          state.drawerState = 'closed';
+          _shell.setAttribute('data-drawer-state', 'closed');
+          _saveState();
+        }
       }
     });
   }

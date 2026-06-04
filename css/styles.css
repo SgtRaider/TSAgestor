@@ -4234,3 +4234,147 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
     bottom: calc(var(--b1-drawer-effective-h, 0px) + 38vh + var(--sp-2));
   }
 }
+
+/* ============================================================
+   Modal de ayuda
+   ------------------------------------------------------------
+   Estructura: backdrop + content centrado, con header sticky
+   y body con scroll. Sigue la clase comodin .modal para que el
+   handler de Esc lo trate como un dialog que debe interceptarse.
+   ============================================================ */
+.b1-help-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+}
+.b1-help-modal.hidden { display: none; }
+.b1-help-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+}
+.b1-help-content {
+  position: relative;
+  width: min(900px, calc(100vw - var(--sp-6, 24px)));
+  max-height: calc(100vh - var(--sp-6, 24px));
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg, 10px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--text);
+}
+.b1-help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.18);
+}
+.b1-help-head h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.3px;
+}
+.b1-help-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp-3) var(--sp-4);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.b1-help-body details {
+  margin: 0 0 var(--sp-2) 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 6px);
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+.b1-help-body details[open] {
+  background: rgba(255, 255, 255, 0.05);
+}
+.b1-help-body summary {
+  cursor: pointer;
+  padding: 10px var(--sp-3);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ea-amarillo, #fbbf24);
+  list-style: none;
+  user-select: none;
+}
+.b1-help-body summary::-webkit-details-marker { display: none; }
+.b1-help-body summary::before {
+  content: '▸ ';
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform 0.15s ease;
+}
+.b1-help-body details[open] > summary::before {
+  transform: rotate(90deg);
+}
+.b1-help-body details > *:not(summary) {
+  padding: 0 var(--sp-3) var(--sp-2) var(--sp-3);
+}
+.b1-help-body p { margin: var(--sp-2) 0; }
+.b1-help-body ul, .b1-help-body ol { margin: var(--sp-2) 0; padding-left: 22px; }
+.b1-help-body ul ul { margin: 4px 0; }
+.b1-help-body li { margin: 3px 0; }
+.b1-help-body code {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  color: var(--ea-azul-cielo, #93c5fd);
+}
+.b1-help-body kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+  color: #fff;
+  min-width: 18px;
+  text-align: center;
+}
+.b1-help-shortcuts {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-2) 0;
+}
+.b1-help-shortcuts td {
+  padding: 6px var(--sp-2);
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.b1-help-shortcuts td:first-child {
+  white-space: nowrap;
+  width: 1%;
+}
+.b1-help-dl {
+  display: grid;
+  grid-template-columns: minmax(80px, max-content) 1fr;
+  gap: 4px var(--sp-3);
+  margin: var(--sp-2) 0;
+}
+.b1-help-dl dt {
+  font-weight: 700;
+  color: var(--ea-azul-cielo, #93c5fd);
+}
+.b1-help-dl dd { margin: 0; }
