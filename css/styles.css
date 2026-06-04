@@ -3985,15 +3985,18 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
-/* Banner flotante de 'Dibujar ruta' encima del mapa. Se posiciona
-   por ENCIMA del drawer inferior (sumando --b1-drawer-effective-h
-   al bottom) para que no quede tapado al abrir el drawer. */
+/* Banner flotante de 'Dibujar ruta' encima del mapa. position: fixed
+   para SACARLO del stacking context de .b1-map-zone (z-index:1) y
+   poder superponerlo a panel (50), drawer (60), header (100) y la
+   b1-map-toolbar (500). z-index 9000 lo deja justo por debajo de los
+   modales (9999/99999) - no debe taparlos. Se posiciona por encima
+   del drawer sumando --b1-drawer-effective-h al bottom. */
 .b1-map-zone > .b1-draw-banner {
-  position: absolute;
+  position: fixed;
   left: 50%;
   bottom: calc(var(--b1-drawer-effective-h, 0px) + var(--sp-3));
   transform: translateX(-50%);
-  z-index: 70;
+  z-index: 9000;
   pointer-events: auto;
   /* Sobreescribe el fondo casi transparente del .draw-banner original
      (rgba(251,191,36,0.15)) para que sea legible sobre el mapa. */
