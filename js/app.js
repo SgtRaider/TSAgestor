@@ -2228,9 +2228,15 @@
       const iasCell = (isFirst || isHold)
         ? '<td>—</td>'
         : `<td><input type="number" class="leg-input leg-vel" data-leg="${r.index}" data-field="speedKt" value="${iasVal}" min="50" max="900" step="5" title="Velocidad indicada (KIAS)"></td>`;
+      // Tooltip enriquecido: si hay datos de meteo cargados, mostramos
+      // la Density Altitude usada (y la OAT media) para que el piloto
+      // entienda por que la TAS no coincide con el lookup ISA puro.
+      const tasTip = Number.isFinite(r.legDaFt) && r.legOatC != null
+        ? `TAS = kiasToTAS(${Math.round(r.legIAS)} kt, DA ${Math.round(r.legDaFt)} ft) · OAT media ${r.legOatC.toFixed(1)}°C`
+        : 'TAS calculada (tabla KIAS×altitud densidad — asume ISA si no hay meteo)';
       const tasCell = (isFirst || isHold)
         ? '<td>—</td>'
-        : `<td class="cell-tas" title="TAS calculada (tabla KIAS×altitud)">${Math.round(r.legSpeedKt)}</td>`;
+        : `<td class="cell-tas" title="${tasTip}">${Math.round(r.legSpeedKt)}</td>`;
       const flowCell = isFirst
         ? '<td>—</td>'
         : `<td><input type="number" class="leg-input leg-flow" data-leg="${r.index}" data-field="fuelFlow" value="${Math.round(r.legFuelFlow)}" min="0" step="10"></td>`;

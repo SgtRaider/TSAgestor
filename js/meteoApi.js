@@ -361,6 +361,7 @@ window.TSAgestor.meteoApi = (function () {
     const lons = points.map(p => p.lon.toFixed(4)).join(',');
     const vars = ISA_LEVELS.flatMap(l => [
       `wind_speed_${l.hPa}hPa`, `wind_direction_${l.hPa}hPa`,
+      `temperature_${l.hPa}hPa`,
     ]).join(',');
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
                 `&hourly=${vars}&windspeed_unit=kn&past_days=2&forecast_days=7&timezone=UTC`;
@@ -377,8 +378,11 @@ window.TSAgestor.meteoApi = (function () {
         const byLevel = {};
         for (const lv of ISA_LEVELS) {
           byLevel[String(lv.hPa)] = {
-            windSpeedKt: (d.hourly && d.hourly[`wind_speed_${lv.hPa}hPa`]) || [],
-            windDir:     (d.hourly && d.hourly[`wind_direction_${lv.hPa}hPa`]) || [],
+            windSpeedKt:  (d.hourly && d.hourly[`wind_speed_${lv.hPa}hPa`])     || [],
+            windDir:      (d.hourly && d.hourly[`wind_direction_${lv.hPa}hPa`]) || [],
+            // Temperatura por nivel para calcular Density Altitude por
+            // waypoint. Open-Meteo devuelve grados Celsius.
+            temperatureC: (d.hourly && d.hourly[`temperature_${lv.hPa}hPa`])    || [],
           };
         }
         return { times, byLevel };
@@ -400,9 +404,10 @@ window.TSAgestor.meteoApi = (function () {
         if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
       }
       return {
-        windSpeedKt: pointHourly.windSpeedKt[bestIdx],
-        windDir:     pointHourly.windDir[bestIdx],
-        atTime:      pointHourly.times[bestIdx] + 'Z',
+        windSpeedKt:  pointHourly.windSpeedKt[bestIdx],
+        windDir:      pointHourly.windDir[bestIdx],
+        temperatureC: pointHourly.temperatureC ? pointHourly.temperatureC[bestIdx] : null,
+        atTime:       pointHourly.times[bestIdx] + 'Z',
       };
     }
     // Tiempo mas cercano a atMs.
@@ -445,9 +450,18 @@ window.TSAgestor.meteoApi = (function () {
     const speed = Math.sqrt(u * u + v * v);
     let dir = Math.atan2(-u, -v) * 180 / Math.PI;
     if (dir < 0) dir += 360;
+    // Temperatura interpolada linealmente entre niveles. Si uno de los
+    // dos niveles no trae temperatura, usamos el que si tenga.
+    const tLo = dLo.temperatureC ? dLo.temperatureC[bestIdx] : null;
+    const tHi = dHi.temperatureC ? dHi.temperatureC[bestIdx] : null;
+    let temperatureC = null;
+    if (Number.isFinite(tLo) && Number.isFinite(tHi))      temperatureC = tLo + (tHi - tLo) * t;
+    else if (Number.isFinite(tLo))                         temperatureC = tLo;
+    else if (Number.isFinite(tHi))                         temperatureC = tHi;
     return {
       windSpeedKt: speed,
       windDir: dir,
+      temperatureC,
       atTime,
       levelLo: lo,
       levelHi: hi,

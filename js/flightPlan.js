@@ -877,23 +877,44 @@ window.TSAgestor.flightPlan = (function () {
       const dur = (o.etaBest - o.etaA);
       let totalHrs = 0, totalGs = 0;
       let sumU = 0, sumV = 0, sumHw = 0, cnt = 0;
+      let sumTas = 0, sumDa = 0;          // medias TAS / DA (con correccion por OAT)
+      let sumOat = 0, cntOat = 0;
       let flMin = Infinity, flMax = -Infinity;
       for (let s = 0; s < nSubs; s++) {
         const tMid = (s + 0.5) / nSubs;
         const flMid = o.flA + (o.flB - o.flA) * tMid;
         flMin = Math.min(flMin, flMid); flMax = Math.max(flMax, flMid);
         const etaMid = o.etaA + dur * tMid;
-        // Viento en el extremo previo y posterior, ambos al FL del sub-leg;
-        // luego mezcla ponderada por la posicion del sub-leg.
+        // Viento + temperatura en el extremo previo y posterior, ambos
+        // al FL del sub-leg; luego mezcla ponderada por la posicion.
         const wA = o.phA ? lookupAt(o.phA, etaMid, flMid) : null;
         const wB = o.phB ? lookupAt(o.phB, etaMid, flMid) : null;
         const wSub = blendByPosition(wA, wB, tMid);
+        // OAT al sub-leg = blend lineal de la temperatura de los dos
+        // puntos (sin coord vectorial, es escalar). Si solo hay una,
+        // la usamos directamente. Si no hay ninguna, queda null y
+        // densityAltitudeFt caera a PA (ISA assumption).
+        const tA = wA && Number.isFinite(wA.temperatureC) ? wA.temperatureC : null;
+        const tB = wB && Number.isFinite(wB.temperatureC) ? wB.temperatureC : null;
+        let oatC = null;
+        if (tA != null && tB != null) oatC = tA * (1 - tMid) + tB * tMid;
+        else if (tA != null)          oatC = tA;
+        else if (tB != null)          oatC = tB;
         // TAS al FL del sub-leg: si nos pasaron `ias`, recalculamos
-        // (la densidad cae con la altura, asi que TAS sube). Si no,
-        // usamos el TAS fijo `o.tas` (compat hacia atras).
+        // usando Density Altitude (PA + correccion por desviacion de
+        // ISA) en vez de PA en bruto. Eso significa que en dias calidos
+        // (OAT > ISA) la DA sube y la TAS para una KIAS dada tambien.
+        // Si no hay OAT disponible, geom.densityAltitudeFt devuelve PA.
+        const paFt = flMid * 100;
+        const daFt = (geom.densityAltitudeFt)
+          ? geom.densityAltitudeFt(paFt, oatC)
+          : paFt;
         const tasSub = o.ias != null
-          ? (geom.kiasToTAS ? geom.kiasToTAS(o.ias, flMid * 100) : o.ias)
+          ? (geom.kiasToTAS ? geom.kiasToTAS(o.ias, daFt) : o.ias)
           : o.tas;
+        sumTas += tasSub;
+        sumDa  += daFt;
+        if (Number.isFinite(oatC)) { sumOat += oatC; cntOat++; }
         let gs = tasSub;
         let hw = 0;
         if (wSub) {
@@ -919,6 +940,9 @@ window.TSAgestor.flightPlan = (function () {
       return {
         hours: totalHrs,
         avgGs: totalGs / nSubs,
+        avgTas: sumTas / nSubs,                          // TAS media corregida por DA
+        avgDa:  sumDa  / nSubs,                          // DA media usada en el lookup
+        avgOatC: cntOat > 0 ? sumOat / cntOat : null,    // OAT media (null si no hay datos)
         avgWind,
         nSubs,
         flMin: flMin === Infinity ? null : flMin,
@@ -1052,6 +1076,13 @@ window.TSAgestor.flightPlan = (function () {
 
       let track = null, windInfo = null, gs = tasPerLeg[i];
       let legHoursOverride = null;
+      // TAS y DA representativas del leg para mostrar en el log. Si los
+      // vientos estan cargados, integrateLeg las devuelve corregidas
+      // por OAT (Density Altitude real); si no, caen al estimate
+      // ISA pre-meteo (tasPerLeg, sin correccion por temperatura).
+      let legTas = tasPerLeg[i];
+      let legDaFt = (flPerWp[i] != null ? flPerWp[i] : cruiseFL) * 100;
+      let legOatC = null;
       // Calculamos siempre el track del leg (heading magnetic-true sin
       // declinacion -- bearing geodesico). Lo necesita la columna
       // "Tramo (HDG/NM)" del log incluso si no hay vientos cargados.
@@ -1067,6 +1098,12 @@ window.TSAgestor.flightPlan = (function () {
           phA: windsHourly[i - 1], phB: windsHourly[i],
           etaA: etas[i - 1], etaBest: etas[i],
         });
+        // Aunque no haya viento utilizable (avgWind=null), integrateLeg
+        // si calcula TAS por DA si la temperatura existe. Adoptamos
+        // siempre avgTas / avgDa / avgOatC para reflejar la correccion.
+        if (Number.isFinite(res.avgTas)) legTas  = res.avgTas;
+        if (Number.isFinite(res.avgDa))  legDaFt = res.avgDa;
+        if (res.avgOatC != null)         legOatC = res.avgOatC;
         if (res.avgWind) {
           gs = res.avgGs;
           legHoursOverride = res.hours;
@@ -1111,7 +1148,9 @@ window.TSAgestor.flightPlan = (function () {
         legDistNM: legNM,
         legTrack: track,                            // heading geodesico del leg (deg, 0-360) o null para el primer waypoint
         legIAS: iasPerLeg[i],                      // velocidad indicada (input)
-        legSpeedKt: tasPerLeg[i],                  // TAS (KIAS corregida por densidad)
+        legSpeedKt: legTas,                        // TAS = kiasToTAS(IAS, DA) — DA usa OAT real si hay viento cargado
+        legDaFt: legDaFt,                          // altitud densidad usada (ft)
+        legOatC: legOatC,                          // OAT media del leg (null si no hay meteo)
         legGS: i === 0 ? null : gs,                // GS = TAS + componente viento
         legFuelFlow: segFlow,
         wind: windInfo,

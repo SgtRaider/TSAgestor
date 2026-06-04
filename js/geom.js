@@ -170,6 +170,28 @@ window.TSAgestor.geom = (function () {
     return v0 + (v1 - v0) * tr;
   }
 
+  // ─── Density Altitude ─────────────────────────────────────────────
+  // Para que el lookup TAS sea correcto cuando la atmosfera real difiere
+  // del modelo ISA. En dias calidos a la cota de cruise, la DA puede
+  // ser >2000 ft por encima del FL (densidad menor -> TAS mas alta para
+  // la misma KIAS).
+  //
+  // ISA temp (°C) en altitud de presion PA (ft): 15 - 1.98 * PA/1000.
+  function isaTempC(paFt) {
+    if (!Number.isFinite(paFt)) return 15;
+    return 15 - 1.98 * (paFt / 1000);
+  }
+  // Density Altitude (ft) por la regla estandar de aviacion:
+  //   DA = PA + 118.8 * (OAT - ISA_temp(PA))
+  // (118.8 es el factor empirico usado en cartas y formularios POH;
+  // a veces se ve redondeado a 120). Si OAT no esta disponible,
+  // devuelve PA (asume ISA).
+  function densityAltitudeFt(paFt, oatC) {
+    if (!Number.isFinite(paFt)) return paFt;
+    if (!Number.isFinite(oatC)) return paFt;
+    return paFt + 118.8 * (oatC - isaTempC(paFt));
+  }
+
   // Distancia mínima de un punto P a un segmento geodésico AB (km).
   function pointToSegmentKm(P, A, B) {
     const dAB = greatCircleDistance(A, B);
@@ -207,5 +229,7 @@ window.TSAgestor.geom = (function () {
     pointToSegmentKm,
     pointToPolylineKm,
     kiasToTAS,
+    isaTempC,
+    densityAltitudeFt,
   };
 })();
