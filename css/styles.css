@@ -4379,6 +4379,28 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   gap: var(--sp-2);
 }
 #btn-live-table-toggle { margin-left: auto; font-size: 11px; }
+
+/* F3.5: vista previa de los primeros WPs en preflight. */
+#live-preflight-preview { margin-top: var(--sp-3); }
+.live-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.live-preview-table th,
+.live-preview-table td {
+  padding: 4px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.live-preview-table th {
+  font-weight: 700;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+.live-preview-table tr.live-row-sub { opacity: 0.7; font-style: italic; }
 /* Log live (drawer) */
 .live-log-head {
   display: flex; align-items: baseline; justify-content: space-between;
@@ -4420,13 +4442,24 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
 .live-fuel-input {
   width: 70px; padding: 2px 4px; font-size: 12px;
   background: var(--bg); color: var(--text);
-  border: 1px solid var(--border); border-radius: 3px;
+  /* F3.2: borde reforzado y cursor pointer para que sea obvio que es editable. */
+  border: 2px dashed rgba(251, 191, 36, 0.55);
+  border-radius: 3px;
   font-family: 'JetBrains Mono', Consolas, monospace;
   text-align: right;
+  cursor: text;
 }
+.live-fuel-input::placeholder {
+  color: var(--text-mute);
+  font-style: italic;
+  font-size: 10px;
+}
+.live-fuel-input:hover { border-color: var(--ea-amarillo, #fbbf24); }
 .live-fuel-input:focus {
   outline: none;
+  border-style: solid;
   border-color: var(--ea-amarillo, #fbbf24);
+  background: rgba(251, 191, 36, 0.08);
 }
 .live-fuel-overridden {
   border-color: var(--ea-amarillo, #fbbf24);
