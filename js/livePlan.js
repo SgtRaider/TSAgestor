@@ -569,10 +569,17 @@ window.TSAgestor.livePlan = (function () {
     const remaining = session.coords.slice(startIdx);
     const points = remaining.map(c => ({ lat: c.lat, lon: c.lon }));
     _refetchInFlight = true;
+    // F2.x sale render aqui para que el spinner "⏳ Refrescando vientos
+    // en altura..." aparezca DURANTE el fetch, no solo al final.
+    _refresh();
     try {
       const result = await meteo.fetchWindsAloft(points);
       const ph = result && result.pointsHourly;
-      if (!ph || !ph.length) { _refetchInFlight = false; return; }
+      if (!ph || !ph.length) {
+        _refetchInFlight = false;
+        _refresh(); // limpia el spinner
+        return;
+      }
       // Buffers paralelos: tiempos, TAS, DA, OAT por leg. legTimes[0]
       // queda a 0 (padding para que el indice local k - startIdx mapee
       // directo al leg k).
@@ -635,19 +642,25 @@ window.TSAgestor.livePlan = (function () {
         fetchedAt: Date.now(),
         isaDeviations,
       };
+      // F2.x bug fix: poner el flag a false ANTES de _refresh para que
+      // _renderEval ya no muestre el spinner cuando recompone el DOM.
+      // El antiguo `finally { _refetchInFlight = false }` corria DESPUES
+      // del ultimo _refresh y dejaba el spinner colgado para siempre.
+      _refetchInFlight = false;
       _saveSession();
       _refresh();
     } catch (e) {
       console.warn('[livePlan] refetch winds fallo:', e && e.message ? e.message : e);
-      // F2.x: no rompe la UI; el usuario sigue con cached. Toast warn.
+      // Mismo patron: limpiar flag y refrescar para quitar el spinner
+      // antes de mostrar el toast de error.
+      _refetchInFlight = false;
+      _refresh();
       _showToast({
         id: 'wind-refetch-fail', level: 'warn',
         title: 'Refresh de viento falló',
         message: (e && e.message) ? e.message : 'Error desconocido',
         autoDismissMs: 6000,
       });
-    } finally {
-      _refetchInFlight = false;
     }
   }
 
@@ -1465,21 +1478,30 @@ window.TSAgestor.livePlan = (function () {
     const backBtn = $('btn-live-back');
     if (backBtn) backBtn.disabled = (curr <= 0);
 
+    // RTB: actualiza texto del boton segun estado + banner visible.
+    const rtbBtn = $('btn-live-rtb');
+    if (rtbBtn) {
+      if (session.rtbEngaged) {
+        rtbBtn.textContent = '✗ Cancelar RTB';
+        rtbBtn.title = 'Cancela el modo retorno y restaura el plan original';
+        rtbBtn.classList.add('btn-warn-active');
+      } else {
+        rtbBtn.textContent = '↩ Vuelta a base';
+        rtbBtn.title = 'Evalúa la vuelta inmediata al aeródromo de origen desde la posición actual';
+        rtbBtn.classList.remove('btn-warn-active');
+      }
+    }
     // F2.9: stats enriquecidos. Todos toleran undefined / NaN.
     const t0Ms = session.actualPassTimes[0];
-    const lastIdx = session.coords.length - 1;
     const nowMs = Date.now();
-    // Tiempo transcurrido desde el primer paso registrado (despegue)
     if ($('live-time-elapsed')) {
       const elapsed = Number.isFinite(t0Ms) ? (nowMs - t0Ms) : null;
       $('live-time-elapsed').textContent = elapsed != null && elapsed >= 0 ? _fmtDuration(elapsed) : '—';
     }
-    // Tiempo restante hasta ETA destino
     if ($('live-time-remaining')) {
       const remain = destRow && Number.isFinite(destRow.liveEta) ? (destRow.liveEta - nowMs) : null;
-      $('live-time-remaining').textContent = remain != null && remain >= 0 ? _fmtDuration(remain) : (remain != null ? '—' : '—');
+      $('live-time-remaining').textContent = remain != null && remain >= 0 ? _fmtDuration(remain) : '—';
     }
-    // Distancia recorrida vs total (suma de legNM hasta currentIdx)
     if ($('live-dist-progress')) {
       let doneNm = 0;
       for (let k = 1; k <= curr; k++) {
@@ -1489,11 +1511,9 @@ window.TSAgestor.livePlan = (function () {
       const total = Number.isFinite(session.totalDistNM) ? session.totalDistNM : 0;
       $('live-dist-progress').textContent = `${Math.round(doneNm)} / ${Math.round(total)} NM`;
     }
-    // GS estimada del leg en curso (= leg que termina en next)
     if ($('live-leg-gs')) {
       let gs = null;
       if (next != null) {
-        // Si refetched cubre este leg, calcula gs = legNM / legTimeMin * 60
         const lp = session.legPlan[next];
         const tMin = _legTimeMinAt(next);
         if (lp && Number.isFinite(lp.legNM) && lp.legNM > 0 && Number.isFinite(tMin) && tMin > 0) {
@@ -1504,6 +1524,33 @@ window.TSAgestor.livePlan = (function () {
       }
       $('live-leg-gs').textContent = Number.isFinite(gs) ? Math.round(gs) + ' kt' : '—';
     }
+    // Banner persistente en la card de Estado cuando RTB activo.
+    _renderRtbBanner();
+  }
+
+  function _renderRtbBanner() {
+    const statusCard = document.querySelector('.live-status-card');
+    if (!statusCard) return;
+    let banner = document.getElementById('live-rtb-banner');
+    if (!session || !session.rtbEngaged) {
+      if (banner) banner.remove();
+      statusCard.classList.remove('live-status-card-rtb');
+      return;
+    }
+    statusCard.classList.add('live-status-card-rtb');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'live-rtb-banner';
+      banner.className = 'live-rtb-banner';
+      const head = statusCard.querySelector('.live-card-head');
+      if (head && head.nextSibling) {
+        statusCard.insertBefore(banner, head.nextSibling);
+      } else {
+        statusCard.appendChild(banner);
+      }
+    }
+    banner.innerHTML = '<span class="live-rtb-title">↩ MODO RETORNO</span> ' +
+      '<span class="dim">Plan reescrito hacia origen. Pulsa "Cancelar RTB" para volver al plan original.</span>';
   }
 
   // ── Render: tabla log live ─────────────────────────────────────────
@@ -1756,11 +1803,43 @@ window.TSAgestor.livePlan = (function () {
     _saveSession();
     _refresh();
   }
+  // RTB: toggle entre engage (reconstruye la sesion como vuelta a base)
+  // y cancel (restaura la sesion original guardada en snapshot).
   function _showRtbInline() {
     if (!session) return;
+    if (session.rtbEngaged) {
+      // Toggle: cancelar RTB y volver al plan original.
+      if (!confirm('¿Cancelar el modo RTB y volver al plan de vuelo original?')) return;
+      _cancelRTB();
+      _showToast({
+        id: 'rtb-cancelled', level: 'info',
+        title: '✓ RTB cancelado',
+        message: 'Sesión Live restaurada al plan original.',
+        autoDismissMs: 5000,
+      });
+      return;
+    }
+    _engageRTB();
+  }
+
+  // F-RTB: engage modo retorno. Calcula la viabilidad, pide confirmacion
+  // mostrando los numeros clave, y si el operador confirma reconstruye
+  // la sesion Live tomando como ruta el camino inverso desde la posicion
+  // actual hasta origen. Conserva un snapshot para poder cancelar.
+  function _engageRTB() {
+    if (!session || !session.started) return;
+    if (session.currentIdx <= 0) {
+      _showToast({ id: 'rtb-result', level: 'info',
+        title: 'Ya estás en origen', message: 'No hay nada a lo que volver.', autoDismissMs: 3000 });
+      return;
+    }
     const r = _evalRTB();
-    if (!r) { alert('No hay datos suficientes para evaluar RTB.'); return; }
-    if (r.distanceNM === 0) { alert('Ya estás en origen.'); return; }
+    if (!r) {
+      _showToast({ id: 'rtb-result', level: 'warn',
+        title: 'No se pudo evaluar RTB', message: 'Faltan datos del plan.', autoDismissMs: 5000 });
+      return;
+    }
+    const ok = r.ok ? '✓ FACTIBLE (margen sobre BINGO)' : '⚠ NO FACTIBLE con BINGO actual';
     const txt =
       `Vuelta a base desde WP ${session.currentIdx + 1}:\n\n` +
       `Distancia (inversa por waypoints): ${r.distanceNM.toFixed(0)} NM\n` +
@@ -1769,8 +1848,131 @@ window.TSAgestor.livePlan = (function () {
       `Combustible ahora: ${_fmtFuel(r.fuelNow)}\n` +
       `Quedaría al llegar: ${_fmtFuel(r.fuelAfterRtb)}\n` +
       `BINGO: ${_fmtFuel(r.bingo)}\n\n` +
-      (r.ok ? '✓ FACTIBLE (margen sobre BINGO).' : '⚠ NO FACTIBLE con BINGO actual.');
-    alert(txt);
+      `${ok}\n\n` +
+      `¿Engage RTB? Reconstruirá el log con la ruta de retorno (current → origen).`;
+    if (!confirm(txt)) return;
+
+    // Snapshot completo para poder cancelar.
+    session.preRtbSnapshot = {
+      coords: session.coords,
+      plannedEtas: session.plannedEtas,
+      plannedFuelRest: session.plannedFuelRest,
+      legPlan: session.legPlan,
+      totalDistNM: session.totalDistNM,
+      currentIdx: session.currentIdx,
+      actualPassTimes: Object.assign({}, session.actualPassTimes),
+      liveHolds: Object.assign({}, session.liveHolds),
+      overrides: session.overrides ? Object.assign({}, session.overrides) : null,
+      fuelOverrides: Object.assign({}, session.fuelOverrides || {}),
+      alertedWPs: Object.assign({}, session.alertedWPs || {}),
+      refetched: session.refetched,
+      // El planId se conserva como ref pero la nueva session ya no
+      // corresponde al hash del plan -> no preservamos hash check.
+    };
+
+    // Construye la ruta inversa: posicion actual + WPs precedentes
+    // hasta origen. Salta sub-legs (al volver no se simulan).
+    const curIdx = session.currentIdx;
+    const returnCoords = [];
+    for (let k = curIdx; k >= 0; k--) {
+      const c = session.coords[k];
+      if (c.isSub) continue; // sub-legs no son posiciones reales
+      returnCoords.push({
+        name: (k === curIdx ? c.name + ' (RTB)' : c.name),
+        lat: c.lat, lon: c.lon,
+        fl: c.fl,
+        originalIdx: k,
+        isSub: false,
+      });
+    }
+    if (returnCoords.length < 2) {
+      _showToast({ id: 'rtb-result', level: 'warn',
+        title: 'RTB no construible', message: 'No hay WPs reales en el camino inverso.', autoDismissMs: 5000 });
+      return;
+    }
+
+    // Parámetros del retorno: usa override si activo, sino plan inicial.
+    const ov = session.overrides;
+    const ias  = (ov && Number.isFinite(ov.ias))  ? ov.ias  : (_planIasFromPlan() || 120);
+    const flow = (ov && Number.isFinite(ov.flow)) ? ov.flow : session.fuelOpts.fuelFlow;
+
+    // Tiempo de partida = paso real en current, o ahora.
+    const startTime  = session.actualPassTimes[curIdx] || Date.now();
+    const initialFuel = _computeFuelRest(curIdx);
+
+    // Reconstruye legPlan + ETAs + fuel. Sin viento (aprox conservadora;
+    // _refetchWinds tras engage refrescará GS/ETAs con datos reales).
+    const newLegPlan    = [{ ias: null, tas: null, gs: null, legNM: 0, legTimeMin: 0, legFuel: 0, flow: 0, wind: null }];
+    const newEtas       = [startTime];
+    const newFuelRest   = [initialFuel];
+    let cumNm = 0, cumFuel = 0, etaMs = startTime;
+    for (let i = 1; i < returnCoords.length; i++) {
+      const A = returnCoords[i - 1], B = returnCoords[i];
+      const km = _greatCircleKM(A.lat, A.lon, B.lat, B.lon);
+      const nm = km / 1.852;
+      cumNm += nm;
+      // TAS conservadora = IAS (sin correccion DA). _refetchWinds la
+      // recalculara con OAT real tras engage.
+      const tas = ias;
+      const gs  = tas;
+      const timeMin = (nm / Math.max(gs, 30)) * 60;
+      const legFuel = (timeMin / 60) * flow;
+      cumFuel += legFuel;
+      etaMs += timeMin * 60000;
+      newLegPlan.push({ ias, tas, gs, legNM: nm, legTimeMin: timeMin, legFuel, flow, wind: null });
+      newEtas.push(etaMs);
+      newFuelRest.push(Math.max(0, initialFuel - cumFuel));
+    }
+
+    // Sustituye la sesion con el plan de retorno.
+    session.coords          = returnCoords;
+    session.plannedEtas     = newEtas;
+    session.plannedFuelRest = newFuelRest;
+    session.legPlan         = newLegPlan;
+    session.totalDistNM     = cumNm;
+    session.currentIdx      = 0;
+    session.actualPassTimes = { 0: startTime };
+    session.liveHolds       = {};
+    session.fuelOverrides   = {};
+    session.alertedWPs      = {};
+    session.refetched       = null;
+    session.rtbEngaged      = true;
+    // El initialFuel del fuelOpts se ajusta al combustible REAL en el
+    // momento de engage para que la propagacion downstream cuadre.
+    session.fuelOpts = Object.assign({}, session.fuelOpts, { initialFuel });
+
+    _saveSession();
+    _refresh();
+    // Refresca vientos para tener GS reales en la ruta de retorno.
+    _refetchWinds();
+
+    _showToast({
+      id: 'rtb-engaged', level: 'warn',
+      title: '↩ Modo RETORNO engaged',
+      message: `Log reconstruido (${returnCoords.length - 1} legs). Distancia ${cumNm.toFixed(0)} NM · ETA origen ${_fmtTime(etaMs)} UTC. Pulsa "Cancelar RTB" para volver al plan original.`,
+      autoDismissMs: 12000,
+    });
+  }
+
+  function _cancelRTB() {
+    if (!session || !session.rtbEngaged || !session.preRtbSnapshot) return;
+    const snap = session.preRtbSnapshot;
+    session.coords          = snap.coords;
+    session.plannedEtas     = snap.plannedEtas;
+    session.plannedFuelRest = snap.plannedFuelRest;
+    session.legPlan         = snap.legPlan;
+    session.totalDistNM     = snap.totalDistNM;
+    session.currentIdx      = snap.currentIdx;
+    session.actualPassTimes = snap.actualPassTimes;
+    session.liveHolds       = snap.liveHolds;
+    session.overrides       = snap.overrides;
+    session.fuelOverrides   = snap.fuelOverrides;
+    session.alertedWPs      = snap.alertedWPs;
+    session.refetched       = snap.refetched;
+    delete session.rtbEngaged;
+    delete session.preRtbSnapshot;
+    _saveSession();
+    _refresh();
   }
   function _resetSession() {
     if (!confirm('Resetear la sesión live al estado inicial? Se pierden todos los pasos, holds, overrides y correcciones de combustible.')) return;
