@@ -4584,6 +4584,38 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
 }
 .live-completed-list dd { margin: 0; color: var(--text); }
 .live-completed-list dd b { color: #fff; }
+.live-completed-actions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-2);
+  border-top: 1px solid rgba(34, 197, 94, 0.2);
+  flex-wrap: wrap;
+}
+
+/* Modo RETORNO (RTB) activo: banner + tinte del card de Estado */
+.live-status-card-rtb {
+  border-color: #f97316;
+  background: linear-gradient(180deg, rgba(249, 115, 22, 0.08), var(--bg-panel));
+}
+.live-rtb-banner {
+  margin: var(--sp-2) 0;
+  padding: var(--sp-2) var(--sp-3);
+  background: rgba(249, 115, 22, 0.12);
+  border: 1px solid rgba(249, 115, 22, 0.4);
+  border-radius: var(--r-md);
+  font-size: 13px;
+}
+.live-rtb-title {
+  font-weight: 700;
+  color: #fb923c;
+  letter-spacing: 0.4px;
+}
+.btn.btn-warn-active {
+  background: rgba(249, 115, 22, 0.18) !important;
+  border-color: #f97316 !important;
+  color: #fb923c !important;
+}
 
 /* Marcador "soy aqui" en el mapa (modo Live): halo pulsante rojo.
    Aplicado al SVG path generado por L.circleMarker via className. */

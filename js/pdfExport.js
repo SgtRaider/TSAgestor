@@ -573,5 +573,184 @@ window.TSAgestor.pdfExport = (function () {
     return fname;
   }
 
-  return { exportReport };
+  // F3.9: After Action Report — PDF con resumen de la sesion Live real
+  // vs plan original. snapshot es lo que devuelve
+  // livePlan.buildFlownSnapshot(): { meta, coords, plannedEtas,
+  // plannedFuelRest, actualPassTimes, fuelOverrides, ..., events[] }.
+  async function exportLiveDelta(snapshot) {
+    if (!window.jspdf || !window.jspdf.jsPDF) throw new Error('jsPDF no disponible');
+    if (!snapshot) throw new Error('snapshot vacío');
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    const margin = 14;
+    const pageW = doc.internal.pageSize.getWidth();
+    let y = margin;
+
+    // Sanitize WinAnsi (mismo patron que exportReport)
+    const SAFE_MAP = [
+      [/→/g, '->'], [/←/g, '<-'], [/↑/g, '^'], [/↓/g, 'v'],
+      [/≈/g, '~'], [/≥/g, '>='], [/≤/g, '<='],
+      [/✓/g, 'OK'], [/✗/g, 'X'], [/⚠/g, '!'], [/Δ/g, 'D'], [/↩/g, '<-'],
+    ];
+    function safe(s) {
+      if (s == null || typeof s !== 'string') return s;
+      let out = s;
+      for (const [re, rep] of SAFE_MAP) out = out.replace(re, rep);
+      return out;
+    }
+    function safeRow(row) {
+      return (row || []).map(c => {
+        if (typeof c === 'string') return safe(c);
+        if (c && typeof c === 'object' && typeof c.content === 'string') {
+          return Object.assign({}, c, { content: safe(c.content) });
+        }
+        return c;
+      });
+    }
+    const _origText = doc.text.bind(doc);
+    doc.text = function (str, x, y, opts2) {
+      if (Array.isArray(str)) str = str.map(safe);
+      else                    str = safe(str);
+      return _origText(str, x, y, opts2);
+    };
+    const _origAutoTable = doc.autoTable.bind(doc);
+    doc.autoTable = function (cfg) {
+      cfg = cfg || {};
+      if (Array.isArray(cfg.head)) cfg.head = cfg.head.map(safeRow);
+      if (Array.isArray(cfg.body)) cfg.body = cfg.body.map(safeRow);
+      return _origAutoTable(cfg);
+    };
+
+    // Cabecera institucional
+    const logo = await loadLogoDataURL();
+    const logoMaxH = 18;
+    let logoW = 0;
+    if (logo) {
+      const aspect = logo.w / logo.h;
+      logoW = logoMaxH * aspect;
+      doc.addImage(logo.dataUrl, 'PNG', margin, y, logoW, logoMaxH);
+    }
+    const textX = margin + (logoW ? logoW + 5 : 0);
+    const m = snapshot.meta || {};
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(15);
+    doc.setTextColor(0, 55, 100);
+    const title = `TSAgestor AAR — ${m.origin || '?'} → ${m.destination || '?'}` +
+                  (m.rtbEngaged ? ' (RTB)' : '');
+    doc.text(title, textX, y + 6);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(78, 115, 138);
+    doc.text('AFTER ACTION REPORT · Sesión Live real vs Plan original', textX, y + 11);
+    doc.setFontSize(8);
+    doc.setTextColor(120);
+    doc.text(`Generado: ${iso(new Date())}`, textX, y + 16);
+    y += logoMaxH + 2;
+    doc.setDrawColor(173, 46, 28);
+    doc.setLineWidth(0.6);
+    doc.line(margin, y, pageW / 2, y);
+    doc.setDrawColor(250, 194, 0);
+    doc.line(pageW / 2, y, pageW - margin, y);
+    y += 5;
+    doc.setTextColor(0);
+
+    // ── Resumen ──
+    y = sectionHeader(doc, 'Resumen del vuelo', y, margin);
+    const startMs = Number.isFinite(m.startMs) ? m.startMs : null;
+    const endMs   = Number.isFinite(m.endMs)   ? m.endMs   : null;
+    const planEndMs = Number.isFinite(m.planEndMs) ? m.planEndMs : null;
+    const planStartMs = Number.isFinite(m.planStartMs) ? m.planStartMs : null;
+    const realDurMin = (startMs && endMs) ? (endMs - startMs) / 60000 : null;
+    const planDurMin = (planStartMs && planEndMs) ? (planEndMs - planStartMs) / 60000 : null;
+    const deltaMin = (realDurMin != null && planDurMin != null) ? (realDurMin - planDurMin) : null;
+    const summary = [
+      ['Origen → Destino',    `${m.origin || '?'} -> ${m.destination || '?'}`],
+      ['Despegue (real)',     startMs ? formatUTC(new Date(startMs)) : '—'],
+      ['Aterrizaje (real)',   endMs   ? formatUTC(new Date(endMs))   : '—'],
+      ['Duración real',       realDurMin != null ? formatDuration(realDurMin) : '—'],
+      ['Duración planificada',planDurMin != null ? formatDuration(planDurMin) : '—'],
+      ['Delta ETA',           deltaMin != null ? `${deltaMin >= 0 ? '+' : ''}${Math.round(deltaMin)} min` : '—'],
+      ['Combustible inicial', m.initialFuel != null ? `${fmtNum(m.initialFuel)} ${m.fuelUnit || ''}` : '—'],
+      ['Combustible final',   m.finalFuel != null ? `${fmtNum(m.finalFuel)} ${m.fuelUnit || ''}` : '—'],
+      ['Consumo real',        m.fuelConsumed != null ? `${fmtNum(m.fuelConsumed)} ${m.fuelUnit || ''}` : '—'],
+      ['Consumo planificado', m.fuelConsumedPlan != null ? `${fmtNum(m.fuelConsumedPlan)} ${m.fuelUnit || ''}` : '—'],
+      ['Delta combustible',   (m.fuelConsumed != null && m.fuelConsumedPlan != null)
+                                ? `${(m.fuelConsumed - m.fuelConsumedPlan) >= 0 ? '+' : ''}${Math.round(m.fuelConsumed - m.fuelConsumedPlan)} ${m.fuelUnit || ''}` : '—'],
+      ['Distancia total',     m.totalDistNM != null ? `${Math.round(m.totalDistNM)} NM` : '—'],
+      ['Modo RTB engaged',    m.rtbEngaged ? 'SI' : 'No'],
+    ];
+    doc.autoTable({
+      startY: y, margin: { left: margin, right: margin },
+      head: [['Concepto', 'Valor']],
+      body: summary,
+      styles: { fontSize: 9, cellPadding: 1.5 },
+      headStyles: { fillColor: [0, 55, 100], textColor: 255 },
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 60 } },
+    });
+    y = doc.lastAutoTable.finalY + 6;
+
+    // ── Tabla delta WP por WP ──
+    y = sectionHeader(doc, 'Delta por waypoint (plan vs real)', y, margin);
+    const rows = Array.isArray(snapshot.rows) ? snapshot.rows : [];
+    const head = [['#', 'Waypoint', 'FL', 'ETA plan', 'ETA real', 'D min', 'Fuel plan', 'Fuel real', 'D fuel', 'Hold']];
+    const body = rows.map((r, i) => {
+      const fl = Number.isFinite(r.fl) ? `FL${String(r.fl).padStart(3, '0')}` : '—';
+      const etaP = Number.isFinite(r.planEta) ? formatUTC(new Date(r.planEta)).slice(11, 16) : '—';
+      const etaR = Number.isFinite(r.liveEta) ? formatUTC(new Date(r.liveEta)).slice(11, 16) : '—';
+      const dEta = (Number.isFinite(r.planEta) && Number.isFinite(r.liveEta))
+        ? Math.round((r.liveEta - r.planEta) / 60000) : null;
+      const fp = Number.isFinite(r.planFuelRest) ? Math.round(r.planFuelRest) : '—';
+      const fr = Number.isFinite(r.fuelRest)     ? Math.round(r.fuelRest)     : '—';
+      const dF = (Number.isFinite(r.planFuelRest) && Number.isFinite(r.fuelRest))
+        ? Math.round(r.fuelRest - r.planFuelRest) : null;
+      const hold = Number.isFinite(r.liveHoldMin) && r.liveHoldMin > 0 ? `${r.liveHoldMin}m` : '';
+      return [
+        String(i + 1),
+        r.name || '—',
+        fl,
+        etaP,
+        etaR,
+        dEta != null ? (dEta >= 0 ? '+' : '') + dEta : '—',
+        fp,
+        fr,
+        dF != null ? (dF >= 0 ? '+' : '') + dF : '—',
+        hold,
+      ];
+    });
+    doc.autoTable({
+      startY: y, margin: { left: margin, right: margin },
+      head, body,
+      styles: { fontSize: 8, cellPadding: 1.2 },
+      headStyles: { fillColor: [0, 55, 100], textColor: 255 },
+    });
+    y = doc.lastAutoTable.finalY + 6;
+
+    // ── Eventos ──
+    const events = Array.isArray(snapshot.events) ? snapshot.events : [];
+    if (events.length > 0) {
+      y = sectionHeader(doc, 'Eventos durante el vuelo', y, margin);
+      const evRows = events.map(e => [
+        e.time ? formatUTC(new Date(e.time)).slice(11, 16) : '—',
+        e.type || '—',
+        e.detail || '—',
+      ]);
+      doc.autoTable({
+        startY: y, margin: { left: margin, right: margin },
+        head: [['Hora UTC', 'Tipo', 'Detalle']],
+        body: evRows,
+        styles: { fontSize: 9, cellPadding: 1.5 },
+        headStyles: { fillColor: [0, 55, 100], textColor: 255 },
+        columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 35, fontStyle: 'bold' } },
+      });
+      y = doc.lastAutoTable.finalY + 6;
+    }
+
+    const stamp = ymdhm(new Date());
+    const fname = `tsagestor-aar-${m.origin || 'XX'}-${m.destination || 'XX'}-${stamp}.pdf`;
+    doc.save(fname);
+    return fname;
+  }
+
+  return { exportReport, exportLiveDelta };
 })();

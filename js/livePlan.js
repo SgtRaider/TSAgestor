@@ -830,6 +830,8 @@ window.TSAgestor.livePlan = (function () {
       if (t.id === 'btn-live-alert-defer')   { _dismissWpAlert(); return; }
       if (t.id === 'btn-live-alert-close')   { _dismissWpAlert(); return; }
       if (t.id === 'btn-live-table-toggle')  { _toggleTableDetail(); return; }
+      if (t.id === 'btn-live-save-flown')    { _saveFlown(); return; }
+      if (t.id === 'btn-live-pdf-aar')       { _exportFlownPdf(); return; }
     });
     // F3.1: atajos teclado A/B/H/R
     document.addEventListener('keydown', _onKeydown);
@@ -1410,7 +1412,166 @@ window.TSAgestor.livePlan = (function () {
         `<dt>Duración real</dt><dd><b>${durTxt}</b> <span class="dim">(plan ${planDurTxt})</span></dd>` +
         `<dt>Combustible</dt><dd>${fuelTxt}</dd>` +
         `<dt>ETA destino</dt><dd>${etaTxt}</dd>` +
-      '</dl>';
+      '</dl>' +
+      // F3.8 + F3.9: acciones AAR — guardar la sesion como vuelo
+      // realizado en localStorage o exportarla como PDF.
+      '<div class="live-completed-actions">' +
+        '<button id="btn-live-save-flown" class="btn btn-primary btn-sm" type="button" title="Guarda esta sesión Live como vuelo realizado (AAR) en el navegador">💾 Guardar como vuelo realizado</button>' +
+        '<button id="btn-live-pdf-aar"    class="btn btn-ghost   btn-sm" type="button" title="Exporta un PDF After Action Report con plan vs real por waypoint">📄 PDF AAR</button>' +
+      '</div>';
+  }
+
+  // F3.8: construye un snapshot serializable de la sesion Live actual
+  // para AAR. Captura todo lo necesario para reconstruir la tabla
+  // plan-vs-real + metadatos resumen.
+  function buildFlownSnapshot() {
+    if (!session) return null;
+    const last = session.coords.length - 1;
+    const rows = _recalc(); // ya tenemos los campos calculados
+    const startMs    = session.actualPassTimes[0]                || null;
+    const endMs      = session.actualPassTimes[last]              || null;
+    const planStart  = Number.isFinite(session.plannedEtas[0])    ? session.plannedEtas[0]    : null;
+    const planEnd    = Number.isFinite(session.plannedEtas[last]) ? session.plannedEtas[last] : null;
+    const initialFuel = Number.isFinite(session.fuelOpts.initialFuel) ? session.fuelOpts.initialFuel : null;
+    const lastRow = rows[last];
+    const finalFuel = lastRow && Number.isFinite(lastRow.fuelRest) ? lastRow.fuelRest : null;
+    const planFinalFuel = Number.isFinite(session.plannedFuelRest[last]) ? session.plannedFuelRest[last] : null;
+
+    // Eventos: holds vivos + alertedWPs + RTB (best-effort, info para AAR)
+    const events = [];
+    if (session.actualPassTimes[0]) {
+      events.push({ time: session.actualPassTimes[0], type: 'Despegue', detail: 'Inicio de sesión Live' });
+    }
+    Object.keys(session.liveHolds || {}).forEach(k => {
+      const idx = parseInt(k, 10);
+      const mins = session.liveHolds[k];
+      const t = session.actualPassTimes[idx];
+      events.push({
+        time: t,
+        type: 'Hold',
+        detail: `${mins} min en WP #${idx + 1} ${session.coords[idx] && session.coords[idx].name || ''}`,
+      });
+    });
+    if (session.overrides) {
+      const ov = session.overrides;
+      const parts = [];
+      if (Number.isFinite(ov.ias))  parts.push(`IAS ${ov.ias} kt`);
+      if (Number.isFinite(ov.flow)) parts.push(`Flow ${ov.flow}/h`);
+      if (Number.isFinite(ov.fl))   parts.push(`FL${ov.fl}`);
+      if (parts.length) {
+        events.push({
+          time: session.actualPassTimes[ov.fromIdx] || null,
+          type: 'Override',
+          detail: `Desde WP #${(ov.fromIdx | 0) + 1}: ${parts.join(', ')}`,
+        });
+      }
+    }
+    if (session.rtbEngaged) {
+      events.push({ time: startMs, type: 'RTB', detail: 'Modo retorno engaged durante el vuelo' });
+    }
+    if (session.refetched && Array.isArray(session.refetched.isaDeviations)) {
+      for (const d of session.refetched.isaDeviations) {
+        events.push({
+          time: session.refetched.fetchedAt,
+          type: 'ISA dev',
+          detail: `WP #${d.idx + 1} ${d.name}: OAT ${Math.round(d.oatC)}°C (ISA ${(d.devC >= 0 ? '+' : '')}${Math.round(d.devC)}°C, DA ${Math.round(d.daFt)} ft)`,
+        });
+      }
+    }
+    if (endMs) {
+      events.push({ time: endMs, type: 'Aterrizaje', detail: 'Llegada a destino' });
+    }
+    events.sort((a, b) => (a.time || 0) - (b.time || 0));
+
+    return {
+      meta: {
+        origin:           session.coords[0] && session.coords[0].name,
+        destination:      session.coords[last] && session.coords[last].name,
+        startMs, endMs,
+        planStartMs:      planStart,
+        planEndMs:        planEnd,
+        initialFuel,
+        finalFuel,
+        fuelConsumed:     (initialFuel != null && finalFuel != null)     ? (initialFuel - finalFuel) : null,
+        fuelConsumedPlan: (initialFuel != null && planFinalFuel != null) ? (initialFuel - planFinalFuel) : null,
+        fuelUnit:         session.fuelOpts.unit || '',
+        totalDistNM:      session.totalDistNM,
+        rtbEngaged:       !!session.rtbEngaged,
+        savedAt:          Date.now(),
+      },
+      coords: session.coords,
+      rows: rows.map(r => ({
+        i: r.i, name: r.name, fl: r.fl, isSub: r.isSub,
+        planEta: r.planEta, liveEta: r.liveEta,
+        planFuelRest: session.plannedFuelRest[r.i],
+        fuelRest: r.fuelRest,
+        liveHoldMin: r.liveHoldMin || 0,
+      })),
+      events,
+      session: JSON.parse(JSON.stringify(session)),
+    };
+  }
+
+  function _saveFlown() {
+    const snap = buildFlownSnapshot();
+    if (!snap) {
+      _showToast({ id: 'aar-result', level: 'warn',
+        title: 'No se puede guardar', message: 'Sesión Live no disponible.', autoDismissMs: 5000 });
+      return;
+    }
+    const sp = window.TSAgestor && window.TSAgestor.savedPlans;
+    if (!sp || typeof sp.saveFlown !== 'function') {
+      _showToast({ id: 'aar-result', level: 'warn',
+        title: 'savedPlans no disponible', message: '', autoDismissMs: 5000 });
+      return;
+    }
+    const origin = snap.meta.origin || 'XX';
+    const dest   = snap.meta.destination || 'XX';
+    const t = snap.meta.endMs || Date.now();
+    const stamp = (function () {
+      const d = new Date(t);
+      const p = n => String(n).padStart(2, '0');
+      return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}-${p(d.getUTCHours())}${p(d.getUTCMinutes())}`;
+    })();
+    const defaultName = `LIVE-${origin}-${dest}-${stamp}`;
+    const name = prompt('Nombre del vuelo realizado:', defaultName);
+    if (!name) return;
+    sp.saveFlown(name, snap);
+    _showToast({
+      id: 'aar-result', level: 'success',
+      title: '✓ Vuelo realizado guardado',
+      message: `"${name}" persistido en localStorage. Disponible en Plan -> Planes guardados (sección Vuelos realizados).`,
+      autoDismissMs: 8000,
+    });
+  }
+
+  async function _exportFlownPdf() {
+    const snap = buildFlownSnapshot();
+    if (!snap) {
+      _showToast({ id: 'aar-result', level: 'warn',
+        title: 'No se puede exportar', message: 'Sesión Live no disponible.', autoDismissMs: 5000 });
+      return;
+    }
+    const pdf = window.TSAgestor && window.TSAgestor.pdfExport;
+    if (!pdf || typeof pdf.exportLiveDelta !== 'function') {
+      _showToast({ id: 'aar-result', level: 'warn',
+        title: 'pdfExport no disponible', message: '', autoDismissMs: 5000 });
+      return;
+    }
+    try {
+      const fname = await pdf.exportLiveDelta(snap);
+      _showToast({
+        id: 'aar-result', level: 'success',
+        title: '✓ PDF AAR generado',
+        message: `Descargado: ${fname}`,
+        autoDismissMs: 8000,
+      });
+    } catch (e) {
+      _showToast({ id: 'aar-result', level: 'danger',
+        title: 'Error generando PDF AAR',
+        message: (e && e.message) ? e.message : 'Error desconocido',
+        autoDismissMs: 8000 });
+    }
   }
 
   // Formato corto Xh Ym o Y min
