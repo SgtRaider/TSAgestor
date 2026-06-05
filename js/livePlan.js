@@ -454,6 +454,9 @@ window.TSAgestor.livePlan = (function () {
       if (t.id === 'btn-live-apply-overrides') { _applyOverrides(); return; }
       if (t.id === 'btn-live-clear-overrides') { _clearOverrides(); return; }
       if (t.id === 'btn-live-refetch-winds') { _refetchWinds(); return; }
+      if (t.id === 'btn-live-alert-confirm') { _confirmWpAlert(); return; }
+      if (t.id === 'btn-live-alert-defer')   { _dismissWpAlert(); return; }
+      if (t.id === 'btn-live-alert-close')   { _dismissWpAlert(); return; }
     });
     // Edicion in-place de fuel restante (input delegated)
     document.addEventListener('change', (e) => {
@@ -481,6 +484,113 @@ window.TSAgestor.livePlan = (function () {
     const b = document.getElementById('live-clock-utc-2');
     if (a) a.textContent = txt;
     if (b) b.textContent = txt;
+    // Comprueba si la ETA del siguiente WP real ha sido alcanzada
+    // y, de ser asi, dispara el modal de alerta (una vez por WP).
+    _checkWpAlertOnTick();
+  }
+
+  // Indice del siguiente WP "real" (saltando sub-legs).
+  function _nextRealIdx() {
+    if (!session) return null;
+    let k = session.currentIdx + 1;
+    while (k < session.coords.length && session.coords[k].isSub) k++;
+    return k < session.coords.length ? k : null;
+  }
+
+  function _checkWpAlertOnTick() {
+    if (!session || !session.started) return;
+    const modal = document.getElementById('live-wp-alert');
+    // Si ya hay un modal abierto (alert previo no atendido), no
+    // re-abrimos otro encima.
+    if (modal && !modal.classList.contains('hidden')) return;
+    const idx = _nextRealIdx();
+    if (idx == null) return;
+    if (session.alertedWPs && session.alertedWPs[idx]) return;
+    const rows = _recalc();
+    const r = rows[idx];
+    if (!r || !Number.isFinite(r.liveEta)) return;
+    if (Date.now() < r.liveEta) return;
+    // Marca como alertado y muestra el modal
+    if (!session.alertedWPs) session.alertedWPs = {};
+    session.alertedWPs[idx] = true;
+    _saveSession();
+    _showWpAlert(idx);
+  }
+
+  function _showWpAlert(idx) {
+    if (!session) return;
+    const modal = document.getElementById('live-wp-alert');
+    if (!modal) return;
+    const c = session.coords[idx];
+    const lp = session.legPlan[idx];
+    const rows = _recalc();
+    const r = rows[idx];
+    const ov = session.overrides;
+    // Pre-rellena con: override vigente > valor del plan
+    const iasVal  = (ov && Number.isFinite(ov.ias))  ? ov.ias
+                  : (lp && Number.isFinite(lp.ias))  ? Math.round(lp.ias) : '';
+    const flowVal = (ov && Number.isFinite(ov.flow)) ? ov.flow
+                  : (lp && Number.isFinite(lp.flow)) ? Math.round(lp.flow) : '';
+    const flVal   = (ov && Number.isFinite(ov.fl))   ? ov.fl
+                  : Number.isFinite(c.fl)            ? c.fl : '';
+    const fuelVal = (r && Number.isFinite(r.fuelRest)) ? Math.round(r.fuelRest) : '';
+    const nameEl = document.getElementById('live-alert-wp-name');
+    if (nameEl) nameEl.textContent = `#${idx + 1} · ${c.name}`;
+    const iasEl  = document.getElementById('live-alert-ias');
+    const flowEl = document.getElementById('live-alert-flow');
+    const flEl   = document.getElementById('live-alert-fl');
+    const fuelEl = document.getElementById('live-alert-fuel');
+    if (iasEl)  iasEl.value  = iasVal;
+    if (flowEl) flowEl.value = flowVal;
+    if (flEl)   flEl.value   = flVal;
+    if (fuelEl) fuelEl.value = fuelVal;
+    modal.dataset.targetIdx = String(idx);
+    modal.classList.remove('hidden');
+  }
+
+  function _confirmWpAlert() {
+    if (!session) return;
+    const modal = document.getElementById('live-wp-alert');
+    if (!modal) return;
+    const idx = parseInt(modal.dataset.targetIdx, 10);
+    if (!Number.isFinite(idx)) return;
+    const ias  = parseFloat(document.getElementById('live-alert-ias').value);
+    const flow = parseFloat(document.getElementById('live-alert-flow').value);
+    const fl   = parseFloat(document.getElementById('live-alert-fl').value);
+    const fuel = parseFloat(document.getElementById('live-alert-fuel').value);
+    // Registra Date.now() como hora de paso para idx (y sub-legs
+    // intermedios, si los hubiera, para mantener la continuidad).
+    const now = Date.now();
+    for (let k = session.currentIdx + 1; k <= idx; k++) {
+      session.actualPassTimes[k] = now;
+    }
+    session.currentIdx = idx;
+    // Aplica overrides desde el SIGUIENTE leg (idx+1) ya que estamos
+    // registrando que hemos pasado por idx ahora.
+    const hasOv = Number.isFinite(ias) || Number.isFinite(flow) || Number.isFinite(fl);
+    if (hasOv) {
+      const prev = session.overrides || { ias: null, flow: null, fl: null };
+      session.overrides = {
+        fromIdx: Math.min(idx + 1, session.coords.length - 1),
+        ias:  Number.isFinite(ias)  && ias  > 0  ? ias  : prev.ias,
+        flow: Number.isFinite(flow) && flow >= 0 ? flow : prev.flow,
+        fl:   Number.isFinite(fl)   && fl   > 0  ? fl   : prev.fl,
+      };
+    }
+    if (Number.isFinite(fuel)) {
+      session.fuelOverrides[idx] = fuel;
+    }
+    _saveSession();
+    modal.classList.add('hidden');
+    _refresh();
+    _refetchWinds();
+  }
+
+  function _dismissWpAlert() {
+    const modal = document.getElementById('live-wp-alert');
+    if (modal) modal.classList.add('hidden');
+    // alertedWPs[idx] ya esta seteado: no re-aparece hasta retrocede /
+    // reset / cambio del plan.
   }
 
   function _maybeShowContent() {
@@ -753,9 +863,18 @@ window.TSAgestor.livePlan = (function () {
   // ── Acciones ───────────────────────────────────────────────────────
   function _advance() {
     if (!session || !session.started) return;
-    if (session.currentIdx >= session.coords.length - 1) return;
-    session.currentIdx++;
-    session.actualPassTimes[session.currentIdx] = Date.now();
+    // Salta sub-legs: el operador no pulsa "Estoy en proximo WP" por
+    // cada subdivision de ascenso/descenso (no son posiciones fisicas).
+    let next = session.currentIdx + 1;
+    while (next < session.coords.length && session.coords[next].isSub) next++;
+    if (next >= session.coords.length) return;
+    const now = Date.now();
+    // Registra el paso por idx y, para mantener continuidad de ETAs,
+    // tambien por los sub-legs intermedios saltados.
+    for (let k = session.currentIdx + 1; k <= next; k++) {
+      session.actualPassTimes[k] = now;
+    }
+    session.currentIdx = next;
     _saveSession();
     _refresh();
     // Refetch viento para el resto del vuelo (async, no bloqueante)
@@ -764,8 +883,18 @@ window.TSAgestor.livePlan = (function () {
   function _back() {
     if (!session) return;
     if (session.currentIdx <= 0) return;
-    delete session.actualPassTimes[session.currentIdx];
+    // Limpia el paso real del WP actual (y los sub-legs que tengan
+    // pass marcado del mismo grupo) + permite que el alert vuelva a
+    // dispararse para el WP del que retrocedemos.
+    const wasIdx = session.currentIdx;
+    delete session.actualPassTimes[wasIdx];
+    if (session.alertedWPs) delete session.alertedWPs[wasIdx];
     session.currentIdx--;
+    // Retrocede por sub-legs si los hay justo antes
+    while (session.currentIdx > 0 && session.coords[session.currentIdx].isSub) {
+      delete session.actualPassTimes[session.currentIdx];
+      session.currentIdx--;
+    }
     _saveSession();
     _refresh();
   }

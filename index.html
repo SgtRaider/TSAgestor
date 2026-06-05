@@ -704,6 +704,46 @@
         </div>
       </div>
 
+      <!-- Modal popup que aparece cuando el reloj UTC alcanza la ETA
+           planificada del siguiente WP real. El operador puede ajustar
+           IAS, FF/Flow, FL y combustible total restante. "Confirmar"
+           registra Date.now() como hora de paso (no la ETA planificada)
+           y aplica los nuevos valores como overrides; "Aun no" descarta
+           el aviso para ese WP. -->
+      <div id="live-wp-alert" class="modal live-wp-alert hidden" role="dialog" aria-modal="true" aria-labelledby="live-alert-title">
+        <div class="live-wp-alert-backdrop"></div>
+        <div class="live-wp-alert-content">
+          <header class="live-wp-alert-head">
+            <h3 id="live-alert-title">ETA alcanzada: WP <span id="live-alert-wp-name">—</span></h3>
+            <button id="btn-live-alert-close" class="b1-icon-btn" type="button" title="Cerrar (Esc)" aria-label="Cerrar">✕</button>
+          </header>
+          <p>El reloj UTC ha llegado a la ETA planificada de este waypoint. Si has pasado por él <b>ahora</b>, confirma — la hora de paso se registrará como el momento del click (no la ETA planificada). Si todavía no estás allí, pulsa <b>Aún no</b> y usa "Estoy en próximo WP" cuando llegues.</p>
+          <p class="dim">Los valores aparecen con los planificados / actuales. Edita los que hayan cambiado y se aplicarán como overrides desde el siguiente leg.</p>
+          <div class="live-alert-grid">
+            <label class="live-override-label">
+              <span>IAS (kt)</span>
+              <input type="number" id="live-alert-ias" min="50" max="900" step="5">
+            </label>
+            <label class="live-override-label">
+              <span>FF / Flow (/h)</span>
+              <input type="number" id="live-alert-flow" min="0" step="10">
+            </label>
+            <label class="live-override-label">
+              <span>FL</span>
+              <input type="number" id="live-alert-fl" min="10" max="600" step="5">
+            </label>
+            <label class="live-override-label">
+              <span>Combustible total restante</span>
+              <input type="number" id="live-alert-fuel" step="10">
+            </label>
+          </div>
+          <div class="live-alert-actions">
+            <button id="btn-live-alert-confirm" class="btn btn-primary" type="button">▶ Confirmar paso (registra ahora)</button>
+            <button id="btn-live-alert-defer"   class="btn btn-ghost"  type="button">Aún no</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Tabla del log live (vive en el drawer cuando entras en Live).
            Columnas: # / WP / FL / IAS / TAS / GS / Viento / ETA plan /
            ETA live / Δ / Combustible (editable). -->
@@ -939,17 +979,17 @@
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
 <script src="js/filters.js"></script>
-<script src="js/notamHub.js?v=211"></script>
-<script src="js/kmlIO.js?v=211"></script>
-<script src="js/notamView.js?v=211"></script>
-<script src="js/mapView.js?v=211"></script>
-<script src="js/trafficLayer.js?v=211"></script>
+<script src="js/notamHub.js?v=212"></script>
+<script src="js/kmlIO.js?v=212"></script>
+<script src="js/notamView.js?v=212"></script>
+<script src="js/mapView.js?v=212"></script>
+<script src="js/trafficLayer.js?v=212"></script>
 <script src="js/crossSection.js"></script>
 <script src="js/flightPlan.js"></script>
-<script src="js/livePlan.js?v=211"></script>
+<script src="js/livePlan.js?v=212"></script>
 <script src="js/pdfExport.js"></script>
 <script src="js/app.js"></script>
-<script src="js/b1Layout.js?v=211"></script>
+<script src="js/b1Layout.js?v=212"></script>
 
 <!-- Service Worker (PWA) -->
 <script>

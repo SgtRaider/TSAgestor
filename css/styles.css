@@ -4400,6 +4400,93 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
 .live-fuel-input.live-fuel-bingo { color: #ef4444; border-color: #ef4444; }
 .live-fuel-input.live-fuel-joker { color: #f59e0b; border-color: #f59e0b; }
 
+/* Modal de alerta cuando se alcanza la ETA del proximo WP */
+.live-wp-alert {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+}
+.live-wp-alert.hidden { display: none; }
+.live-wp-alert-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+}
+.live-wp-alert-content {
+  position: relative;
+  width: min(560px, calc(100vw - var(--sp-6, 24px)));
+  max-height: calc(100vh - var(--sp-6, 24px));
+  background: var(--bg-panel);
+  border: 2px solid var(--ea-amarillo, #fbbf24);
+  border-radius: var(--r-lg, 10px);
+  box-shadow: 0 12px 40px rgba(251, 191, 36, 0.25);
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  color: var(--text);
+  padding: var(--sp-3);
+}
+.live-wp-alert-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--border);
+}
+.live-wp-alert-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ea-amarillo, #fbbf24);
+  letter-spacing: 0.3px;
+}
+.live-wp-alert-content p {
+  margin: var(--sp-2) 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.live-alert-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--sp-3);
+  margin: var(--sp-3) 0;
+}
+.live-alert-grid input {
+  background: var(--bg);
+  color: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 6px 10px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 14px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.live-alert-grid input:focus {
+  outline: none;
+  border-color: var(--ea-amarillo, #fbbf24);
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.18);
+}
+.live-alert-actions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.live-alert-actions .btn-primary { flex: 1 1 auto; font-size: 13px; padding: 10px 14px; }
+@media (max-width: 480px) {
+  .live-alert-grid { grid-template-columns: 1fr; }
+}
+
 /* ============================================================
    Modal de ayuda
    ------------------------------------------------------------
