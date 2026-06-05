@@ -4344,6 +4344,41 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
 .live-eval-ok   { background: rgba(34, 197, 94, 0.10);  color: #86efac; }
 .live-eval-warn { background: rgba(245, 158, 11, 0.12); color: #fbbf24; }
 .live-eval-bad  { background: rgba(239, 68, 68, 0.12);  color: #fca5a5; }
+.live-eval-info { background: rgba(147, 197, 253, 0.10); color: var(--ea-azul-cielo, #93c5fd); }
+.live-eval-mono {
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+  color: #e2e8f0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* F2.10: modo compacto de la tabla Log live. Oculta las columnas
+   secundarias (IAS / TAS / GS / Viento / ETA plan). Las cabeceras
+   son las columnas 4, 5, 6, 7, 8 (1-indexed: # WP FL IAS TAS GS
+   Viento ETA-plan ETA-live Δ Restante). */
+.live-log-compact #live-log-table th:nth-child(4),  /* IAS */
+.live-log-compact #live-log-table td:nth-child(4),
+.live-log-compact #live-log-table th:nth-child(5),  /* TAS */
+.live-log-compact #live-log-table td:nth-child(5),
+.live-log-compact #live-log-table th:nth-child(6),  /* GS */
+.live-log-compact #live-log-table td:nth-child(6),
+.live-log-compact #live-log-table th:nth-child(7),  /* Viento */
+.live-log-compact #live-log-table td:nth-child(7),
+.live-log-compact #live-log-table th:nth-child(8),  /* ETA plan */
+.live-log-compact #live-log-table td:nth-child(8) {
+  display: none;
+}
+.live-log-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+#btn-live-table-toggle { margin-left: auto; font-size: 11px; }
 /* Log live (drawer) */
 .live-log-head {
   display: flex; align-items: baseline; justify-content: space-between;

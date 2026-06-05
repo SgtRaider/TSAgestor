@@ -194,11 +194,17 @@ window.TSAgestor.mapView = (function () {
   }
 
   // Apilamiento de paneles (de abajo arriba):
-  //   overlayPane (400)  → fondo de países, retícula
-  //   meteoTiles (410)   → tiles RainViewer / EUMETView CTH
-  //   tsaPane (440)      → TSAs, aerovías, TMAs/CTRs
-  //   routePane (460)    → polilínea del plan + waypoints en círculo
-  //   markerPane (600)   → marcadores METAR/TAF y ciudades
+  //   overlayPane (400)    → fondo de países, retícula
+  //   meteoTiles (410)     → tiles RainViewer / EUMETView CTH
+  //   tsaPane (440)        → TSAs, aerovías, TMAs/CTRs
+  //   routePane (460)      → polilínea del plan + waypoints en círculo
+  //   liveOverlayPane (470) → marcador "soy aquí" + progreso recorrido /
+  //                          pendiente del modo Live. Debe quedar SIEMPRE
+  //                          encima de routePane: si no, una recalculación
+  //                          de plan (renderFlightPlan) tapa la línea
+  //                          dashed del progreso pendiente porque comparten
+  //                          color (amarillo) y orden DOM.
+  //   markerPane (600)     → marcadores METAR/TAF y ciudades
   //   tooltipPane (650)
   //   popupPane (700)
   function setupMeteoPane() {
@@ -210,10 +216,13 @@ window.TSAgestor.mapView = (function () {
       }
     };
     // Tiles meteo no deben capturar clics (transparentes a eventos).
-    ensure('meteoTiles', 410, true);
+    ensure('meteoTiles',      410, true);
     // TSAs y ruta sí son clicables (popup, tooltip).
-    ensure('tsaPane',    440, false);
-    ensure('routePane',  460, false);
+    ensure('tsaPane',         440, false);
+    ensure('routePane',       460, false);
+    // Overlay Live: marcador y polilíneas de progreso. Transparente a
+    // clicks para no robar interacciones del mapa.
+    ensure('liveOverlayPane', 470, true);
   }
 
   function addAirwayLayers() {
@@ -1909,7 +1918,7 @@ window.TSAgestor.mapView = (function () {
       weight: 2,
       fillColor: '#ef4444',
       fillOpacity: 0.18,
-      pane: 'routePane',
+      pane: 'liveOverlayPane',
       className: 'live-here-halo',
     });
     halo._isLiveHere = true;
@@ -1920,7 +1929,7 @@ window.TSAgestor.mapView = (function () {
       weight: 2,
       fillColor: '#ef4444',
       fillOpacity: 1,
-      pane: 'routePane',
+      pane: 'liveOverlayPane',
     });
     dot._isLiveHere = true;
     grp.addLayer(halo);
@@ -1944,18 +1953,23 @@ window.TSAgestor.mapView = (function () {
         color: '#22c55e',  // verde para recorrido
         weight: 5,
         opacity: 0.95,
-        pane: 'routePane',
+        pane: 'liveOverlayPane',
       });
       ln._isLiveProgress = true;
       grp.addLayer(ln);
     }
     if (todo.length >= 2) {
+      // Pendiente: cian dashed sobre liveOverlayPane (z 470). Antes era
+      // amarillo dashed pero coincidia visualmente con el amarillo
+      // solido del plan (routePane) y quedaba tapado al recalcular.
+      // Cian se distingue claramente de la amber del plan y refuerza
+      // la lectura "lo que queda".
       const ln = L.polyline(todo, {
-        color: '#fbbf24',  // amarillo dashed para pendiente
+        color: '#22d3ee',
         weight: 4,
-        opacity: 0.75,
-        dashArray: '8 6',
-        pane: 'routePane',
+        opacity: 0.9,
+        dashArray: '10 6',
+        pane: 'liveOverlayPane',
       });
       ln._isLiveProgress = true;
       grp.addLayer(ln);

@@ -639,6 +639,24 @@
               <span class="live-stat-label">Combustible</span>
               <b id="live-fuel-remaining">—</b>
             </div>
+            <!-- F2.9: enriquecimiento — tiempo transcurrido, restante,
+                 distancia recorrida / total, GS leg en curso. -->
+            <div class="live-stat">
+              <span class="live-stat-label">T transcurrido</span>
+              <b id="live-time-elapsed">—</b>
+            </div>
+            <div class="live-stat">
+              <span class="live-stat-label">T restante</span>
+              <b id="live-time-remaining">—</b>
+            </div>
+            <div class="live-stat">
+              <span class="live-stat-label">Distancia (rec/total)</span>
+              <b id="live-dist-progress">—</b>
+            </div>
+            <div class="live-stat">
+              <span class="live-stat-label">GS leg actual</span>
+              <b id="live-leg-gs">—</b>
+            </div>
           </div>
         </div>
 
@@ -718,6 +736,7 @@
         <div class="live-log-head">
           <h4>Log live</h4>
           <span class="dim" id="live-log-info">—</span>
+          <button id="btn-live-table-toggle" class="btn btn-ghost btn-sm" type="button" title="Mostrar / ocultar columnas IAS, TAS, GS, Viento, ETA plan">↔ Detalle</button>
         </div>
         <table id="live-log-table" class="table table-compact">
           <thead>
@@ -946,17 +965,17 @@
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
 <script src="js/filters.js"></script>
-<script src="js/notamHub.js?v=213"></script>
-<script src="js/kmlIO.js?v=213"></script>
-<script src="js/notamView.js?v=213"></script>
-<script src="js/mapView.js?v=213"></script>
-<script src="js/trafficLayer.js?v=213"></script>
+<script src="js/notamHub.js?v=214"></script>
+<script src="js/kmlIO.js?v=214"></script>
+<script src="js/notamView.js?v=214"></script>
+<script src="js/mapView.js?v=214"></script>
+<script src="js/trafficLayer.js?v=214"></script>
 <script src="js/crossSection.js"></script>
 <script src="js/flightPlan.js"></script>
-<script src="js/livePlan.js?v=213"></script>
+<script src="js/livePlan.js?v=214"></script>
 <script src="js/pdfExport.js"></script>
 <script src="js/app.js"></script>
-<script src="js/b1Layout.js?v=213"></script>
+<script src="js/b1Layout.js?v=214"></script>
 
 <!-- Service Worker (PWA) -->
 <script>

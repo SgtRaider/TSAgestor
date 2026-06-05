@@ -74,32 +74,53 @@ window.TSAgestor.meteoApi = (function () {
     return typeof location !== 'undefined' && location.protocol === 'file:';
   }
 
-  // Envuelve fetch con dos comportamientos:
+  // Envuelve fetch con tres comportamientos:
   //  • Si el sitio está abierto con file://, falla rápido con mensaje claro.
   //  • Si el fetch directo falla (CORS / red), reintenta vía proxy CORS público.
-  async function safeFetch(url, label) {
+  //  • F2.3: timeout opcional via AbortController (default 12s) para evitar
+  //    que un endpoint colgado (Open-Meteo en hora punta, etc.) bloquee
+  //    flujos como el refetch de viento en vuelo.
+  async function safeFetch(url, label, opts) {
+    opts = opts || {};
+    const timeoutMs = Number.isFinite(opts.timeoutMs) ? opts.timeoutMs : 12000;
     if (isFileProtocol()) {
       throw new Error(
         'Las APIs externas (' + label + ') no funcionan abriendo el HTML directamente (file://). ' +
         'Ejecuta start.bat o "python serve.py" y abre http://127.0.0.1:8000/index.html.'
       );
     }
+    function fetchWithTimeout(targetUrl) {
+      const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      const tid = (ctrl && timeoutMs > 0)
+        ? setTimeout(() => { try { ctrl.abort(); } catch (_) {} }, timeoutMs)
+        : null;
+      const opt = ctrl ? { signal: ctrl.signal } : {};
+      return fetch(targetUrl, opt).finally(() => { if (tid) clearTimeout(tid); });
+    }
     // Intento directo
     try {
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url);
       if (res.ok) return res;
       // Algunos endpoints devuelven 403/blocked sin cabeceras CORS — caemos al proxy.
       if (res.status === 403 || res.status === 0) throw new Error('HTTP ' + res.status);
       return res;
     } catch (e) {
+      // Si fue AbortError por timeout, propagar con mensaje claro y NO
+      // reintentar via proxy (el proxy normalmente lo agravara).
+      if (e && e.name === 'AbortError') {
+        throw new Error(`${label}: timeout (${timeoutMs} ms). Endpoint no responde.`);
+      }
       // TypeError "Failed to fetch" → casi siempre CORS bloqueado. Reintenta vía proxy.
       console.warn('[meteo] Fetch directo falló para', label, '— reintentando vía CORS proxy.');
       try {
         const proxied = CORS_PROXY + encodeURIComponent(url);
-        const res2 = await fetch(proxied);
+        const res2 = await fetchWithTimeout(proxied);
         if (!res2.ok) throw new Error('HTTP ' + res2.status);
         return res2;
       } catch (e2) {
+        if (e2 && e2.name === 'AbortError') {
+          throw new Error(`${label}: timeout via proxy (${timeoutMs} ms).`);
+        }
         throw new Error(
           `${label}: bloqueado por CORS y el proxy también falló (${e2.message || e2}). ` +
           `Revisa la conexión o desactiva extensiones que bloqueen tráfico.`

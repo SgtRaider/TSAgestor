@@ -56,6 +56,18 @@ window.TSAgestor.livePlan = (function () {
   let _refetchInFlight = false;
   let _visibilityWired = false;
   let _etaAudioCtx = null;
+  // F2.4: cache local de METAR/TAF de destino + tiempo de ultimo
+  // refresh. Vive en memoria del modulo (no persistido) — el operador
+  // siempre quiere meteo fresco al cargar.
+  let _destMet = null;          // { icao, metar, taf, fetchedAt }
+  let _destMetInFlight = false;
+  // F2.5: cache de SIGMETs (raw + geometrias parseadas) y resultado
+  // del ultimo cross-check. Refresh max cada 20 min para no abusar
+  // de la API AWC.
+  let _sigmetCache = null;      // { sigmets:[], geoms:[], fetchedAt }
+  let _sigmetInFlight = false;
+  let _sigmetCrossings = [];    // ultimo resultado del cross-check vs ruta
+  let _activeTSAcrossings = []; // F2.6: TSAs activas que cruza la ruta restante
 
   function init() {
     if (!_wired) {
@@ -499,7 +511,11 @@ window.TSAgestor.livePlan = (function () {
 
   // ── Refetch de viento ──────────────────────────────────────────────
   // Llama a meteoApi.fetchWindsAloft para los WPs restantes y recalcula
-  // los tiempos de leg con el viento nuevo. Sin red -> ignorado.
+  // los tiempos de leg con el viento nuevo. F2.1: ademas recalcula
+  // TAS via DA real (geom.kiasToTAS) usando la temperatura refetched
+  // en vez de la TAS cacheada del plan original. F2.2: marca
+  // fetchedAt para que _renderEval pueda mostrar la edad del viento.
+  // F2.7: acumula desviaciones ISA > 3°C para alertarlas.
   async function _refetchWinds() {
     if (!session || !session.started) return;
     if (_refetchInFlight) return;
@@ -507,6 +523,7 @@ window.TSAgestor.livePlan = (function () {
     if (startIdx >= session.coords.length - 1) return;
     const meteo = window.TSAgestor && window.TSAgestor.meteoApi;
     if (!meteo || !meteo.fetchWindsAloft || !meteo.lookupWindAt) return;
+    const geom = window.TSAgestor && window.TSAgestor.geom;
 
     const remaining = session.coords.slice(startIdx);
     const points = remaining.map(c => ({ lat: c.lat, lon: c.lon }));
@@ -515,40 +532,180 @@ window.TSAgestor.livePlan = (function () {
       const result = await meteo.fetchWindsAloft(points);
       const ph = result && result.pointsHourly;
       if (!ph || !ph.length) { _refetchInFlight = false; return; }
-      // Para cada leg de startIdx+1..N, computa nuevo legTimeMin usando
-      // el viento al FL del waypoint final del leg.
-      const legTimes = [0]; // padding para que legTimes[k - startIdx] sea el de leg k
+      // Buffers paralelos: tiempos, TAS, DA, OAT por leg. legTimes[0]
+      // queda a 0 (padding para que el indice local k - startIdx mapee
+      // directo al leg k).
+      const legTimes = [0];
+      const legTas   = [null];
+      const legDa    = [null];
+      const legOat   = [null];
+      const isaDeviations = []; // F2.7: WPs con |OAT - ISA(PA)| > 3 °C
       let etaMs = session.actualPassTimes[startIdx] || session.proposedStartTime || Date.now();
       for (let k = startIdx + 1; k < session.coords.length; k++) {
         const localIdx = k - startIdx;
-        const phPrev = ph[localIdx - 1];
         const phCurr = ph[localIdx];
         const lp = session.legPlan[k];
         const fl = session.coords[k].fl || 100;
         let legTimeMin = lp ? lp.legTimeMin : 0;
-        if (lp && Number.isFinite(lp.tas) && Number.isFinite(lp.legNM) && lp.legNM > 0) {
-          const wB = phCurr ? meteo.lookupWindAt(phCurr, etaMs, fl) : null;
-          if (wB && Number.isFinite(wB.windSpeedKt) && Number.isFinite(wB.windDir)) {
-            // headwind = -windSpeed * cos(windDir - track). Sin track
-            // facil, asumimos peor caso direccional con cos=cos((dir - bearing)).
-            // Para simplificar usamos el bearing del leg.
+        let tasUsed    = lp ? lp.tas : null;
+        let daFt       = null;
+        let oatC       = null;
+        const wB = phCurr ? meteo.lookupWindAt(phCurr, etaMs, fl) : null;
+        if (wB && Number.isFinite(wB.windSpeedKt) && Number.isFinite(wB.windDir)) {
+          // F2.1: recalcula TAS si tenemos IAS del plan + OAT del refetch + geom.
+          if (geom && Number.isFinite(wB.temperatureC) &&
+              lp && Number.isFinite(lp.ias) && lp.ias > 0 &&
+              typeof geom.densityAltitudeFt === 'function' &&
+              typeof geom.kiasToTAS === 'function') {
+            oatC = wB.temperatureC;
+            daFt = geom.densityAltitudeFt(fl * 100, oatC);
+            const tasNew = geom.kiasToTAS(lp.ias, daFt);
+            if (Number.isFinite(tasNew) && tasNew > 0) tasUsed = tasNew;
+            // F2.7: desviacion ISA
+            if (typeof geom.isaTempC === 'function') {
+              const isaC = geom.isaTempC(fl * 100);
+              const devC = oatC - isaC;
+              if (Math.abs(devC) > 3) {
+                isaDeviations.push({
+                  idx: k, name: session.coords[k].name,
+                  oatC, isaC, devC, daFt, fl,
+                });
+              }
+            }
+          }
+          if (Number.isFinite(tasUsed) && Number.isFinite(lp.legNM) && lp.legNM > 0) {
             const bearing = _bearingDeg(session.coords[k - 1], session.coords[k]);
             const hw = -wB.windSpeedKt * Math.cos((wB.windDir - bearing) * Math.PI / 180);
-            const gs = Math.max(30, lp.tas + hw);
+            const gs = Math.max(30, tasUsed + hw);
             legTimeMin = (lp.legNM / gs) * 60;
           }
         }
         legTimes[localIdx] = legTimeMin;
+        legTas[localIdx]   = tasUsed;
+        legDa[localIdx]    = daFt;
+        legOat[localIdx]   = oatC;
         etaMs += legTimeMin * 60000;
       }
-      session.refetched = { startIdx, legTimes };
+      // F2.2: fetchedAt para mostrar antiguedad. legTas / legDa / legOat
+      // persistidos para que F2.10 (toggle Detalle) pueda mostrarlos en
+      // tabla.
+      session.refetched = {
+        startIdx, legTimes, legTas, legDa, legOat,
+        fetchedAt: Date.now(),
+        isaDeviations,
+      };
       _saveSession();
       _refresh();
     } catch (e) {
       console.warn('[livePlan] refetch winds fallo:', e && e.message ? e.message : e);
+      // F2.x: no rompe la UI; el usuario sigue con cached. Toast warn.
+      _showToast({
+        id: 'wind-refetch-fail', level: 'warn',
+        title: 'Refresh de viento falló',
+        message: (e && e.message) ? e.message : 'Error desconocido',
+        autoDismissMs: 6000,
+      });
     } finally {
       _refetchInFlight = false;
     }
+  }
+
+  // ── F2.5: SIGMET cross-check vs ruta restante ─────────────────────
+  // Geometria: helpers minimos copiados de flightPlan.js (internos al
+  // IIFE alli; duplicar 15 lineas vs exponer rompe encapsulacion).
+  function _pointInPolyLL(pt, poly) {
+    let inside = false;
+    const x = pt[1], y = pt[0];
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i][1], yi = poly[i][0];
+      const xj = poly[j][1], yj = poly[j][0];
+      const cond = ((yi > y) !== (yj > y)) &&
+        (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+      if (cond) inside = !inside;
+    }
+    return inside;
+  }
+  function _segIntersect(p1, p2, p3, p4) {
+    const ccw = (A, B, C) => (C[0] - A[0]) * (B[1] - A[1]) > (B[0] - A[0]) * (C[1] - A[1]);
+    return ccw(p1, p3, p4) !== ccw(p2, p3, p4) &&
+           ccw(p1, p2, p3) !== ccw(p1, p2, p4);
+  }
+  function _segCrossesPoly(a, b, poly) {
+    if (_pointInPolyLL(a, poly) || _pointInPolyLL(b, poly)) return true;
+    const n = poly.length;
+    for (let i = 0; i < n; i++) {
+      if (_segIntersect(a, b, poly[i], poly[(i + 1) % n])) return true;
+    }
+    return false;
+  }
+  // Distancia geodesica simple en metros (Haversine).
+  function _distM(a, b) {
+    const R = 6371000;
+    const toRad = d => d * Math.PI / 180;
+    const dLat = toRad(b[0] - a[0]);
+    const dLon = toRad(b[1] - a[1]);
+    const h = Math.sin(dLat / 2) ** 2 +
+              Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  // Cross-check segmento AB vs circulo (centro,radioM): si A o B
+  // estan dentro, o la distancia minima de cualquier extremo a centro
+  // es < radioM. Aproximacion conservadora.
+  function _segCrossesCircle(a, b, center, radiusM) {
+    return _distM(a, center) <= radiusM || _distM(b, center) <= radiusM;
+  }
+
+  function _maybeRefreshSigmets() {
+    if (!session || !session.started) return;
+    if (_sigmetInFlight) return;
+    if (_sigmetCache && (Date.now() - _sigmetCache.fetchedAt) < 20 * 60 * 1000) {
+      // No refresh; pero recomputa el cross-check con la posicion actual.
+      _recomputeSigmetCrossings();
+      return;
+    }
+    const meteo = window.TSAgestor && window.TSAgestor.meteoApi;
+    if (!meteo || typeof meteo.fetchSigmets !== 'function' || typeof meteo.parseSigmetGeometry !== 'function') return;
+    _sigmetInFlight = true;
+    meteo.fetchSigmets().then((sigmets) => {
+      const list = Array.isArray(sigmets) ? sigmets : [];
+      const geoms = list.map(s => {
+        try { return { sig: s, geom: meteo.parseSigmetGeometry(s) }; }
+        catch (_) { return null; }
+      }).filter(x => x && x.geom);
+      _sigmetCache = { sigmets: list, geoms, fetchedAt: Date.now() };
+      _recomputeSigmetCrossings();
+      _refresh();
+    }).catch((e) => {
+      console.warn('[livePlan] SIGMETs fallo:', e && e.message);
+    }).finally(() => {
+      _sigmetInFlight = false;
+    });
+  }
+  function _recomputeSigmetCrossings() {
+    if (!session || !_sigmetCache) { _sigmetCrossings = []; return; }
+    const startIdx = Math.max(0, session.currentIdx);
+    const out = [];
+    for (const item of _sigmetCache.geoms) {
+      const { sig, geom } = item;
+      let crosses = false;
+      for (let k = startIdx + 1; k < session.coords.length; k++) {
+        const A = session.coords[k - 1], B = session.coords[k];
+        if (!Number.isFinite(A.lat) || !Number.isFinite(B.lat)) continue;
+        const pA = [A.lat, A.lon], pB = [B.lat, B.lon];
+        if (geom.kind === 'poly') {
+          if (_segCrossesPoly(pA, pB, geom.latlngs)) { crosses = true; break; }
+        } else if (geom.kind === 'circle') {
+          if (_segCrossesCircle(pA, pB, geom.center, geom.radiusM)) { crosses = true; break; }
+        }
+      }
+      if (crosses) {
+        const haz = sig.hazard || sig.hazardType || sig.phen || 'SIGMET';
+        const fir = sig.firId || sig.icaoId || sig.firCode || '';
+        const rawShort = (sig.rawSigmet || '').slice(0, 120);
+        out.push({ haz, fir, rawShort, raw: sig.rawSigmet || '' });
+      }
+    }
+    _sigmetCrossings = out;
   }
 
   function _bearingDeg(A, B) {
@@ -581,6 +738,7 @@ window.TSAgestor.livePlan = (function () {
       if (t.id === 'btn-live-alert-confirm') { _confirmWpAlert(); return; }
       if (t.id === 'btn-live-alert-defer')   { _dismissWpAlert(); return; }
       if (t.id === 'btn-live-alert-close')   { _dismissWpAlert(); return; }
+      if (t.id === 'btn-live-table-toggle')  { _toggleTableDetail(); return; }
     });
     // Edicion in-place de fuel restante (input delegated)
     document.addEventListener('change', (e) => {
@@ -709,6 +867,11 @@ window.TSAgestor.livePlan = (function () {
     if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
       try { navigator.vibrate([200, 100, 200]); } catch (_) {}
     }
+    // F2.11: Notification API si tab oculto.
+    _maybeNotifyBackground(
+      `ETA alcanzada · WP #${idx + 1} ${c.name}`,
+      'Vuelve a la pestaña Live para confirmar el paso o ajustar parámetros.'
+    );
   }
 
   // Indicador persistente "ETA alcanzada — atender". Vive en la card
@@ -831,11 +994,13 @@ window.TSAgestor.livePlan = (function () {
       content.classList.add('hidden');
       if (tableWrap) tableWrap.classList.remove('hidden');
       _renderPreflight();
+      _applyTableMode();
       _refresh();
     } else {
       preflight.classList.add('hidden');
       content.classList.remove('hidden');
       if (tableWrap) tableWrap.classList.remove('hidden');
+      _applyTableMode();
       _refresh();
     }
   }
@@ -847,6 +1012,93 @@ window.TSAgestor.livePlan = (function () {
     _renderTable(rows);
     _renderEval(rows);
     _updateMapOverlay();
+    // F2.4: auto-refresh METAR/TAF destino si falta poco para llegar.
+    // Fire-and-forget — no bloquea el render.
+    _maybeRefreshDestMet(rows);
+    // F2.5: refresh SIGMETs (max cada 20 min) + recompute cross-check
+    // contra la ruta restante.
+    _maybeRefreshSigmets();
+    // F2.6: cross-check TSAs activas en este instante.
+    _recomputeActiveTSACrossings();
+  }
+
+  // F2.6: revisa TSAs cuyo schedule esta activo AHORA y verifica si la
+  // ruta restante cruza alguna. Resultado en _activeTSAcrossings; el
+  // _renderEval lo pinta como danger.
+  function _recomputeActiveTSACrossings() {
+    _activeTSAcrossings = [];
+    if (!session) return;
+    const app = window.TSAgestor && window.TSAgestor.app;
+    if (!app || typeof app.getTsas !== 'function') return;
+    const tsas = app.getTsas();
+    if (!tsas || !tsas.length) return;
+    const now = Date.now();
+    const startIdx = Math.max(0, session.currentIdx);
+    for (const t of tsas) {
+      if (!t || !Array.isArray(t.polygon) || t.polygon.length < 3) continue;
+      // Schedule activo: alguna ventana cubre `now`.
+      const schedules = Array.isArray(t.schedules) ? t.schedules : [];
+      const active = schedules.find(s => {
+        const a = s.startUTC instanceof Date ? s.startUTC.getTime() : (s.startUTC ? new Date(s.startUTC).getTime() : null);
+        const b = s.endUTC   instanceof Date ? s.endUTC.getTime()   : (s.endUTC   ? new Date(s.endUTC).getTime()   : null);
+        return Number.isFinite(a) && Number.isFinite(b) && a <= now && now <= b;
+      });
+      if (!active) continue;
+      // Cross-check contra ruta restante
+      let crosses = false;
+      for (let k = startIdx + 1; k < session.coords.length; k++) {
+        const A = session.coords[k - 1], B = session.coords[k];
+        if (!Number.isFinite(A.lat) || !Number.isFinite(B.lat)) continue;
+        if (_segCrossesPoly([A.lat, A.lon], [B.lat, B.lon], t.polygon)) {
+          crosses = true; break;
+        }
+      }
+      if (crosses) {
+        _activeTSAcrossings.push({
+          name: t.name || 'TSA',
+          endMs: active.endUTC instanceof Date ? active.endUTC.getTime() : new Date(active.endUTC).getTime(),
+        });
+      }
+    }
+  }
+
+  // F2.4: si la ETA al destino esta a menos de 60 min y no se ha
+  // refrescado en los ultimos 15 min, lanza fetchWeatherForAirports
+  // para el ICAO destino. Cachea el resultado en _destMet para que
+  // _renderEval lo pinte como entrada informativa. La frecuencia esta
+  // codeada (15 min) para evitar abuso del endpoint AWC.
+  function _maybeRefreshDestMet(rows) {
+    if (!session || !session.started) return;
+    if (_destMetInFlight) return;
+    const last = session.coords.length - 1;
+    const destRow = rows && rows[last];
+    if (!destRow || !Number.isFinite(destRow.liveEta)) return;
+    const minsToDest = (destRow.liveEta - Date.now()) / 60000;
+    if (minsToDest > 60 || minsToDest < -30) return; // ventana sensata
+    const meteo = window.TSAgestor && window.TSAgestor.meteoApi;
+    if (!meteo || typeof meteo.fetchWeatherForAirports !== 'function') return;
+    const icao = (session.coords[last] && session.coords[last].name || '').toUpperCase();
+    if (!/^[A-Z]{4}$/.test(icao)) return; // no es ICAO valido
+    if (_destMet && _destMet.icao === icao && (Date.now() - _destMet.fetchedAt) < 15 * 60 * 1000) {
+      return; // refresh hace menos de 15 min
+    }
+    _destMetInFlight = true;
+    meteo.fetchWeatherForAirports([icao]).then((res) => {
+      const ap = res && res.airports && res.airports[icao];
+      if (ap) {
+        _destMet = {
+          icao,
+          metar: ap.metar || null,
+          taf:   ap.taf   || null,
+          fetchedAt: Date.now(),
+        };
+        _refresh();
+      }
+    }).catch((e) => {
+      console.warn('[livePlan] METAR/TAF destino fallo:', e && e.message);
+    }).finally(() => {
+      _destMetInFlight = false;
+    });
   }
 
   // F1.2 + F1.3: actualiza el marcador "soy aqui" y la linea de
@@ -911,9 +1163,27 @@ window.TSAgestor.livePlan = (function () {
     session.currentIdx = 0;
     session.actualPassTimes = { 0: startMs };
     _saveSession();
+    // F2.11: solicitar permiso de notificaciones si esta soportado.
+    // Asi cuando el tab pierde foco y se cumple una ETA podemos lanzar
+    // una Notification del SO ademas del toast in-page.
+    _requestNotificationPermission();
     // Refetch inmediato para tener vientos frescos al arrancar
     _refetchWinds();
     _maybeShowContent();
+  }
+  function _requestNotificationPermission() {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission === 'default') {
+      try { Notification.requestPermission(); } catch (_) {}
+    }
+  }
+  // F2.11: si el tab no esta en focus, dispara una Notification del SO
+  // ademas del toast. Es best-effort (silenciosa si no hay permiso).
+  function _maybeNotifyBackground(title, body) {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (typeof document === 'undefined' || !document.hidden) return;
+    if (Notification.permission !== 'granted') return;
+    try { new Notification(title, { body, tag: 'live-eta' }); } catch (_) {}
   }
 
   // ── Render: estado actual ──────────────────────────────────────────
@@ -1068,6 +1338,46 @@ window.TSAgestor.livePlan = (function () {
     if (advBtn) advBtn.disabled = (next == null);
     const backBtn = $('btn-live-back');
     if (backBtn) backBtn.disabled = (curr <= 0);
+
+    // F2.9: stats enriquecidos. Todos toleran undefined / NaN.
+    const t0Ms = session.actualPassTimes[0];
+    const lastIdx = session.coords.length - 1;
+    const nowMs = Date.now();
+    // Tiempo transcurrido desde el primer paso registrado (despegue)
+    if ($('live-time-elapsed')) {
+      const elapsed = Number.isFinite(t0Ms) ? (nowMs - t0Ms) : null;
+      $('live-time-elapsed').textContent = elapsed != null && elapsed >= 0 ? _fmtDuration(elapsed) : '—';
+    }
+    // Tiempo restante hasta ETA destino
+    if ($('live-time-remaining')) {
+      const remain = destRow && Number.isFinite(destRow.liveEta) ? (destRow.liveEta - nowMs) : null;
+      $('live-time-remaining').textContent = remain != null && remain >= 0 ? _fmtDuration(remain) : (remain != null ? '—' : '—');
+    }
+    // Distancia recorrida vs total (suma de legNM hasta currentIdx)
+    if ($('live-dist-progress')) {
+      let doneNm = 0;
+      for (let k = 1; k <= curr; k++) {
+        const lp = session.legPlan[k];
+        if (lp && Number.isFinite(lp.legNM)) doneNm += lp.legNM;
+      }
+      const total = Number.isFinite(session.totalDistNM) ? session.totalDistNM : 0;
+      $('live-dist-progress').textContent = `${Math.round(doneNm)} / ${Math.round(total)} NM`;
+    }
+    // GS estimada del leg en curso (= leg que termina en next)
+    if ($('live-leg-gs')) {
+      let gs = null;
+      if (next != null) {
+        // Si refetched cubre este leg, calcula gs = legNM / legTimeMin * 60
+        const lp = session.legPlan[next];
+        const tMin = _legTimeMinAt(next);
+        if (lp && Number.isFinite(lp.legNM) && lp.legNM > 0 && Number.isFinite(tMin) && tMin > 0) {
+          gs = (lp.legNM / tMin) * 60;
+        } else if (lp && Number.isFinite(lp.gs)) {
+          gs = lp.gs;
+        }
+      }
+      $('live-leg-gs').textContent = Number.isFinite(gs) ? Math.round(gs) + ' kt' : '—';
+    }
   }
 
   // ── Render: tabla log live ─────────────────────────────────────────
@@ -1170,6 +1480,84 @@ window.TSAgestor.livePlan = (function () {
       li.className = 'live-eval-warn';
       li.textContent = '⏳ Refrescando vientos en altura...';
       ul.appendChild(li);
+    }
+
+    // F2.2: antiguedad del viento refetched. Si han pasado > 30 min
+    // sugerimos refresh manual (el operador puede pulsar el boton).
+    if (session.refetched && Number.isFinite(session.refetched.fetchedAt)) {
+      const ageMs = Date.now() - session.refetched.fetchedAt;
+      const ageMin = Math.floor(ageMs / 60000);
+      if (ageMin >= 30) {
+        const li = document.createElement('li');
+        li.className = 'live-eval-warn';
+        li.textContent = `⌛ Vientos refetched hace ${ageMin} min. Considera refrescar manualmente (⟳ Refresh viento) si el vuelo es largo.`;
+        ul.appendChild(li);
+      } else if (ageMin >= 1) {
+        const li = document.createElement('li');
+        li.className = 'live-eval-ok';
+        li.textContent = `✓ Vientos refetched hace ${ageMin} min (fresco)`;
+        ul.appendChild(li);
+      }
+    }
+
+    // F2.7: desviaciones ISA significativas (>3 °C). El refetch las
+    // recopila durante el recalculo; aqui las mostramos como warn.
+    if (session.refetched && Array.isArray(session.refetched.isaDeviations) &&
+        session.refetched.isaDeviations.length > 0) {
+      const devs = session.refetched.isaDeviations;
+      // Resumen: peor desviacion + count
+      const worst = devs.reduce((a, b) => Math.abs(b.devC) > Math.abs(a.devC) ? b : a, devs[0]);
+      const sign = worst.devC > 0 ? '+' : '';
+      const li = document.createElement('li');
+      li.className = 'live-eval-warn';
+      li.textContent = `🌡 Desviación ISA detectada en ${devs.length} WP(s). Peor: WP #${worst.idx + 1} ${worst.name} · OAT ${Math.round(worst.oatC)}°C (ISA${sign}${Math.round(worst.devC)}°C, DA ${Math.round(worst.daFt)} ft).`;
+      li.title = devs.map(d => `WP #${d.idx + 1} ${d.name}: OAT ${Math.round(d.oatC)}°C, ISA ${Math.round(d.isaC)}°C, DA ${Math.round(d.daFt)} ft`).join('\n');
+      ul.appendChild(li);
+    }
+
+    // F2.6: TSAs activas que cruza la ruta restante AHORA.
+    if (Array.isArray(_activeTSAcrossings) && _activeTSAcrossings.length > 0) {
+      for (const t of _activeTSAcrossings) {
+        const until = Number.isFinite(t.endMs)
+          ? `hasta ${_fmtTime(t.endMs)} UTC`
+          : 'hasta hora desconocida';
+        const li = document.createElement('li');
+        li.className = 'live-eval-bad';
+        li.innerHTML = `⛔ <b>Cruzando TSA ACTIVA</b>: ${t.name} · ${until}`;
+        ul.appendChild(li);
+      }
+    }
+
+    // F2.5: SIGMETs que cruzan la ruta restante.
+    if (Array.isArray(_sigmetCrossings) && _sigmetCrossings.length > 0) {
+      for (const c of _sigmetCrossings) {
+        const li = document.createElement('li');
+        li.className = 'live-eval-bad';
+        const hazTxt = c.haz || 'SIGMET';
+        const firTxt = c.fir ? ` (${c.fir})` : '';
+        li.innerHTML = `⚠ <b>SIGMET</b> ${hazTxt}${firTxt} cruza la ruta restante` +
+                       (c.rawShort ? `<div class="live-eval-mono">${c.rawShort}${c.raw.length > c.rawShort.length ? '…' : ''}</div>` : '');
+        if (c.raw) li.title = c.raw;
+        ul.appendChild(li);
+      }
+    }
+
+    // F2.4: METAR/TAF de destino si esta cargado y vigente.
+    if (_destMet && _destMet.icao) {
+      const ageMin = Math.floor((Date.now() - _destMet.fetchedAt) / 60000);
+      const metarTxt = _destMet.metar && _destMet.metar.raw ? _destMet.metar.raw
+                     : (typeof _destMet.metar === 'string' ? _destMet.metar : null);
+      const tafTxt   = _destMet.taf && _destMet.taf.raw   ? _destMet.taf.raw
+                     : (typeof _destMet.taf === 'string' ? _destMet.taf : null);
+      if (metarTxt || tafTxt) {
+        const li = document.createElement('li');
+        li.className = 'live-eval-info';
+        let html = `🌐 Meteo destino <b>${_destMet.icao}</b> <span class="dim">(refresh hace ${ageMin} min)</span>`;
+        if (metarTxt) html += `<div class="live-eval-mono">METAR ${metarTxt}</div>`;
+        if (tafTxt)   html += `<div class="live-eval-mono">TAF&nbsp;&nbsp; ${tafTxt}</div>`;
+        li.innerHTML = html;
+        ul.appendChild(li);
+      }
     }
 
     if (ul.children.length === 0) {
@@ -1283,9 +1671,31 @@ window.TSAgestor.livePlan = (function () {
   function _editFuelRest(idx, newRemaining) {
     if (!session) return;
     if (!Number.isFinite(idx) || !Number.isFinite(newRemaining)) return;
-    session.fuelOverrides[idx] = newRemaining;
+    // F2.12: clamp a >= 0. Un fuel negativo propaga restantes cada vez
+    // mas negativos para los WPs siguientes sin que se note como bug.
+    session.fuelOverrides[idx] = Math.max(0, newRemaining);
     _saveSession();
     _refresh();
+  }
+
+  // F2.10: alterna el modo compacto/detalle de la tabla live. Compacto
+  // por defecto en B1 estrecho (panel ~320-400 px) — solo muestra
+  // # / WP / FL / ETA live / Δ / Restante. Detalle expande IAS / TAS /
+  // GS / Viento / ETA plan. Persiste en session.tableMode.
+  function _toggleTableDetail() {
+    if (!session) return;
+    session.tableMode = (session.tableMode === 'detail') ? 'compact' : 'detail';
+    _saveSession();
+    _applyTableMode();
+  }
+  function _applyTableMode() {
+    const wrap = document.getElementById('live-log-table-wrap');
+    if (!wrap) return;
+    const detail = session && session.tableMode === 'detail';
+    wrap.classList.toggle('live-log-detail', detail);
+    wrap.classList.toggle('live-log-compact', !detail);
+    const btn = document.getElementById('btn-live-table-toggle');
+    if (btn) btn.textContent = detail ? '↔ Compacto' : '↔ Detalle';
   }
 
   return {

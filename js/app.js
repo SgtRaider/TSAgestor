@@ -2963,6 +2963,9 @@
     // Para el modo Live: acceso al ultimo plan calculado (state.lastPlan)
     // que livePlan necesita para construir su sesion.
     getLastPlan: () => state.lastPlan || null,
+    // F2.6: expone las TSAs cargadas para que Live haga cross-check
+    // contra schedules activos en cada momento.
+    getTsas: () => Array.isArray(state.tsas) ? state.tsas : [],
     initLiveTab: () => {
       const lp = window.TSAgestor && window.TSAgestor.livePlan;
       if (lp && typeof lp.init === 'function') lp.init();
