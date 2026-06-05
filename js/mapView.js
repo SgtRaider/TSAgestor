@@ -1881,6 +1881,92 @@ window.TSAgestor.mapView = (function () {
     return best && bestD <= maxKm ? best : null;
   }
 
+  // ── Live overlay ──────────────────────────────────────────────────
+  // Marcador "soy aqui" en la posicion del WP actual del modo Live +
+  // dos polilineas (recorrida en cyan/verde, pendiente en amarillo
+  // dashed). Vive en un layer dedicado para poder limpiarse sin tocar
+  // el plan original (`routeLayer`). Se mantiene encima del plan
+  // (mismo pane `routePane`) pero por encima en z-order por orden de
+  // creacion (Leaflet apila en pane).
+  let _liveLayer = null;
+  function _ensureLiveLayer() {
+    if (!map) return null;
+    if (!_liveLayer) _liveLayer = L.layerGroup().addTo(map);
+    return _liveLayer;
+  }
+  // Pinta el marcador del WP actual. `latlng` puede ser [lat,lon].
+  // Si latlng es null, limpia solo el marcador.
+  function setLiveMarker(latlng) {
+    const grp = _ensureLiveLayer();
+    if (!grp) return;
+    // Removemos cualquier marcador previo etiquetado como live-here
+    grp.eachLayer((l) => { if (l._isLiveHere) grp.removeLayer(l); });
+    if (!latlng || !Array.isArray(latlng) || !Number.isFinite(latlng[0]) || !Number.isFinite(latlng[1])) return;
+    // Halo exterior pulsante (CSS anima opacity/scale via className).
+    const halo = L.circleMarker(latlng, {
+      radius: 14,
+      color: '#ef4444',
+      weight: 2,
+      fillColor: '#ef4444',
+      fillOpacity: 0.18,
+      pane: 'routePane',
+      className: 'live-here-halo',
+    });
+    halo._isLiveHere = true;
+    // Punto central solido.
+    const dot = L.circleMarker(latlng, {
+      radius: 7,
+      color: '#7f1d1d',
+      weight: 2,
+      fillColor: '#ef4444',
+      fillOpacity: 1,
+      pane: 'routePane',
+    });
+    dot._isLiveHere = true;
+    grp.addLayer(halo);
+    grp.addLayer(dot);
+  }
+  // Pinta dos polilineas: coords[0..currentIdx] recorrida y
+  // coords[currentIdx..last] pendiente. Recibe coords como
+  // [{lat,lon}, ...] y el indice actual.
+  function setLiveProgress(coords, currentIdx) {
+    const grp = _ensureLiveLayer();
+    if (!grp) return;
+    grp.eachLayer((l) => { if (l._isLiveProgress) grp.removeLayer(l); });
+    if (!Array.isArray(coords) || coords.length < 2) return;
+    const pts = coords.map(c => [c.lat, c.lon]).filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+    if (pts.length < 2) return;
+    const clamp = Math.max(0, Math.min(currentIdx | 0, pts.length - 1));
+    const done = pts.slice(0, clamp + 1);
+    const todo = pts.slice(clamp);
+    if (done.length >= 2) {
+      const ln = L.polyline(done, {
+        color: '#22c55e',  // verde para recorrido
+        weight: 5,
+        opacity: 0.95,
+        pane: 'routePane',
+      });
+      ln._isLiveProgress = true;
+      grp.addLayer(ln);
+    }
+    if (todo.length >= 2) {
+      const ln = L.polyline(todo, {
+        color: '#fbbf24',  // amarillo dashed para pendiente
+        weight: 4,
+        opacity: 0.75,
+        dashArray: '8 6',
+        pane: 'routePane',
+      });
+      ln._isLiveProgress = true;
+      grp.addLayer(ln);
+    }
+  }
+  function clearLiveOverlay() {
+    if (_liveLayer && map) {
+      _liveLayer.clearLayers();
+    }
+  }
+
   // Devuelve el estado REAL de las capas zonales: si al menos una de las 4
   // zonas de cada cota esta activa. El snap del modo dibujo lee esto y solo
   // se imanta a waypoints si el usuario tiene alguna capa visible. El
@@ -1906,6 +1992,7 @@ window.TSAgestor.mapView = (function () {
     setWaypointClickHandler,
     setLegendVisible, updateLegend, isLegendVisible,
     setLayersControlVisible, isLayersControlVisible,
+    setLiveMarker, setLiveProgress, clearLiveOverlay,
     _debugZoom: function () {
       if (!map) { console.log('mapa no inicializado'); return; }
       const z = map.getZoom();

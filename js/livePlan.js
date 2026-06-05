@@ -17,7 +17,14 @@ window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.livePlan = (function () {
   'use strict';
 
-  const STORAGE_KEY = 'tsagestor_live_session';
+  // Bump a _v2 cuando _hashPlan() se extendio para detectar cambios
+  // estructurales (longitud de coords, sub-legs, lat/lon redondeadas).
+  // Las sesiones live en formato v1 se migran silenciosamente: si el
+  // hash con la formula nueva coincide con la cacheada las preservamos;
+  // si no, se descartan (no hay riesgo, los pilotos no estan en vuelo
+  // durante un deploy).
+  const STORAGE_KEY = 'tsagestor_live_session_v2';
+  const STORAGE_KEY_LEGACY = 'tsagestor_live_session';
 
   // Estructura de session:
   // {
@@ -47,12 +54,15 @@ window.TSAgestor.livePlan = (function () {
   let clockInterval = null;
   let _wired = false;
   let _refetchInFlight = false;
+  let _visibilityWired = false;
+  let _etaAudioCtx = null;
 
   function init() {
     if (!_wired) {
       _wireUI();
       _wired = true;
     }
+    _wireVisibility();
     _startClock();
     _loadSession();
     _maybeShowContent();
@@ -117,6 +127,18 @@ window.TSAgestor.livePlan = (function () {
 
     const prev = session;
     const keep = (force !== true) && prev && prev.planId === planId;
+    // Detecta cambio estructural del plan: habia sesion en curso
+    // (started=true) pero el hash del plan ha cambiado. Avisar al
+    // operador con toast no-bloqueante; la sesion se reconstruira con
+    // currentIdx=0 abajo (porque keep sera false).
+    if (force !== true && prev && prev.started && prev.planId !== planId) {
+      _showToast({
+        id: 'plan-changed', level: 'warn',
+        title: 'El plan ha cambiado',
+        message: 'Se ha recalculado el plan en otra sección. La sesión Live anterior se ha reseteado al estado inicial. Si quieres conservar el progreso, retrocede al plan original.',
+        autoDismissMs: 10000,
+      });
+    }
 
     session = {
       planId,
@@ -146,11 +168,30 @@ window.TSAgestor.livePlan = (function () {
     return session;
   }
 
+  // Hash robusto del plan: incluye longitud de coords, conteo de
+  // sub-legs y coordenadas redondeadas a 4 decimales ademas de los
+  // campos basicos. Antes la firma solo era `name@fl + departure +
+  // defaultSpeedKt + fuelFlow`, de modo que un recalculo que insertaba
+  // o quitaba un sub-leg de ascenso/descenso mantenia el hash y la
+  // sesion live preservaba `actualPassTimes[idx]` apuntando a coords
+  // distintas -> ETAs y consumo falsos. CRITICO.
   function _hashPlan(plan) {
-    const sig = plan.coords.map(c => `${c.name}@${c.fl}`).join(',') +
-                '|' + (plan.departureUTC || '') +
-                '|' + ((plan.fuelOpts && plan.fuelOpts.defaultSpeedKt) || '') +
-                '|' + ((plan.fuelOpts && plan.fuelOpts.fuelFlow) || '');
+    if (!plan || !plan.coords) return '0';
+    const subCount = plan.coords.filter(c => c.isClimbDescentSub).length;
+    const sigParts = [
+      'len=' + plan.coords.length,
+      'sub=' + subCount,
+      plan.coords.map(c => {
+        const lat = Number.isFinite(c.lat) ? c.lat.toFixed(4) : 'NaN';
+        const lon = Number.isFinite(c.lon) ? c.lon.toFixed(4) : 'NaN';
+        const fl  = Number.isFinite(c.fl) ? c.fl : '-';
+        return `${c.name}@${fl}@${lat},${lon}`;
+      }).join('|'),
+      'dep=' + (plan.departureUTC || ''),
+      'ias=' + ((plan.fuelOpts && plan.fuelOpts.defaultSpeedKt) || ''),
+      'flow=' + ((plan.fuelOpts && plan.fuelOpts.fuelFlow) || ''),
+    ];
+    const sig = sigParts.join('#');
     let h = 0;
     for (let i = 0; i < sig.length; i++) {
       h = ((h << 5) - h) + sig.charCodeAt(i);
@@ -168,16 +209,99 @@ window.TSAgestor.livePlan = (function () {
   function _loadSession() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) session = JSON.parse(raw);
+      if (raw) { session = JSON.parse(raw); return; }
+      // Migracion v1 -> v2: si hay sesion legacy y el plan actual
+      // coincide con su planId nuevo, la preservamos. Si no, se
+      // descarta y se ignora.
+      const legacyRaw = localStorage.getItem(STORAGE_KEY_LEGACY);
+      if (legacyRaw) {
+        try {
+          const legacy = JSON.parse(legacyRaw);
+          if (legacy && typeof legacy === 'object') session = legacy;
+        } catch (_) { /* corrupted */ }
+        try { localStorage.removeItem(STORAGE_KEY_LEGACY); } catch (_) {}
+      }
     } catch (_) { session = null; }
   }
   function _saveSession() {
     if (!session) return;
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(session)); } catch (_) {}
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    } catch (e) {
+      console.warn('[livePlan] localStorage.setItem fallo:', e && e.message);
+      // QuotaExceededError o disabled. Avisa al operador (toast).
+      _showToast({
+        id: 'storage-error', level: 'danger',
+        title: 'Sesión NO persistida',
+        message: 'localStorage no disponible: ' + (e && e.message ? e.message : 'unknown'),
+        autoDismissMs: 8000,
+      });
+    }
   }
   function _clearSession() {
     session = null;
     try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+  }
+
+  // ── Sistema de toasts no-bloqueantes (top-right) ──────────────────
+  // Reusable para: F1.1 plan cambiado, F1.5 WP-alert, F1.6 vuelo
+  // completado, F3.3 sesion restaurada. Cada toast tiene id (para
+  // poder reemplazar el mismo), level (info|warn|danger|success), y
+  // contenido custom. Si no auto-dismiss, queda visible hasta accion.
+  function _ensureToastContainer() {
+    let c = document.getElementById('live-toast-container');
+    if (!c) {
+      c = document.createElement('div');
+      c.id = 'live-toast-container';
+      c.className = 'live-toast-container';
+      c.setAttribute('aria-live', 'polite');
+      c.setAttribute('aria-atomic', 'false');
+      document.body.appendChild(c);
+    }
+    return c;
+  }
+  function _showToast(opts) {
+    opts = opts || {};
+    const container = _ensureToastContainer();
+    // Si ya hay un toast con ese id, lo reemplazamos
+    if (opts.id) {
+      const existing = container.querySelector('[data-toast-id="' + opts.id + '"]');
+      if (existing) existing.remove();
+    }
+    const div = document.createElement('div');
+    div.className = 'live-toast live-toast-' + (opts.level || 'info');
+    if (opts.id) div.dataset.toastId = opts.id;
+    div.setAttribute('role', opts.level === 'danger' ? 'alert' : 'status');
+    let innerHTML = '';
+    if (opts.title)   innerHTML += '<div class="live-toast-title">' + opts.title + '</div>';
+    if (opts.message) innerHTML += '<div class="live-toast-message">' + opts.message + '</div>';
+    if (opts.bodyHTML) innerHTML += '<div class="live-toast-body">' + opts.bodyHTML + '</div>';
+    if (opts.actionsHTML) innerHTML += '<div class="live-toast-actions">' + opts.actionsHTML + '</div>';
+    div.innerHTML = innerHTML;
+    // Boton de cierre opcional (por defecto si no hay actionsHTML)
+    if (opts.closeable !== false) {
+      const close = document.createElement('button');
+      close.className = 'live-toast-close';
+      close.type = 'button';
+      close.setAttribute('aria-label', 'Cerrar');
+      close.textContent = '✕';
+      close.addEventListener('click', () => _dismissToast(opts.id || div));
+      div.appendChild(close);
+    }
+    container.appendChild(div);
+    if (opts.autoDismissMs && opts.autoDismissMs > 0) {
+      setTimeout(() => { if (div.parentElement) div.remove(); }, opts.autoDismissMs);
+    }
+    return div;
+  }
+  function _dismissToast(idOrEl) {
+    if (!idOrEl) return;
+    if (typeof idOrEl === 'string') {
+      const el = document.querySelector('.live-toast[data-toast-id="' + idOrEl + '"]');
+      if (el) el.remove();
+    } else if (idOrEl.parentElement) {
+      idOrEl.remove();
+    }
   }
 
   // ── Calculo de tiempo de leg ──────────────────────────────────────
@@ -475,6 +599,10 @@ window.TSAgestor.livePlan = (function () {
     _tick();
   }
   function _tick() {
+    // F1.4: skip si el tab esta oculto — ahorra CPU/bateria en tablet.
+    // visibilitychange dispara un tick inmediato al volver (ver
+    // _wireVisibility) asi que el reloj se actualiza al instante.
+    if (typeof document !== 'undefined' && document.hidden) return;
     const d = new Date();
     const txt = String(d.getUTCHours()).padStart(2, '0') + ':' +
                 String(d.getUTCMinutes()).padStart(2, '0') + ':' +
@@ -487,6 +615,18 @@ window.TSAgestor.livePlan = (function () {
     // Comprueba si la ETA del siguiente WP real ha sido alcanzada
     // y, de ser asi, dispara el modal de alerta (una vez por WP).
     _checkWpAlertOnTick();
+  }
+  function _wireVisibility() {
+    if (_visibilityWired) return;
+    if (typeof document === 'undefined' || !document.addEventListener) return;
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        // Acabamos de volver al tab. Tick inmediato para que la UI
+        // refleje la realidad sin esperar al siguiente segundo.
+        _tick();
+      }
+    });
+    _visibilityWired = true;
   }
 
   // Indice del siguiente WP "real" (saltando sub-legs).
@@ -517,16 +657,19 @@ window.TSAgestor.livePlan = (function () {
     _showWpAlert(idx);
   }
 
+  // F1.5: WP-alert como toast NO-BLOQUEANTE top-right. Sustituye al
+  // antiguo modal centrado con backdrop que rompia la lectura del
+  // mapa. Conserva los 4 inputs (IAS/FF/FL/Fuel) y los 2 botones
+  // (Confirmar / Aun no). Marca un indicador rojo persistente en la
+  // card "Estado actual" hasta que el operador atienda. Beep WebAudio
+  // + vibracion al aparecer (configurable). Click fuera NO cierra.
   function _showWpAlert(idx) {
     if (!session) return;
-    const modal = document.getElementById('live-wp-alert');
-    if (!modal) return;
     const c = session.coords[idx];
     const lp = session.legPlan[idx];
     const rows = _recalc();
     const r = rows[idx];
     const ov = session.overrides;
-    // Pre-rellena con: override vigente > valor del plan
     const iasVal  = (ov && Number.isFinite(ov.ias))  ? ov.ias
                   : (lp && Number.isFinite(lp.ias))  ? Math.round(lp.ias) : '';
     const flowVal = (ov && Number.isFinite(ov.flow)) ? ov.flow
@@ -534,39 +677,103 @@ window.TSAgestor.livePlan = (function () {
     const flVal   = (ov && Number.isFinite(ov.fl))   ? ov.fl
                   : Number.isFinite(c.fl)            ? c.fl : '';
     const fuelVal = (r && Number.isFinite(r.fuelRest)) ? Math.round(r.fuelRest) : '';
-    const nameEl = document.getElementById('live-alert-wp-name');
-    if (nameEl) nameEl.textContent = `#${idx + 1} · ${c.name}`;
-    const iasEl  = document.getElementById('live-alert-ias');
-    const flowEl = document.getElementById('live-alert-flow');
-    const flEl   = document.getElementById('live-alert-fl');
-    const fuelEl = document.getElementById('live-alert-fuel');
-    if (iasEl)  iasEl.value  = iasVal;
-    if (flowEl) flowEl.value = flowVal;
-    if (flEl)   flEl.value   = flVal;
-    if (fuelEl) fuelEl.value = fuelVal;
-    modal.dataset.targetIdx = String(idx);
-    modal.classList.remove('hidden');
+
+    // Cuerpo del toast: 4 inputs en grid + 2 botones de accion.
+    const bodyHTML =
+      '<div class="live-alert-grid">' +
+        '<label class="live-override-label"><span>IAS (kt)</span>' +
+          `<input type="number" id="live-alert-ias" min="50" max="900" step="5" value="${iasVal}"></label>` +
+        '<label class="live-override-label"><span>FF / Flow (/h)</span>' +
+          `<input type="number" id="live-alert-flow" min="0" step="10" value="${flowVal}"></label>` +
+        '<label class="live-override-label"><span>FL</span>' +
+          `<input type="number" id="live-alert-fl" min="10" max="600" step="5" value="${flVal}"></label>` +
+        '<label class="live-override-label"><span>Combustible total</span>' +
+          `<input type="number" id="live-alert-fuel" step="10" value="${fuelVal}"></label>` +
+      '</div>';
+    const actionsHTML =
+      '<button id="btn-live-alert-confirm" class="btn btn-primary btn-sm" type="button">✓ Confirmar paso</button>' +
+      '<button id="btn-live-alert-defer" class="btn btn-ghost btn-sm" type="button">Aún no</button>';
+    const toast = _showToast({
+      id: 'wp-alert',
+      level: 'warn',
+      title: `ETA alcanzada: WP #${idx + 1} · ${c.name}`,
+      message: 'Si has pasado por él, confirma (registra Date.now() y aplica ajustes desde el siguiente leg). Si aún no, descártalo y usa "Estoy en próximo WP" cuando llegues.',
+      bodyHTML, actionsHTML,
+      closeable: false,
+    });
+    if (toast) toast.dataset.targetIdx = String(idx);
+    // Indicador rojo persistente en la card "Estado actual" hasta atender.
+    _setEtaAlertIndicator(true, idx);
+    // Beep WebAudio + vibracion (best-effort, sin bloqueo si fallan).
+    _playEtaBeep();
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      try { navigator.vibrate([200, 100, 200]); } catch (_) {}
+    }
+  }
+
+  // Indicador persistente "ETA alcanzada — atender". Vive en la card
+  // de Estado actual; se quita al confirmar o descartar.
+  function _setEtaAlertIndicator(on, idx) {
+    const statusCard = document.querySelector('.live-status-card');
+    if (!statusCard) return;
+    let badge = document.getElementById('live-eta-alert-badge');
+    if (!on) {
+      if (badge) badge.remove();
+      return;
+    }
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.id = 'live-eta-alert-badge';
+      badge.className = 'live-eta-alert-badge';
+      const head = statusCard.querySelector('.live-card-head');
+      if (head) head.appendChild(badge);
+    }
+    badge.textContent = `⚠ ETA WP #${(idx | 0) + 1} alcanzada`;
+  }
+
+  // Beep corto via WebAudio. Frecuencia 880 Hz, duracion 180ms,
+  // fade-out para evitar click. Tolerante a errores (AudioContext
+  // requiere gesture en algunos navegadores).
+  function _playEtaBeep() {
+    try {
+      if (typeof window === 'undefined' || !(window.AudioContext || window.webkitAudioContext)) return;
+      if (!_etaAudioCtx) _etaAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = _etaAudioCtx;
+      const t0 = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(0.3, t0 + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(t0);
+      osc.stop(t0 + 0.2);
+    } catch (_) {}
   }
 
   function _confirmWpAlert() {
     if (!session) return;
-    const modal = document.getElementById('live-wp-alert');
-    if (!modal) return;
-    const idx = parseInt(modal.dataset.targetIdx, 10);
+    // F1.5: el WP-alert ahora es un toast con id "wp-alert". Leemos
+    // el targetIdx del dataset del toast.
+    const toast = document.querySelector('.live-toast[data-toast-id="wp-alert"]');
+    if (!toast) return;
+    const idx = parseInt(toast.dataset.targetIdx, 10);
     if (!Number.isFinite(idx)) return;
-    const ias  = parseFloat(document.getElementById('live-alert-ias').value);
-    const flow = parseFloat(document.getElementById('live-alert-flow').value);
-    const fl   = parseFloat(document.getElementById('live-alert-fl').value);
-    const fuel = parseFloat(document.getElementById('live-alert-fuel').value);
-    // Registra Date.now() como hora de paso para idx (y sub-legs
-    // intermedios, si los hubiera, para mantener la continuidad).
+    const iasEl  = document.getElementById('live-alert-ias');
+    const flowEl = document.getElementById('live-alert-flow');
+    const flEl   = document.getElementById('live-alert-fl');
+    const fuelEl = document.getElementById('live-alert-fuel');
+    const ias  = iasEl  ? parseFloat(iasEl.value)  : NaN;
+    const flow = flowEl ? parseFloat(flowEl.value) : NaN;
+    const fl   = flEl   ? parseFloat(flEl.value)   : NaN;
+    const fuel = fuelEl ? parseFloat(fuelEl.value) : NaN;
     const now = Date.now();
     for (let k = session.currentIdx + 1; k <= idx; k++) {
       session.actualPassTimes[k] = now;
     }
     session.currentIdx = idx;
-    // Aplica overrides desde el SIGUIENTE leg (idx+1) ya que estamos
-    // registrando que hemos pasado por idx ahora.
     const hasOv = Number.isFinite(ias) || Number.isFinite(flow) || Number.isFinite(fl);
     if (hasOv) {
       const prev = session.overrides || { ias: null, flow: null, fl: null };
@@ -578,19 +785,22 @@ window.TSAgestor.livePlan = (function () {
       };
     }
     if (Number.isFinite(fuel)) {
-      session.fuelOverrides[idx] = fuel;
+      session.fuelOverrides[idx] = Math.max(0, fuel);
     }
     _saveSession();
-    modal.classList.add('hidden');
+    _dismissToast('wp-alert');
+    _setEtaAlertIndicator(false);
     _refresh();
     _refetchWinds();
   }
 
   function _dismissWpAlert() {
-    const modal = document.getElementById('live-wp-alert');
-    if (modal) modal.classList.add('hidden');
-    // alertedWPs[idx] ya esta seteado: no re-aparece hasta retrocede /
-    // reset / cambio del plan.
+    // alertedWPs[idx] ya esta seteado: el toast no re-aparece hasta
+    // retrocede / reset / cambio del plan. Pero conservamos el badge
+    // rojo en Estado actual para que el operador no olvide atender
+    // la posicion cuando llegue (usa "Estoy en proximo WP").
+    _dismissToast('wp-alert');
+    // El badge se queda visible — el operador lo ve hasta que avance.
   }
 
   function _maybeShowContent() {
@@ -606,6 +816,9 @@ window.TSAgestor.livePlan = (function () {
       preflight.classList.add('hidden');
       content.classList.add('hidden');
       if (tableWrap) tableWrap.classList.add('hidden');
+      // Sin plan -> limpia cualquier marcador Live residual del mapa.
+      const mv = window.TSAgestor && window.TSAgestor.mapView;
+      if (mv && mv.clearLiveOverlay) mv.clearLiveOverlay();
       return;
     }
     noPlan.classList.add('hidden');
@@ -633,6 +846,28 @@ window.TSAgestor.livePlan = (function () {
     _renderStatus(rows);
     _renderTable(rows);
     _renderEval(rows);
+    _updateMapOverlay();
+  }
+
+  // F1.2 + F1.3: actualiza el marcador "soy aqui" y la linea de
+  // progreso recorrida vs pendiente en el mapa. Solo dibuja si la
+  // sesion esta arrancada — antes del Iniciar ruta el mapa muestra
+  // unicamente la ruta del plan (renderFlightPlan).
+  function _updateMapOverlay() {
+    const mv = window.TSAgestor && window.TSAgestor.mapView;
+    if (!mv || typeof mv.setLiveMarker !== 'function') return;
+    if (!session || !session.started || !session.coords || session.coords.length < 1) {
+      mv.clearLiveOverlay && mv.clearLiveOverlay();
+      return;
+    }
+    const idx = Math.max(0, Math.min(session.currentIdx | 0, session.coords.length - 1));
+    const c = session.coords[idx];
+    if (c && Number.isFinite(c.lat) && Number.isFinite(c.lon)) {
+      mv.setLiveMarker([c.lat, c.lon]);
+    } else {
+      mv.setLiveMarker(null);
+    }
+    mv.setLiveProgress(session.coords, idx);
   }
 
   // ── Render: pre-flight (Iniciar ruta) ──────────────────────────────
@@ -705,9 +940,94 @@ window.TSAgestor.livePlan = (function () {
     return dir + '/' + sp;
   }
 
+  // F1.6: banner "VUELO COMPLETADO" cuando el operador ha registrado
+  // el paso por el ultimo WP. Sustituye la grid de 6 cifras por un
+  // resumen verde con duracion real, combustible consumido vs plan,
+  // delta ETA total. Si la sesion aun no ha llegado al destino, oculta
+  // el banner (la grid normal se rellena en _renderStatus).
+  function _renderCompleted(rows) {
+    if (!session) return;
+    const statusCard = document.querySelector('.live-status-card');
+    if (!statusCard) return;
+    const last = session.coords.length - 1;
+    const done = session.started && session.currentIdx >= last;
+    let banner = document.getElementById('live-completed-banner');
+    if (!done) {
+      if (banner) banner.remove();
+      statusCard.classList.remove('live-status-card-done');
+      return;
+    }
+    statusCard.classList.add('live-status-card-done');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'live-completed-banner';
+      banner.className = 'live-completed-banner';
+      // Insertar despues del head de la card (antes del grid)
+      const head = statusCard.querySelector('.live-card-head');
+      if (head && head.nextSibling) {
+        statusCard.insertBefore(banner, head.nextSibling);
+      } else {
+        statusCard.appendChild(banner);
+      }
+    }
+    const destRow = rows[last];
+    // Duracion real desde el primer paso registrado hasta el ultimo
+    const startMs = session.actualPassTimes[0];
+    const endMs   = session.actualPassTimes[last];
+    const durMs = (Number.isFinite(startMs) && Number.isFinite(endMs)) ? (endMs - startMs) : null;
+    const durTxt = durMs != null ? _fmtDuration(durMs) : '—';
+    // Plan duration (en ETAs planificadas)
+    const planStart = session.plannedEtas[0];
+    const planEnd   = session.plannedEtas[last];
+    const planDurMs = (Number.isFinite(planStart) && Number.isFinite(planEnd)) ? (planEnd - planStart) : null;
+    const planDurTxt = planDurMs != null ? _fmtDuration(planDurMs) : '—';
+    // Delta combustible: planificado vs real al destino
+    const planFuelRest = session.plannedFuelRest[last];
+    const liveFuelRest = destRow ? destRow.fuelRest : null;
+    let fuelTxt = '—';
+    if (Number.isFinite(planFuelRest) && Number.isFinite(liveFuelRest)) {
+      const used  = session.fuelOpts.initialFuel - liveFuelRest;
+      const planUsed = session.fuelOpts.initialFuel - planFuelRest;
+      const dlt = used - planUsed;
+      const sign = dlt > 0 ? '+' : '';
+      fuelTxt = `${Math.round(used)} ${session.fuelOpts.unit} consumidos · plan ${Math.round(planUsed)} (${sign}${Math.round(dlt)})`;
+    }
+    // Delta ETA total
+    const etaDelta = (Number.isFinite(endMs) && Number.isFinite(planEnd)) ? (endMs - planEnd) : null;
+    const etaTxt = etaDelta != null ? _fmtDeltaLong(etaDelta) : '—';
+    banner.innerHTML =
+      '<div class="live-completed-title">✓ VUELO COMPLETADO</div>' +
+      '<dl class="live-completed-list">' +
+        `<dt>Duración real</dt><dd><b>${durTxt}</b> <span class="dim">(plan ${planDurTxt})</span></dd>` +
+        `<dt>Combustible</dt><dd>${fuelTxt}</dd>` +
+        `<dt>ETA destino</dt><dd>${etaTxt}</dd>` +
+      '</dl>';
+  }
+
+  // Formato corto Xh Ym o Y min
+  function _fmtDuration(ms) {
+    if (!Number.isFinite(ms) || ms < 0) return '—';
+    const totalMin = Math.round(ms / 60000);
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin - h * 60;
+    if (h > 0) return h + 'h ' + String(m).padStart(2, '0') + 'm';
+    return m + ' min';
+  }
+  // Formato delta con signo y unidad min legible
+  function _fmtDeltaLong(ms) {
+    if (!Number.isFinite(ms)) return '—';
+    const min = Math.round(ms / 60000);
+    if (min === 0) return 'sin desviación';
+    if (min > 0) return `+${min} min (retraso)`;
+    return `${min} min (adelanto)`;
+  }
+
   function _renderStatus(rows) {
     const $ = id => document.getElementById(id);
     if (!session) return;
+    // F1.6: si hemos llegado al destino (currentIdx === last) mostramos
+    // un banner de cierre verde sobre la card "Estado actual".
+    _renderCompleted(rows);
     const curr = session.currentIdx;
     // Para el "proximo WP" salta los sub-legs: WP real siguiente
     let next = null;
@@ -875,9 +1195,12 @@ window.TSAgestor.livePlan = (function () {
       session.actualPassTimes[k] = now;
     }
     session.currentIdx = next;
+    // Si habia un WP-alert pendiente del WP que acabamos de atender,
+    // cierra el toast y quita el badge.
+    _dismissToast('wp-alert');
+    _setEtaAlertIndicator(false);
     _saveSession();
     _refresh();
-    // Refetch viento para el resto del vuelo (async, no bloqueante)
     _refetchWinds();
   }
   function _back() {
@@ -928,6 +1251,8 @@ window.TSAgestor.livePlan = (function () {
   function _resetSession() {
     if (!confirm('Resetear la sesión live al estado inicial? Se pierden todos los pasos, holds, overrides y correcciones de combustible.')) return;
     _clearSession();
+    _dismissToast('wp-alert');
+    _setEtaAlertIndicator(false);
     _buildSessionFromPlan(true);
     _maybeShowContent();
   }

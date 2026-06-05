@@ -4400,91 +4400,196 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
 .live-fuel-input.live-fuel-bingo { color: #ef4444; border-color: #ef4444; }
 .live-fuel-input.live-fuel-joker { color: #f59e0b; border-color: #f59e0b; }
 
-/* Modal de alerta cuando se alcanza la ETA del proximo WP */
-.live-wp-alert {
+/* ============================================================
+   Sistema de toasts (top-right) — reusable por todo el modulo
+   Live. No bloqueante: el piloto sigue viendo el mapa, las
+   cards y la tabla mientras hay toasts visibles. Stackean
+   verticalmente. z-index 9999 (por debajo de modales hard
+   como kml-modal a 99999).
+   ============================================================ */
+.live-toast-container {
   position: fixed;
-  inset: 0;
+  top: calc(var(--b1-header-h, 96px) + var(--sp-3));
+  right: var(--sp-3);
   z-index: 9999;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--sp-4);
-}
-.live-wp-alert.hidden { display: none; }
-.live-wp-alert-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(2px);
-}
-.live-wp-alert-content {
-  position: relative;
-  width: min(560px, calc(100vw - var(--sp-6, 24px)));
-  max-height: calc(100vh - var(--sp-6, 24px));
-  background: var(--bg-panel);
-  border: 2px solid var(--ea-amarillo, #fbbf24);
-  border-radius: var(--r-lg, 10px);
-  box-shadow: 0 12px 40px rgba(251, 191, 36, 0.25);
-  display: flex;
   flex-direction: column;
-  overflow: auto;
-  color: var(--text);
-  padding: var(--sp-3);
-}
-.live-wp-alert-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: var(--sp-2);
-  margin-bottom: var(--sp-2);
-  padding-bottom: var(--sp-2);
-  border-bottom: 1px solid var(--border);
+  pointer-events: none; /* el container no bloquea, sus toasts si */
+  max-width: min(420px, calc(100vw - 2 * var(--sp-3)));
 }
-.live-wp-alert-head h3 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--ea-amarillo, #fbbf24);
-  letter-spacing: 0.3px;
-}
-.live-wp-alert-content p {
-  margin: var(--sp-2) 0;
+.live-toast {
+  pointer-events: auto;
+  position: relative;
+  padding: var(--sp-2) var(--sp-3);
+  padding-right: 32px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: var(--r-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  color: var(--text);
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.4;
+  animation: liveToastIn 0.2s ease-out;
 }
-.live-alert-grid {
+@keyframes liveToastIn {
+  from { transform: translateX(20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.live-toast-info    { border-left-color: var(--ea-azul-cielo, #93c5fd); }
+.live-toast-success { border-left-color: #22c55e; }
+.live-toast-warn    { border-left-color: var(--ea-amarillo, #fbbf24); }
+.live-toast-danger  { border-left-color: #ef4444; }
+.live-toast-title {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 2px;
+  color: #fff;
+}
+.live-toast-info    .live-toast-title { color: var(--ea-azul-cielo, #93c5fd); }
+.live-toast-success .live-toast-title { color: #86efac; }
+.live-toast-warn    .live-toast-title { color: var(--ea-amarillo, #fbbf24); }
+.live-toast-danger  .live-toast-title { color: #fca5a5; }
+.live-toast-message {
+  color: var(--text);
+  font-size: 12px;
+}
+.live-toast-body {
+  margin-top: var(--sp-2);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--border);
+}
+.live-toast-actions {
+  margin-top: var(--sp-2);
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+.live-toast-close {
+  position: absolute;
+  top: 4px; right: 4px;
+  width: 22px; height: 22px;
+  background: transparent;
+  border: 0;
+  color: var(--text-mute);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.live-toast-close:hover { color: #fff; }
+
+/* F1.6: banner "VUELO COMPLETADO" sustituye la grid de Estado al
+   alcanzar el ultimo WP. Tono verde para feedback positivo de cierre. */
+.live-status-card-done {
+  border-color: #22c55e;
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.08), var(--bg-panel));
+}
+.live-completed-banner {
+  margin: var(--sp-2) 0;
+  padding: var(--sp-3);
+  background: rgba(34, 197, 94, 0.10);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  border-radius: var(--r-md);
+}
+.live-completed-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #86efac;
+  letter-spacing: 0.4px;
+  margin-bottom: var(--sp-2);
+}
+.live-completed-list {
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) 1fr;
+  gap: 4px var(--sp-3);
+  margin: 0;
+  font-size: 13px;
+}
+.live-completed-list dt {
+  font-weight: 600;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+.live-completed-list dd { margin: 0; color: var(--text); }
+.live-completed-list dd b { color: #fff; }
+
+/* Marcador "soy aqui" en el mapa (modo Live): halo pulsante rojo.
+   Aplicado al SVG path generado por L.circleMarker via className. */
+.live-here-halo {
+  animation: liveHereHalo 1.6s ease-out infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+@keyframes liveHereHalo {
+  0%   { opacity: 0.6; }
+  50%  { opacity: 0.15; }
+  100% { opacity: 0.6; }
+}
+@media (max-width: 480px) {
+  .live-toast-container {
+    top: calc(var(--b1-header-h, 96px) + var(--sp-2));
+    right: var(--sp-2);
+    left: var(--sp-2);
+    max-width: none;
+  }
+}
+
+/* WP-alert (F1.5): el modal antiguo fue sustituido por un toast con
+   id "wp-alert" del sistema generico de toasts (.live-toast). Los
+   selectores .live-alert-grid y .live-alert-grid input estilizan el
+   cuerpo del toast (4 inputs IAS/FF/FL/Fuel). No mas backdrop ni
+   bloqueo modal. */
+.live-toast .live-alert-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: var(--sp-3);
-  margin: var(--sp-3) 0;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0 0 0;
 }
-.live-alert-grid input {
+.live-toast .live-alert-grid input {
   background: var(--bg);
   color: #fff;
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
-  padding: 6px 10px;
+  padding: 4px 8px;
   font-family: 'JetBrains Mono', Consolas, monospace;
-  font-size: 14px;
+  font-size: 13px;
   width: 100%;
   box-sizing: border-box;
 }
-.live-alert-grid input:focus {
+.live-toast .live-alert-grid input:focus {
   outline: none;
   border-color: var(--ea-amarillo, #fbbf24);
   box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.18);
 }
-.live-alert-actions {
-  display: flex;
-  gap: var(--sp-2);
-  margin-top: var(--sp-3);
-  padding-top: var(--sp-2);
-  border-top: 1px solid var(--border);
-  flex-wrap: wrap;
-}
-.live-alert-actions .btn-primary { flex: 1 1 auto; font-size: 13px; padding: 10px 14px; }
 @media (max-width: 480px) {
-  .live-alert-grid { grid-template-columns: 1fr; }
+  .live-toast .live-alert-grid { grid-template-columns: 1fr; }
+}
+
+/* Badge persistente "ETA WP N alcanzada" en la card Estado actual.
+   Se queda hasta que el operador atienda (confirma o avanza). */
+.live-eta-alert-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid #ef4444;
+  border-radius: 999px;
+  color: #fca5a5;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  animation: liveBadgePulse 1.4s ease-in-out infinite;
+}
+@keyframes liveBadgePulse {
+  0%   { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+  70%  { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
 }
 
 /* ============================================================
