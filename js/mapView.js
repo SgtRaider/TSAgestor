@@ -1611,8 +1611,22 @@ window.TSAgestor.mapView = (function () {
     return routeLayer;
   }
 
+  // BUG#7 (audit v2 livePlan): cuando Live entra en RTB engaged la
+  // ruta de IDA del plan original tapaba la ruta CYAN del retorno
+  // dibujada en `liveOverlayPane`. Con `suppressFlightPlan(true)`
+  // saltamos cualquier render del plan + limpiamos lo dibujado. El
+  // estado vive en mapView para que cambios de tab en app.js o nuevas
+  // llamadas a renderFlightPlan respeten la supresion sin que el
+  // caller tenga que reconocer el modo Live.
+  let _flightPlanSuppressed = false;
+  function suppressFlightPlan(suppress) {
+    _flightPlanSuppressed = !!suppress;
+    if (_flightPlanSuppressed && routeLayer) routeLayer.clearLayers();
+  }
+
   function renderFlightPlan(plan) {
     if (!map) return;
+    if (_flightPlanSuppressed) return;
     const grp = ensureRouteLayer();
     grp.clearLayers();
     if (!plan || !plan.coords || plan.coords.length < 2) return;
@@ -1997,7 +2011,7 @@ window.TSAgestor.mapView = (function () {
 
   return {
     init, render, fitBounds, invalidateSize, fitToDefault,
-    renderFlightPlan, clearFlightPlan,
+    renderFlightPlan, clearFlightPlan, suppressFlightPlan,
     startDrawingRoute, finishDrawingRoute, cancelDrawingRoute, undoDrawingPoint, addReturnLeg,
     setWeatherMarkers, clearWeatherMarkers,
     setGrametWaypoints, clearGrametWaypoints,

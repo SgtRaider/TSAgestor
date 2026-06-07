@@ -54,6 +54,14 @@ window.TSAgestor.livePlan = (function () {
   let clockInterval = null;
   let _wired = false;
   let _refetchInFlight = false;
+  // BUG#1 (audit v2): epoch monotonico bumpeado en cada transicion
+  // que invalida la session (reset/build/engage/cancel RTB). El
+  // _refetchWinds captura el epoch al lanzar el fetch y lo recompara
+  // antes de commitear `session.refetched`: si cambio mientras await,
+  // descartamos el resultado y dejamos `_refetchInFlight=false`. Asi
+  // un reset/RTB en mitad del fetch no corrompe la sesion nueva ni
+  // bloquea futuros refetch.
+  let _sessionEpoch = 0;
   let _visibilityWired = false;
   let _etaAudioCtx = null;
   // F2.4: cache local de METAR/TAF de destino + tiempo de ultimo
@@ -89,6 +97,24 @@ window.TSAgestor.livePlan = (function () {
   function _buildSessionFromPlan(force) {
     const plan = _getPlan();
     if (!plan || !plan.coords || plan.coords.length < 2) return null;
+
+    // BUG#3 (audit v2): si hay un RTB engaged y el plan cambia (recalc
+    // en Plan tab), NO destruir la sesion ni preRtbSnapshot por
+    // sorpresa — el piloto puede estar evaluando RTB y volver al plan
+    // original despues. Avisar con toast y conservar la sesion RTB.
+    // El operador debe cancelar RTB primero para adoptar el plan nuevo.
+    if (force !== true && session && session.rtbEngaged && session.preRtbSnapshot) {
+      const newId = _hashPlan(plan);
+      if (session.planId !== newId) {
+        _showToast({
+          id: 'plan-rtb-block', level: 'warn',
+          title: 'Plan recalculado durante RTB',
+          message: 'Hay un Modo Retorno engaged. La sesion Live se ha conservado para no perder el progreso del retorno. Pulsa "Cancelar RTB" si quieres adoptar el plan nuevo.',
+          autoDismissMs: 12000,
+        });
+        return session;
+      }
+    }
 
     // Incluye TODOS los puntos (incluidos sub-legs de ascenso/descenso
     // intermedios). Filtra solo los holds (que son sinteticos y viven
@@ -181,6 +207,10 @@ window.TSAgestor.livePlan = (function () {
       fuelOverrides:     keep ? Object.assign({}, prev.fuelOverrides || {}) : {},
       refetched:         keep ? prev.refetched         : null,
     };
+    // BUG#1 (audit v2): bumpear el epoch invalida cualquier
+    // _refetchWinds en vuelo — su commit detectara el cambio y
+    // descartara el resultado en lugar de aplicarlo a la session nueva.
+    _sessionEpoch++;
     _saveSession();
     return session;
   }
@@ -195,6 +225,7 @@ window.TSAgestor.livePlan = (function () {
   function _hashPlan(plan) {
     if (!plan || !plan.coords) return '0';
     const subCount = plan.coords.filter(c => c.isClimbDescentSub).length;
+    const fo = plan.fuelOpts || {};
     const sigParts = [
       'len=' + plan.coords.length,
       'sub=' + subCount,
@@ -205,8 +236,17 @@ window.TSAgestor.livePlan = (function () {
         return `${c.name}@${fl}@${lat},${lon}`;
       }).join('|'),
       'dep=' + (plan.departureUTC || ''),
-      'ias=' + ((plan.fuelOpts && plan.fuelOpts.defaultSpeedKt) || ''),
-      'flow=' + ((plan.fuelOpts && plan.fuelOpts.fuelFlow) || ''),
+      'ias=' + (fo.defaultSpeedKt || ''),
+      'flow=' + (fo.fuelFlow || ''),
+      // BUG#6 (audit v2): incluye los campos de fuelOpts que la card
+      // de evaluacion usa como umbrales (initialFuel, joker, bingo) +
+      // la unidad. Antes un cambio de joker/bingo en Plan no
+      // disparaba rebuild y Live seguia evaluando contra umbrales
+      // antiguos sin avisar.
+      'init=' + (fo.initialFuel || ''),
+      'jok=' + (Number.isFinite(fo.joker) ? fo.joker : ''),
+      'bgo=' + (Number.isFinite(fo.bingo) ? fo.bingo : ''),
+      'u=' + (fo.unit || ''),
     ];
     const sig = sigParts.join('#');
     let h = 0;
@@ -282,6 +322,9 @@ window.TSAgestor.livePlan = (function () {
   function _clearSession() {
     session = null;
     _invalidateRecalc();
+    // BUG#1: epoch++ para que un _refetchWinds en vuelo no committee
+    // su resultado sobre la session siguiente.
+    _sessionEpoch++;
     try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
   }
 
@@ -471,6 +514,33 @@ window.TSAgestor.livePlan = (function () {
       if (Number.isFinite(bingo) && fuelRest <= bingo) fuelStatus = 'bingo';
       else if (Number.isFinite(joker) && fuelRest <= joker) fuelStatus = 'joker';
 
+      // BUG#11: si hay refetched winds que cubren este leg, sobrescribe
+      // la columna Viento con el dato fresco. Antes la columna mostraba
+      // siempre lp.wind, asi que un plan calculado SIN viento dejaba
+      // "—" aunque el refetch trajera datos validos.
+      let windToUse = lp ? lp.wind : null;
+      // BUG#11: igual con TAS / GS — si el refetch recalculo TAS via DA
+      // real (geom.kiasToTAS con OAT), preferir ese valor sobre el
+      // legPlan cacheado del plan original.
+      let tasToUse = lp ? lp.tas : null;
+      let gsToUse  = lp ? lp.gs  : null;
+      if (session.refetched && i >= session.refetched.startIdx) {
+        const rIdx = i - session.refetched.startIdx;
+        const wdir = session.refetched.legWindDir   && session.refetched.legWindDir[rIdx];
+        const wspd = session.refetched.legWindSpeed && session.refetched.legWindSpeed[rIdx];
+        if (Number.isFinite(wdir) && Number.isFinite(wspd)) {
+          windToUse = { dir: wdir, speedKt: wspd };
+        }
+        const rTas = session.refetched.legTas && session.refetched.legTas[rIdx];
+        if (Number.isFinite(rTas) && rTas > 0) tasToUse = rTas;
+        if (lp && Number.isFinite(lp.legNM) && lp.legNM > 0) {
+          const tMin = session.refetched.legTimes && session.refetched.legTimes[rIdx];
+          if (Number.isFinite(tMin) && tMin > 0) {
+            gsToUse = (lp.legNM / tMin) * 60;
+          }
+        }
+      }
+
       rows.push({
         i,
         name: c.name,
@@ -483,9 +553,9 @@ window.TSAgestor.livePlan = (function () {
         fuelRestOverridden: session.fuelOverrides[i] != null,
         fuelStatus,
         ias:  lp ? lp.ias : null,
-        tas:  lp ? lp.tas : null,
-        gs:   lp ? lp.gs  : null,
-        wind: lp ? lp.wind : null,
+        tas:  tasToUse,
+        gs:   gsToUse,
+        wind: windToUse,
         passReal: pass != null,
         isCurrent: i === session.currentIdx,
         isPast: i < session.currentIdx,
@@ -589,7 +659,18 @@ window.TSAgestor.livePlan = (function () {
     if (!meteo || !meteo.fetchWindsAloft || !meteo.lookupWindAt) return;
     const geom = window.TSAgestor && window.TSAgestor.geom;
 
-    const remaining = session.coords.slice(startIdx);
+    // BUG#1+#2 (audit v2): snapshot defensivo + epoch para detectar
+    // que la session no haya cambiado mientras await. Sin esto, un
+    // reset / engage RTB / cancel RTB / rebuild del plan durante el
+    // fetch deja `session.refetched.legTimes` indexado a coords
+    // antiguas -> ETA del WP rota silenciosamente. Iteramos sobre los
+    // snapshots para que la respuesta sea internamente consistente.
+    const myEpoch    = _sessionEpoch;
+    const coordsSnap = session.coords.slice();
+    const legPlanSnap = session.legPlan.slice();
+    const refStartMs = session.actualPassTimes[startIdx] || session.proposedStartTime || Date.now();
+
+    const remaining = coordsSnap.slice(startIdx);
     const points = remaining.map(c => ({ lat: c.lat, lon: c.lon }));
     _refetchInFlight = true;
     // F2.x sale render aqui para que el spinner "⏳ Refrescando vientos
@@ -597,32 +678,47 @@ window.TSAgestor.livePlan = (function () {
     _refresh();
     try {
       const result = await meteo.fetchWindsAloft(points);
+      // BUG#1: si la session cambio durante await, descartar y limpiar
+      // flag para no bloquear el proximo refetch.
+      if (!session || _sessionEpoch !== myEpoch) {
+        _refetchInFlight = false;
+        _refresh();
+        return;
+      }
       const ph = result && result.pointsHourly;
       if (!ph || !ph.length) {
         _refetchInFlight = false;
         _refresh(); // limpia el spinner
         return;
       }
-      // Buffers paralelos: tiempos, TAS, DA, OAT por leg. legTimes[0]
-      // queda a 0 (padding para que el indice local k - startIdx mapee
-      // directo al leg k).
-      const legTimes = [0];
-      const legTas   = [null];
-      const legDa    = [null];
-      const legOat   = [null];
+      // Buffers paralelos: tiempos, TAS, DA, OAT, viento (dir + speed)
+      // por leg. legTimes[0] queda a 0 (padding para que el indice
+      // local k - startIdx mapee directo al leg k).
+      const legTimes     = [0];
+      const legTas       = [null];
+      const legDa        = [null];
+      const legOat       = [null];
+      // BUG#11: capturamos viento (dir + speed) para que _recalcImpl
+      // pueda pintar la columna Viento con datos refetched. Antes
+      // legPlan[k].wind era la unica fuente -> "—" si el plan se
+      // calculo sin viento.
+      const legWindDir   = [null];
+      const legWindSpeed = [null];
       const isaDeviations = []; // F2.7: WPs con |OAT - ISA(PA)| > 3 °C
-      let etaMs = session.actualPassTimes[startIdx] || session.proposedStartTime || Date.now();
-      for (let k = startIdx + 1; k < session.coords.length; k++) {
+      let etaMs = refStartMs;
+      for (let k = startIdx + 1; k < coordsSnap.length; k++) {
         const localIdx = k - startIdx;
         const phCurr = ph[localIdx];
-        const lp = session.legPlan[k];
-        const fl = session.coords[k].fl || 100;
+        const lp = legPlanSnap[k];
+        const fl = coordsSnap[k].fl || 100;
         let legTimeMin = lp ? lp.legTimeMin : 0;
         let tasUsed    = lp ? lp.tas : null;
         let daFt       = null;
         let oatC       = null;
         const wB = phCurr ? meteo.lookupWindAt(phCurr, etaMs, fl) : null;
         if (wB && Number.isFinite(wB.windSpeedKt) && Number.isFinite(wB.windDir)) {
+          legWindDir[localIdx]   = wB.windDir;
+          legWindSpeed[localIdx] = wB.windSpeedKt;
           // F2.1: recalcula TAS si tenemos IAS del plan + OAT del refetch + geom.
           if (geom && Number.isFinite(wB.temperatureC) &&
               lp && Number.isFinite(lp.ias) && lp.ias > 0 &&
@@ -638,14 +734,14 @@ window.TSAgestor.livePlan = (function () {
               const devC = oatC - isaC;
               if (Math.abs(devC) > 3) {
                 isaDeviations.push({
-                  idx: k, name: session.coords[k].name,
+                  idx: k, name: coordsSnap[k].name,
                   oatC, isaC, devC, daFt, fl,
                 });
               }
             }
           }
-          if (Number.isFinite(tasUsed) && Number.isFinite(lp.legNM) && lp.legNM > 0) {
-            const bearing = _bearingDeg(session.coords[k - 1], session.coords[k]);
+          if (Number.isFinite(tasUsed) && lp && Number.isFinite(lp.legNM) && lp.legNM > 0) {
+            const bearing = _bearingDeg(coordsSnap[k - 1], coordsSnap[k]);
             const hw = -wB.windSpeedKt * Math.cos((wB.windDir - bearing) * Math.PI / 180);
             const gs = Math.max(30, tasUsed + hw);
             legTimeMin = (lp.legNM / gs) * 60;
@@ -657,18 +753,25 @@ window.TSAgestor.livePlan = (function () {
         legOat[localIdx]   = oatC;
         etaMs += legTimeMin * 60000;
       }
+      // BUG#1: re-check epoch (puede haber cambiado durante el bucle
+      // si hubo cross-tab sync, p.ej.).
+      if (!session || _sessionEpoch !== myEpoch) {
+        _refetchInFlight = false;
+        _refresh();
+        return;
+      }
       // F2.2: fetchedAt para mostrar antiguedad. legTas / legDa / legOat
-      // persistidos para que F2.10 (toggle Detalle) pueda mostrarlos en
-      // tabla.
+      // / legWindDir / legWindSpeed persistidos para que la tabla los
+      // muestre tras el refetch.
       session.refetched = {
         startIdx, legTimes, legTas, legDa, legOat,
+        legWindDir, legWindSpeed,
         fetchedAt: Date.now(),
         isaDeviations,
       };
+      _invalidateRecalc();
       // F2.x bug fix: poner el flag a false ANTES de _refresh para que
       // _renderEval ya no muestre el spinner cuando recompone el DOM.
-      // El antiguo `finally { _refetchInFlight = false }` corria DESPUES
-      // del ultimo _refresh y dejaba el spinner colgado para siempre.
       _refetchInFlight = false;
       _saveSession();
       _refresh();
@@ -919,10 +1022,15 @@ window.TSAgestor.livePlan = (function () {
 
   function _checkWpAlertOnTick() {
     if (!session || !session.started) return;
-    const modal = document.getElementById('live-wp-alert');
-    // Si ya hay un modal abierto (alert previo no atendido), no
-    // re-abrimos otro encima.
-    if (modal && !modal.classList.contains('hidden')) return;
+    // BUG#10 (audit v2): el WP-alert ahora es un toast (F1.5), no el
+    // modal antiguo <#live-wp-alert>. Buscar por data-toast-id para
+    // que el guard "ya hay alert abierto" siga funcionando — antes
+    // este getElementById devolvia null SIEMPRE y, si dos ETAs caian
+    // en el mismo tick (tipico tras refetch que reduce legs), el
+    // segundo toast reemplazaba al primero dejando el primer WP
+    // marcado en alertedWPs sin haber sido confirmado.
+    const openToast = document.querySelector('.live-toast[data-toast-id="wp-alert"]');
+    if (openToast) return;
     const idx = _nextRealIdx();
     if (idx == null) return;
     if (session.alertedWPs && session.alertedWPs[idx]) return;
@@ -930,11 +1038,13 @@ window.TSAgestor.livePlan = (function () {
     const r = rows[idx];
     if (!r || !Number.isFinite(r.liveEta)) return;
     if (Date.now() < r.liveEta) return;
-    // Marca como alertado y muestra el modal
+    // BUG#10: marca alertedWPs DESPUES de mostrar el toast — asi si
+    // _showWpAlert falla (DOM no listo, lo que sea) no queda el flag
+    // bloqueando futuros intentos.
+    _showWpAlert(idx);
     if (!session.alertedWPs) session.alertedWPs = {};
     session.alertedWPs[idx] = true;
     _saveSession();
-    _showWpAlert(idx);
   }
 
   // F1.5: WP-alert como toast NO-BLOQUEANTE top-right. Sustituye al
@@ -1074,13 +1184,24 @@ window.TSAgestor.livePlan = (function () {
     session.currentIdx = idx;
     const hasOv = Number.isFinite(ias) || Number.isFinite(flow) || Number.isFinite(fl);
     if (hasOv) {
-      const prev = session.overrides || { ias: null, flow: null, fl: null };
-      session.overrides = {
-        fromIdx: Math.min(idx + 1, session.coords.length - 1),
-        ias:  Number.isFinite(ias)  && ias  > 0  ? ias  : prev.ias,
-        flow: Number.isFinite(flow) && flow >= 0 ? flow : prev.flow,
-        fl:   Number.isFinite(fl)   && fl   > 0  ? fl   : prev.fl,
-      };
+      const prev = session.overrides || { fromIdx: null, ias: null, flow: null, fl: null };
+      const newIas  = (Number.isFinite(ias)  && ias  > 0)  ? ias  : prev.ias;
+      const newFlow = (Number.isFinite(flow) && flow >= 0) ? flow : prev.flow;
+      const newFl   = (Number.isFinite(fl)   && fl   > 0)  ? fl   : prev.fl;
+      // BUG#9 (audit v2): solo encoge fromIdx si el operador
+      // REALMENTE cambio algun valor en el modal del WP-alert. Antes
+      // cualquier "Confirmar paso" reseteaba fromIdx=idx+1 aunque el
+      // operador no tocara IAS/Flow/FL — borrando un rango activo de
+      // override IAS que el piloto queria conservar desde un WP
+      // anterior.
+      const changed = (Number.isFinite(ias)  && ias  > 0  && ias  !== prev.ias) ||
+                      (Number.isFinite(flow) && flow >= 0 && flow !== prev.flow) ||
+                      (Number.isFinite(fl)   && fl   > 0  && fl   !== prev.fl);
+      const fromIdx = changed
+        ? Math.min(idx + 1, session.coords.length - 1)
+        : (prev.fromIdx != null ? prev.fromIdx
+                                : Math.min(idx + 1, session.coords.length - 1));
+      session.overrides = { fromIdx, ias: newIas, flow: newFlow, fl: newFl };
     }
     if (Number.isFinite(fuel)) {
       session.fuelOverrides[idx] = Math.max(0, fuel);
@@ -1243,6 +1364,14 @@ window.TSAgestor.livePlan = (function () {
   function _updateMapOverlay() {
     const mv = window.TSAgestor && window.TSAgestor.mapView;
     if (!mv || typeof mv.setLiveMarker !== 'function') return;
+    // BUG#7 (audit v2): mantener sync el flag de supresion del plan
+    // original en el mapa con session.rtbEngaged. Asi al recargar el
+    // tab con RTB persistido + entrar a Live por primera vez, NO se
+    // pinta la ruta amarilla del plan original sobre la cyan del
+    // retorno. Igual al cancelar RTB sin pasar por _cancelRTB (raro).
+    if (typeof mv.suppressFlightPlan === 'function') {
+      mv.suppressFlightPlan(!!(session && session.rtbEngaged));
+    }
     if (!session || !session.started || !session.coords || session.coords.length < 1) {
       mv.clearLiveOverlay && mv.clearLiveOverlay();
       return;
@@ -1747,6 +1876,24 @@ window.TSAgestor.livePlan = (function () {
   function _renderTable(rows) {
     const tbody = document.querySelector('#live-log-table tbody');
     if (!tbody) return;
+    // BUG#8 (audit v2): preserva el focus + el valor tecleado del
+    // input de combustible que el operador esta editando. _refresh()
+    // se llama desde callbacks async (refetch viento, METAR destino,
+    // SIGMET, storage event de otra pestana, _tick) y la reescritura
+    // de tbody.innerHTML destruia el <input> + perdia el valor parcial.
+    let focusInfo = null;
+    try {
+      const active = document.activeElement;
+      if (active && active.classList && active.classList.contains('live-fuel-input') &&
+          tbody.contains(active)) {
+        focusInfo = {
+          idx:      active.dataset.idx,
+          value:    active.value,
+          selStart: active.selectionStart,
+          selEnd:   active.selectionEnd,
+        };
+      }
+    } catch (_) { /* algunos navegadores fallan selectionStart en number inputs */ }
     tbody.innerHTML = '';
     rows.forEach((r) => {
       const tr = document.createElement('tr');
@@ -1790,6 +1937,21 @@ window.TSAgestor.livePlan = (function () {
       const curr = session.currentIdx;
       const reals = session.coords.filter(c => !c.isSub).length;
       info.textContent = `WP ${curr + 1} / ${session.coords.length} (${reals} reales) · ${session.totalDistNM.toFixed(0)} NM total`;
+    }
+    // BUG#8: restaura focus + valor parcial + posicion del cursor en
+    // el mismo input (mismo data-idx). Asi el operador puede teclear
+    // sin que un refresh async le robe la mitad del numero.
+    if (focusInfo && focusInfo.idx != null) {
+      const reborn = tbody.querySelector('.live-fuel-input[data-idx="' + focusInfo.idx + '"]');
+      if (reborn) {
+        reborn.value = focusInfo.value;
+        try { reborn.focus({ preventScroll: true }); } catch (_) { reborn.focus(); }
+        try {
+          if (focusInfo.selStart != null && focusInfo.selEnd != null) {
+            reborn.setSelectionRange(focusInfo.selStart, focusInfo.selEnd);
+          }
+        } catch (_) {}
+      }
     }
   }
 
@@ -2056,6 +2218,13 @@ window.TSAgestor.livePlan = (function () {
       fuelOverrides: Object.assign({}, session.fuelOverrides || {}),
       alertedWPs: Object.assign({}, session.alertedWPs || {}),
       refetched: session.refetched,
+      // BUG#4 (audit v2): snapshot del fuelOpts COMPLETO (no solo
+      // initialFuel). Antes _engageRTB hacia
+      // `session.fuelOpts = {..., initialFuel}` pisando initialFuel
+      // con el combustible del momento del engage; al cancelar, sin
+      // snapshot del fuelOpts original, la card combustible quedaba
+      // mintiendo (initialFuel == valor bajo del engage).
+      fuelOpts: Object.assign({}, session.fuelOpts),
       // El planId se conserva como ref pero la nueva session ya no
       // corresponde al hash del plan -> no preservamos hash check.
     };
@@ -2131,6 +2300,13 @@ window.TSAgestor.livePlan = (function () {
     // momento de engage para que la propagacion downstream cuadre.
     session.fuelOpts = Object.assign({}, session.fuelOpts, { initialFuel });
 
+    // BUG#1+#7 (audit v2): bumpear epoch (invalida refetch en vuelo
+    // sobre la ruta de IDA — ahora estamos en RTB) y suprimir la ruta
+    // amarilla del plan en el mapa (mapView) para que solo se vea el
+    // overlay cyan del retorno. Antes se solapaban las dos polilineas.
+    _sessionEpoch++;
+    const mv = window.TSAgestor && window.TSAgestor.mapView;
+    if (mv && typeof mv.suppressFlightPlan === 'function') mv.suppressFlightPlan(true);
     _saveSession();
     _refresh();
     // Refresca vientos para tener GS reales en la ruta de retorno.
@@ -2147,6 +2323,19 @@ window.TSAgestor.livePlan = (function () {
   function _cancelRTB() {
     if (!session || !session.rtbEngaged || !session.preRtbSnapshot) return;
     const snap = session.preRtbSnapshot;
+    // BUG#5 (audit v2): confirmacion fuerte que lista lo que se
+    // descarta. Si el operador avanzo WPs durante el retorno, el
+    // cancel los pierde sin posibilidad de recuperar — silencioso
+    // antes. Hacemos counting de WPs reales avanzados durante RTB.
+    const rtbAdvanced = (session.currentIdx | 0); // currentIdx en RTB empezo a 0
+    const rtbReal = session.coords.filter((c, i) => i > 0 && i <= rtbAdvanced && !c.isSub).length;
+    let msg = 'Volver al plan ORIGINAL y descartar el modo RETORNO.';
+    if (rtbAdvanced > 0) {
+      msg += `\n\nATENCION: has avanzado ${rtbAdvanced} WPs (${rtbReal} reales) durante el retorno. Esos pasos se PERDERAN. ` +
+             'El currentIdx vuelve al WP donde estabas al engage.';
+    }
+    msg += '\n\n¿Continuar?';
+    if (!confirm(msg)) return;
     session.coords          = snap.coords;
     session.plannedEtas     = snap.plannedEtas;
     session.plannedFuelRest = snap.plannedFuelRest;
@@ -2159,10 +2348,30 @@ window.TSAgestor.livePlan = (function () {
     session.fuelOverrides   = snap.fuelOverrides;
     session.alertedWPs      = snap.alertedWPs;
     session.refetched       = snap.refetched;
+    // BUG#4: restaurar fuelOpts COMPLETO desde snapshot (no solo
+    // initialFuel). Si por alguna razon el snap viejo no tiene
+    // fuelOpts (sesion v218 persistida), conservar la session actual
+    // para no romper el render.
+    if (snap.fuelOpts) session.fuelOpts = Object.assign({}, snap.fuelOpts);
     delete session.rtbEngaged;
     delete session.preRtbSnapshot;
+    // BUG#1+#7: bumpear epoch + re-render del plan original en mapa.
+    _sessionEpoch++;
+    const mv = window.TSAgestor && window.TSAgestor.mapView;
+    if (mv && typeof mv.suppressFlightPlan === 'function') mv.suppressFlightPlan(false);
+    if (mv && typeof mv.renderFlightPlan === 'function') {
+      const app = window.TSAgestor && window.TSAgestor.app;
+      const lastPlan = app && app.getLastPlan && app.getLastPlan();
+      if (lastPlan) mv.renderFlightPlan(lastPlan);
+    }
     _saveSession();
     _refresh();
+    _showToast({
+      id: 'rtb-cancelled', level: 'info',
+      title: '↺ RTB cancelado',
+      message: 'Plan original restaurado. Ruta de IDA visible de nuevo en el mapa.',
+      autoDismissMs: 6000,
+    });
   }
   function _resetSession() {
     if (!confirm('Resetear la sesión live al estado inicial? Se pierden todos los pasos, holds, overrides y correcciones de combustible.')) return;
