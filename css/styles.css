@@ -4638,6 +4638,45 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   }
 }
 
+/* Toast CENTRADO (usado por el WP-alert tras feedback del usuario:
+   "no en una esquina"). Se monta directamente en body con backdrop
+   semi-transparente sin captura de clicks, para que destaque sin
+   bloquear la lectura del mapa. */
+.live-toast.live-toast-centered {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+  width: calc(100vw - 2 * var(--sp-3));
+  max-width: 540px;
+  margin: 0;
+  border-width: 2px;
+  border-left-width: 2px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  animation: liveToastInCenter 0.22s ease-out;
+}
+@keyframes liveToastInCenter {
+  from { transform: translate(-50%, -42%) scale(0.96); opacity: 0; }
+  to   { transform: translate(-50%, -50%) scale(1);    opacity: 1; }
+}
+.live-toast-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(0, 0, 0, 0.40);
+  backdrop-filter: blur(2px);
+  /* No captura clicks — el operador puede seguir interactuando con
+     el mapa o el panel mientras el WP-alert esta visible. */
+  pointer-events: none;
+  animation: liveBackdropIn 0.22s ease-out;
+}
+@keyframes liveBackdropIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 /* WP-alert (F1.5): el modal antiguo fue sustituido por un toast con
    id "wp-alert" del sistema generico de toasts (.live-toast). Los
    selectores .live-alert-grid y .live-alert-grid input estilizan el

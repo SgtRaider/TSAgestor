@@ -305,13 +305,17 @@ window.TSAgestor.livePlan = (function () {
   function _showToast(opts) {
     opts = opts || {};
     const container = _ensureToastContainer();
-    // Si ya hay un toast con ese id, lo reemplazamos
+    // Si ya hay un toast con ese id, lo reemplazamos (busca en el
+    // container Y a nivel body por si era centered antes).
     if (opts.id) {
-      const existing = container.querySelector('[data-toast-id="' + opts.id + '"]');
+      const existing = document.querySelector('.live-toast[data-toast-id="' + opts.id + '"]');
       if (existing) existing.remove();
+      const existingBd = document.querySelector('.live-toast-backdrop[data-toast-id="' + opts.id + '"]');
+      if (existingBd) existingBd.remove();
     }
     const div = document.createElement('div');
     div.className = 'live-toast live-toast-' + (opts.level || 'info');
+    if (opts.centered) div.classList.add('live-toast-centered');
     if (opts.id) div.dataset.toastId = opts.id;
     div.setAttribute('role', opts.level === 'danger' ? 'alert' : 'status');
     let innerHTML = '';
@@ -320,7 +324,6 @@ window.TSAgestor.livePlan = (function () {
     if (opts.bodyHTML) innerHTML += '<div class="live-toast-body">' + opts.bodyHTML + '</div>';
     if (opts.actionsHTML) innerHTML += '<div class="live-toast-actions">' + opts.actionsHTML + '</div>';
     div.innerHTML = innerHTML;
-    // Boton de cierre opcional (por defecto si no hay actionsHTML)
     if (opts.closeable !== false) {
       const close = document.createElement('button');
       close.className = 'live-toast-close';
@@ -330,9 +333,22 @@ window.TSAgestor.livePlan = (function () {
       close.addEventListener('click', () => _dismissToast(opts.id || div));
       div.appendChild(close);
     }
-    container.appendChild(div);
+    // Modo centered: monta directamente en body con backdrop dimmer
+    // (semi-transparente, NO bloquea clicks fuera del toast para no
+    // ser modal). Para los toasts normales, stack en top-right.
+    if (opts.centered) {
+      if (opts.backdrop !== false) {
+        const bd = document.createElement('div');
+        bd.className = 'live-toast-backdrop';
+        if (opts.id) bd.dataset.toastId = opts.id;
+        document.body.appendChild(bd);
+      }
+      document.body.appendChild(div);
+    } else {
+      container.appendChild(div);
+    }
     if (opts.autoDismissMs && opts.autoDismissMs > 0) {
-      setTimeout(() => { if (div.parentElement) div.remove(); }, opts.autoDismissMs);
+      setTimeout(() => { _dismissToast(opts.id || div); }, opts.autoDismissMs);
     }
     return div;
   }
@@ -341,8 +357,15 @@ window.TSAgestor.livePlan = (function () {
     if (typeof idOrEl === 'string') {
       const el = document.querySelector('.live-toast[data-toast-id="' + idOrEl + '"]');
       if (el) el.remove();
+      const bd = document.querySelector('.live-toast-backdrop[data-toast-id="' + idOrEl + '"]');
+      if (bd) bd.remove();
     } else if (idOrEl.parentElement) {
+      const id = idOrEl.dataset && idOrEl.dataset.toastId;
       idOrEl.remove();
+      if (id) {
+        const bd = document.querySelector('.live-toast-backdrop[data-toast-id="' + id + '"]');
+        if (bd) bd.remove();
+      }
     }
   }
 
@@ -957,6 +980,12 @@ window.TSAgestor.livePlan = (function () {
       message: 'Si has pasado por él, confirma (registra Date.now() y aplica ajustes desde el siguiente leg). Si aún no, descártalo y usa "Estoy en próximo WP" cuando llegues.',
       bodyHTML, actionsHTML,
       closeable: false,
+      // UX: centrado en pantalla con backdrop oscurecido para que sea
+      // imposible perderlo en cabina. Sigue siendo no bloqueante (no
+      // captura clicks fuera del toast) por compromiso entre atencion
+      // y poder consultar el mapa en paralelo.
+      centered: true,
+      backdrop: true,
     });
     if (toast) toast.dataset.targetIdx = String(idx);
     // F3.4: foco en el primer input para teclado-friendly.
