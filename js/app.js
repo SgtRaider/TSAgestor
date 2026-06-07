@@ -43,6 +43,120 @@
     layersControlOpen: true,                                   // toggle del selector de capas Leaflet (visible por defecto)
   };
 
+  // ── Persistencia de state.lastPlan ──────────────────────────────────
+  // Audit workflow live-on-refresh-diagnose-v2: state.lastPlan vivia
+  // SOLO en memoria del IIFE, asi que un F5 con sesion Live activa
+  // dejaba un estado contradictorio (la session Live persistia pero
+  // el plan base se perdia, mostrando "No hay plan" + toast "Sesion
+  // restaurada"). Persistimos un snapshot whitelist para sobrevivir
+  // recargas. Excluye campos voluminosos / volatiles:
+  //   - fuelOpts.windsHourly / windLevels: arrays meteo de Open-Meteo
+  //     que pueden ser MB; se recalculan al refetch viento.
+  //   - meteo: array de METAR/TAF, tambien voluminoso y caducable.
+  //   - overflownTSAs: derivables del recompute si se necesita.
+  // Schema versionado (_v=1) por si cambiamos el formato en el futuro.
+  const LAST_PLAN_KEY = 'tsagestor_last_plan_v1';
+
+  // Whitelist defensiva: no volcamos windsHourly (puede ser MB) ni
+  // windLevels (re-derivables). El livePlan refetched los recompone
+  // si los necesita.
+  function _persistLastPlan(plan) {
+    try {
+      if (!plan) { localStorage.removeItem(LAST_PLAN_KEY); return; }
+      const snap = {
+        _v:           1,
+        origin:       plan.origin,
+        destination:  plan.destination,
+        coords:       plan.coords,
+        flightLevel:  plan.flightLevel,
+        speedKt:      plan.speedKt,
+        departureUTC: plan.departureUTC,
+        // Audit review: campos consumidos por renderPlanResults y por
+        // pdfExport.renderPlanSection. Sin estos el boton "Generar PDF"
+        // queda activo y crashea tras F5 con TypeError.
+        distanceNM:   plan.distanceNM,
+        distanceKM:   plan.distanceKM,
+        timeMinutes:  plan.timeMinutes,
+        eta:          plan.eta,
+        route:        plan.route,
+        narrative:    plan.narrative,
+        conflicts:    plan.conflicts,
+        fuelOpts:     plan.fuelOpts ? Object.assign({}, plan.fuelOpts, {
+          windsHourly: null,
+          windLevels:  null,
+        }) : null,
+        fuel:         plan.fuel,
+      };
+      localStorage.setItem(LAST_PLAN_KEY, JSON.stringify(snap));
+    } catch (e) {
+      // QuotaExceededError o serializacion: silencioso para no romper
+      // el flujo de calc. Audit review: si fallamos AHORA debemos
+      // borrar el snapshot anterior — si no, un F5 restauraria un plan
+      // viejo sin que el operador sepa que esta desincronizado.
+      try { localStorage.removeItem(LAST_PLAN_KEY); } catch (_) {}
+      console.warn('[app] _persistLastPlan fallo, snapshot anterior eliminado:', e && e.message);
+    }
+  }
+
+  // Revive Dates in-place tras JSON.parse. Sin esto, _hashPlan en
+  // livePlan da un planId distinto al persistido en session porque
+  // (Date)departureUTC.toString() !== (string)departureUTC.toString();
+  // ademas formatUTC y consumers que llamen getUTC* crashearian.
+  function _toDate(v) {
+    if (!v) return null;
+    if (v instanceof Date) return v;
+    const dt = new Date(v);
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+  function _revivePlanDates(plan) {
+    if (!plan) return plan;
+    plan.departureUTC = _toDate(plan.departureUTC);
+    plan.eta          = _toDate(plan.eta);
+    if (Array.isArray(plan.coords)) {
+      plan.coords.forEach(c => {
+        if (c && c.etaUTC) c.etaUTC = _toDate(c.etaUTC);
+      });
+    }
+    if (plan.fuel && Array.isArray(plan.fuel.rows)) {
+      plan.fuel.rows.forEach(r => {
+        if (r && r.etaUTC) r.etaUTC = _toDate(r.etaUTC);
+      });
+    }
+    if (Array.isArray(plan.conflicts)) {
+      plan.conflicts.forEach(c => {
+        if (!c) return;
+        if (c.tStart) c.tStart = _toDate(c.tStart);
+        if (c.tEnd)   c.tEnd   = _toDate(c.tEnd);
+        if (c.tsa && Array.isArray(c.tsa.schedules)) {
+          c.tsa.schedules = c.tsa.schedules.map(s => s ? {
+            startUTC: _toDate(s.startUTC),
+            endUTC:   _toDate(s.endUTC),
+            raw:      s.raw,
+          } : s).filter(s => s && s.startUTC && s.endUTC);
+        }
+      });
+    }
+    return plan;
+  }
+
+  function _restoreLastPlan() {
+    try {
+      const raw = localStorage.getItem(LAST_PLAN_KEY);
+      if (!raw) return null;
+      const snap = JSON.parse(raw);
+      // Audit review: shape check robusto antes de aceptar el snapshot.
+      if (!snap || snap._v !== 1) return null;
+      if (typeof snap.origin !== 'string' || typeof snap.destination !== 'string') return null;
+      if (!Array.isArray(snap.coords) || snap.coords.length < 2) return null;
+      if (!Number.isFinite(snap.flightLevel) || !Number.isFinite(snap.speedKt)) return null;
+      if (snap.fuel && !Array.isArray(snap.fuel.rows)) return null;
+      return _revivePlanDates(snap);
+    } catch (e) {
+      console.warn('[app] _restoreLastPlan fallo:', e && e.message);
+      return null;
+    }
+  }
+
   // ── Utilidades DOM ───────────────────────────────────────────────────
 
   const $ = sel => document.querySelector(sel);
@@ -1942,6 +2056,7 @@
     if (result.error) {
       showPlanError(result.error);
       state.lastPlan = null;
+      _persistLastPlan(null);
       if (state.mapReady) mapView.clearFlightPlan();
       return;
     }
@@ -1967,6 +2082,7 @@
     result.fuel = flightPlan.buildFuelLog(result.coords, result.fuelOpts);
 
     state.lastPlan = result;
+    _persistLastPlan(result);
     state.crossClouds = null;                                  // los puntos cambiaron
     $('#btn-cross-clouds-clear').disabled = true;
     renderPlanResults(result);
@@ -2007,6 +2123,7 @@
 
     // Estado interno
     state.lastPlan = null;
+    _persistLastPlan(null);
     state.drawnVia = null;
     state.crossClouds = null;
     $('#btn-cross-clouds-clear').disabled = true;
@@ -2686,6 +2803,15 @@
   }
   function formatUTC(d) {
     if (!d) return '—';
+    // Audit review: tras restore del plan, departureUTC / eta / etaUTC
+    // llegan como strings (JSON.parse). _restoreLastPlan revive las
+    // criticas pero esta defensa cubre cualquier path que no revivamos
+    // explicitamente (PDF, GRAMET, edicion de tabla).
+    if (!(d instanceof Date)) {
+      const dt = new Date(d);
+      if (isNaN(dt.getTime())) return '—';
+      d = dt;
+    }
     const p = n => String(n).padStart(2, '0');
     return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}Z`;
   }
@@ -2976,6 +3102,42 @@
     showWelcomeIfNeeded();
     if (settings) settings.load();
     applySettingsToPlanForm();
+    // Restaurar state.lastPlan ANTES de wire/init que dependa de el
+    // (livePlan.init via initLiveTab, mapView.renderFlightPlan en
+    // switchTab('map')). Solo restaura el snapshot a memoria — el
+    // render se dispara por las rutas existentes (no aqui, para no
+    // romper el flujo de Plan tab que aplica settings al form vacio).
+    const restored = _restoreLastPlan();
+    if (restored) {
+      state.lastPlan = restored;
+      console.log('[TSAgestor] state.lastPlan restaurado desde localStorage (' + (restored.coords || []).length + ' WPs)');
+      // Audit review: repintar #plan-results y el formulario tambien.
+      // Antes la pestanya Plan aparecia vacia tras F5 aunque la sesion
+      // Live mostrara la ruta correctamente (inconsistencia visible).
+      try {
+        renderPlanResults(restored);
+      } catch (err) {
+        console.warn('[app] renderPlanResults diferido fallo:', err && err.message);
+      }
+      try {
+        if (typeof applyPlanFormState === 'function') applyPlanFormState(restored);
+      } catch (err) {
+        console.warn('[app] applyPlanFormState diferido fallo:', err && err.message);
+      }
+      // Diferimos el render del plan al mapa porque b1Layout NO lo
+      // dispara por si mismo (a diferencia de switchTab('map') del
+      // shell legacy). 150ms es suficiente para que b1Layout.init()
+      // haya llamado ensureMap y _invalidateMapSize.
+      setTimeout(() => {
+        try {
+          if (state.lastPlan && state.mapReady && mapView.renderFlightPlan) {
+            mapView.renderFlightPlan(state.lastPlan);
+          }
+        } catch (err) {
+          console.warn('[app] render diferido de lastPlan fallo:', err && err.message);
+        }
+      }, 150);
+    }
     wireTabs();
     wireUpload();
     wireFilter();

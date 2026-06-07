@@ -226,6 +226,18 @@ window.TSAgestor.livePlan = (function () {
     if (!plan || !plan.coords) return '0';
     const subCount = plan.coords.filter(c => c.isClimbDescentSub).length;
     const fo = plan.fuelOpts || {};
+    // Audit review: normaliza departureUTC a ISO string para que el
+    // hash sea estable entre el plan vivo (Date) y el plan restaurado
+    // desde localStorage (string). Sin esto, F5 dispara "Plan ha
+    // cambiado" + reset de currentIdx incluso cuando el plan es el
+    // mismo. La revive de _restoreLastPlan ya lo cubre, pero esto es
+    // defensa adicional.
+    let depKey = '';
+    if (plan.departureUTC) {
+      depKey = (plan.departureUTC instanceof Date)
+        ? plan.departureUTC.toISOString()
+        : String(plan.departureUTC);
+    }
     const sigParts = [
       'len=' + plan.coords.length,
       'sub=' + subCount,
@@ -235,7 +247,7 @@ window.TSAgestor.livePlan = (function () {
         const fl  = Number.isFinite(c.fl) ? c.fl : '-';
         return `${c.name}@${fl}@${lat},${lon}`;
       }).join('|'),
-      'dep=' + (plan.departureUTC || ''),
+      'dep=' + depKey,
       'ias=' + (fo.defaultSpeedKt || ''),
       'flow=' + (fo.fuelFlow || ''),
       // BUG#6 (audit v2): incluye los campos de fuelOpts que la card
@@ -276,6 +288,18 @@ window.TSAgestor.livePlan = (function () {
           // Diferir un tick para que el container del toast exista.
           setTimeout(() => {
             if (!session || !session.started) return;
+            // Bug audit v2: re-validar PLAN antes de anunciar
+            // continuidad. Antes el guard solo miraba session.started,
+            // asi que tras un F5 sin state.lastPlan restaurado el
+            // operador veia "✓ Sesion Live restaurada" sobre el empty
+            // state "El modo Live necesita un plan calculado".
+            // Doble check: (1) hay plan vivo, (2) coincide con el hash
+            // que persistio en la session — si no, _buildSessionFromPlan
+            // emitira su propio toast "Plan ha cambiado" mas tarde y
+            // no queremos doble mensaje contradictorio.
+            const p = _getPlan();
+            if (!p || !Array.isArray(p.coords) || p.coords.length < 2) return;
+            if (_hashPlan(p) !== session.planId) return;
             const curr = session.currentIdx | 0;
             _showToast({
               id: 'session-restored', level: 'info',
