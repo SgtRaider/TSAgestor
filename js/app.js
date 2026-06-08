@@ -2051,6 +2051,11 @@
     //   3) reconstruir fuel log con todo aplicado.
     setTimeout(() => {
       calcPlan();
+      // OLA2: cross-check de TSAs. El plan se guardo posiblemente con
+      // otras TSAs vigentes (NOTAM cycle del dia X); al recalcular
+      // ahora puede aparecer nuevos conflictos o desaparecer otros.
+      // Mostrar resumen para que el operador re-valide la viabilidad.
+      _showCrossCheckSummary(name);
       const hasOverrides = Array.isArray(p.legOverrides) && p.legOverrides.length > 0;
       const hasHolds     = Array.isArray(p.holds) && p.holds.length > 0;
       if (!hasOverrides && !hasHolds) return;
@@ -2069,6 +2074,46 @@
         }
       }, 80);
     }, 50);
+  }
+
+  // OLA2: muestra un toast con el resumen del cross-check tras cargar
+  // un plan saved. Lista los conflictos TSA reales detectados ahora,
+  // las TSAs sobrevoladas (informativo) y un warning si la ruta entra
+  // en una TSA activa AHORA. Si no hay conflictos, mensaje success.
+  function _showCrossCheckSummary(planName) {
+    const plan = state.lastPlan;
+    if (!plan) return;
+    const conflicts = Array.isArray(plan.conflicts) ? plan.conflicts : [];
+    const overflown = Array.isArray(plan.overflownTSAs) ? plan.overflownTSAs : [];
+    const banner = document.createElement('div');
+    banner.id = 'plan-crosscheck-banner';
+    banner.className = 'plan-crosscheck-banner ' + (conflicts.length ? 'plan-crosscheck-warn' : 'plan-crosscheck-ok');
+    const close = '<button type="button" class="plan-crosscheck-close" aria-label="Cerrar" title="Cerrar">✕</button>';
+    let body;
+    if (conflicts.length) {
+      const names = conflicts.map(c => escapeHTML(c.tsa && c.tsa.name || '?')).join(', ');
+      body = '<b>⚠ Plan "' + escapeHTML(planName) + '" cargado · ' + conflicts.length +
+             ' conflicto' + (conflicts.length === 1 ? '' : 's') + ' detectado' + (conflicts.length === 1 ? '' : 's') +
+             ':</b> ' + names + '. Verifica TSAs vigentes en NOTAMs antes de despegar.';
+    } else {
+      body = '<b>✓ Plan "' + escapeHTML(planName) + '" cargado sin conflictos TSA actualmente.</b>';
+      if (overflown.length) {
+        body += ' La ruta sobrevuela ' + overflown.length + ' TSA' + (overflown.length === 1 ? '' : 's') +
+                ' (informativo, no necesariamente activas).';
+      }
+    }
+    banner.innerHTML = body + close;
+    // Re-render: si ya existe un banner, lo reemplazamos.
+    const prev = document.getElementById('plan-crosscheck-banner');
+    if (prev) prev.remove();
+    const results = $('#plan-results');
+    if (results && results.parentNode) {
+      results.parentNode.insertBefore(banner, results);
+    }
+    banner.querySelector('.plan-crosscheck-close').addEventListener('click', () => banner.remove());
+    // Auto-dismiss del banner verde a los 8s; el de warn se queda
+    // hasta que el operador lo cierre o pulse Calcular.
+    if (!conflicts.length) setTimeout(() => banner.remove(), 8000);
   }
 
   function deletePlanByName(name) {
