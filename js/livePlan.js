@@ -1353,8 +1353,20 @@ window.TSAgestor.livePlan = (function () {
 
   function _wireUI() {
     document.addEventListener('click', (e) => {
-      const t = e.target;
+      // Bug user-report (v241 regression): al meter <span data-i18n>
+      // dentro de los botones Live para traduccion, click sobre el
+      // texto deja e.target = span (sin id) en lugar del button. El
+      // matching por t.id fallaba silenciosamente — los botones de
+      // advance, back, hold, RTB, refresh viento y reset dejaban de
+      // funcionar al pulsarlos en su parte de texto.
+      // Fix: si el target esta dentro de un <button>, tratamos el
+      // button como target para todos los chequeos por id.
+      let t = e.target;
       if (!t) return;
+      try {
+        const btn = t.closest && t.closest('button');
+        if (btn) t = btn;
+      } catch (_) {}
       if (t.id === 'btn-live-start') { _iniciarRuta(); return; }
       if (t.id === 'btn-live-now')   { _setStartNow();  return; }
       if (t.id === 'btn-live-advance') { _advance(); return; }
