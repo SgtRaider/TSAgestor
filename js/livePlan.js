@@ -74,6 +74,14 @@ window.TSAgestor.livePlan = (function () {
   // de la API AWC.
   let _sigmetCache = null;      // { sigmets:[], geoms:[], fetchedAt }
   let _sigmetInFlight = false;
+  // Audit OLA1 BUG#9: backoff de error en SIGMETs. _maybeRefreshSigmets
+  // se llamaba desde _refresh (cada tick aprox.); si fetchSigmets
+  // rechazaba (red caida, AWC 5xx), reintentaba en cada llamada y
+  // hammereaba la API. Mantenemos timestamp del ultimo error y
+  // saltamos durante 2 minutos para dar tiempo a que el servicio se
+  // recupere.
+  let _sigmetLastError = 0;
+  const SIGMET_ERROR_COOLDOWN_MS = 2 * 60 * 1000;
   let _sigmetCrossings = [];    // ultimo resultado del cross-check vs ruta
   let _activeTSAcrossings = []; // F2.6: TSAs activas que cruza la ruta restante
   // F2.8: cache del ultimo _recalc para evitar recomputar O(N²) en
@@ -478,11 +486,46 @@ window.TSAgestor.livePlan = (function () {
       const refMin = session.refetched.legTimes[rIdx];
       if (Number.isFinite(refMin) && refMin > 0) timeMin = refMin;
     }
-    // Aplica overrides de IAS (escala por TAS / GS estimado)
+    // Audit OLA1 BUG#5: aplica overrides de IAS NO-LINEALMENTE.
+    // Antes hacia `timeMin *= (planIas / ov.ias)`, que asume que GS
+    // escala con IAS — falso con viento: GS = TAS - HW, y la
+    // componente HW NO cambia al cambiar IAS. Si tenemos refetched
+    // TAS+wind reales, recalculamos GS correctamente y derivamos el
+    // tiempo. Si no, caemos al escalado lineal (mejor que nada).
     const ov = session.overrides;
     if (ov && Number.isFinite(ov.ias) && ov.ias > 0 && ov.fromIdx != null && ov.fromIdx <= idx) {
-      const planIas = lp.ias || _planIasFromPlan() || 120;
-      timeMin = timeMin * (planIas / ov.ias);
+      const geom = window.TSAgestor && window.TSAgestor.geom;
+      let newGS = null;
+      if (session.refetched && Number.isFinite(lp.legNM) && lp.legNM > 0 &&
+          geom && typeof geom.kiasToTAS === 'function') {
+        const rIdx = idx - session.refetched.startIdx;
+        const daFt = (rIdx >= 0 && session.refetched.legDa && Number.isFinite(session.refetched.legDa[rIdx]))
+          ? session.refetched.legDa[rIdx]
+          : (Number.isFinite(session.coords[idx].fl) ? session.coords[idx].fl * 100 : null);
+        if (Number.isFinite(daFt)) {
+          const newTAS = geom.kiasToTAS(ov.ias, daFt);
+          // Headwind real del refetched (signo: + es cara).
+          let hw = 0;
+          if (session.refetched.legWindDir && session.refetched.legWindSpeed) {
+            const wDir = session.refetched.legWindDir[rIdx];
+            const wSpd = session.refetched.legWindSpeed[rIdx];
+            if (Number.isFinite(wDir) && Number.isFinite(wSpd)) {
+              const bearing = _bearingDeg(session.coords[idx - 1], session.coords[idx]);
+              hw = -wSpd * Math.cos((wDir - bearing) * Math.PI / 180);
+            }
+          }
+          if (Number.isFinite(newTAS) && newTAS > 0) {
+            newGS = Math.max(30, newTAS - hw);
+          }
+        }
+      }
+      if (Number.isFinite(newGS) && newGS > 0) {
+        timeMin = (lp.legNM / newGS) * 60;
+      } else {
+        // Fallback lineal cuando no hay datos refetched.
+        const planIas = lp.ias || _planIasFromPlan() || 120;
+        timeMin = timeMin * (planIas / ov.ias);
+      }
     }
     return timeMin;
   }
@@ -642,11 +685,20 @@ window.TSAgestor.livePlan = (function () {
         const planFlow = lp ? lp.flow : 0;
         if (planFlow > 0) legFuel = legFuel * (flowOv.flow / planFlow);
       }
-      // Holds vivos en este k anyaden tiempo y por tanto combustible
+      // Holds vivos en este k anyaden tiempo y por tanto combustible.
+      // Audit OLA1 BUG#10: el override de flow se aplica al hold AL
+      // ARRANCAR el override (fromIdx==k+1, convencion de
+      // _confirmWpAlert). Antes el hold AT k usaba lp.flow (leg
+      // precedente) porque exigiamos fromIdx<=k — el operador acababa
+      // de definir el override en el WP-alert pero el hold AT el
+      // mismo WP no lo veia. Aceptamos tambien fromIdx==k+1.
       const holdMin = Number(session.liveHolds[k]) || 0;
       if (holdMin > 0) {
-        const holdFlow = (flowOv && Number.isFinite(flowOv.flow) && flowOv.fromIdx != null && flowOv.fromIdx <= k)
-          ? flowOv.flow : (lp ? lp.flow : session.fuelOpts.fuelFlow);
+        const ovAppliesHere = flowOv && Number.isFinite(flowOv.flow) &&
+                              flowOv.fromIdx != null && flowOv.fromIdx <= k + 1;
+        const holdFlow = ovAppliesHere
+          ? flowOv.flow
+          : (lp ? lp.flow : session.fuelOpts.fuelFlow);
         legFuel += (holdMin / 60) * holdFlow;
       }
       rest -= legFuel;
@@ -962,6 +1014,11 @@ window.TSAgestor.livePlan = (function () {
       _recomputeSigmetCrossings();
       return;
     }
+    // Audit OLA1 BUG#9: si el ultimo intento fallo hace menos de 2
+    // minutos, no reintentamos — antes hammereabamos AWC en cada tick
+    // mientras el endpoint estuviera caido. El operador puede pulsar
+    // Refresh manualmente si urge.
+    if (_sigmetLastError && (Date.now() - _sigmetLastError) < SIGMET_ERROR_COOLDOWN_MS) return;
     const meteo = window.TSAgestor && window.TSAgestor.meteoApi;
     if (!meteo || typeof meteo.fetchSigmets !== 'function' || typeof meteo.parseSigmetGeometry !== 'function') return;
     _sigmetInFlight = true;
@@ -972,10 +1029,12 @@ window.TSAgestor.livePlan = (function () {
         catch (_) { return null; }
       }).filter(x => x && x.geom);
       _sigmetCache = { sigmets: list, geoms, fetchedAt: Date.now() };
+      _sigmetLastError = 0; // reset backoff tras success
       _recomputeSigmetCrossings();
       _refresh();
     }).catch((e) => {
       console.warn('[livePlan] SIGMETs fallo:', e && e.message);
+      _sigmetLastError = Date.now();
     }).finally(() => {
       _sigmetInFlight = false;
     });
@@ -2606,6 +2665,17 @@ window.TSAgestor.livePlan = (function () {
     // amarilla del plan en el mapa (mapView) para que solo se vea el
     // overlay cyan del retorno. Antes se solapaban las dos polilineas.
     _sessionEpoch++;
+    // Audit OLA1 BUG#11: invalidar caches de meteo del destino y
+    // SIGMETs. El destino antiguo (LEZG) cambia al origen (LEMD)
+    // tras RTB; sin invalidar, _maybeRefreshDestMet veria el icao
+    // distinto y refetchearia, pero los SIGMETs del cache seguian
+    // siendo de la ruta de IDA y _recomputeSigmetCrossings comparaba
+    // contra session.coords que ya son de RTB — falsos positivos /
+    // negativos. Limpiamos ambos para que el proximo tick reconstruya.
+    _destMet = null;
+    _sigmetCache = null;
+    _sigmetCrossings = [];
+    _activeTSAcrossings = [];
     const mv = window.TSAgestor && window.TSAgestor.mapView;
     if (mv && typeof mv.suppressFlightPlan === 'function') mv.suppressFlightPlan(true);
     _saveSession();
@@ -2658,6 +2728,12 @@ window.TSAgestor.livePlan = (function () {
     delete session.preRtbSnapshot;
     // BUG#1+#7: bumpear epoch + re-render del plan original en mapa.
     _sessionEpoch++;
+    // Audit OLA1 BUG#11: simetrico al engage — invalida caches para
+    // que el destino vuelva al original sin datos stale.
+    _destMet = null;
+    _sigmetCache = null;
+    _sigmetCrossings = [];
+    _activeTSAcrossings = [];
     const mv = window.TSAgestor && window.TSAgestor.mapView;
     if (mv && typeof mv.suppressFlightPlan === 'function') mv.suppressFlightPlan(false);
     if (mv && typeof mv.renderFlightPlan === 'function') {
@@ -2740,5 +2816,28 @@ window.TSAgestor.livePlan = (function () {
     init,
     onTabOpen: _maybeShowContent,
     refresh: _refresh,
+    // Audit OLA1 BUG#6: el Plan tab (calcPlan / loadPlanByName /
+    // importPlan) llama a esto tras mutar state.lastPlan para que la
+    // sesion Live re-valide el hash inmediatamente, sin esperar a que
+    // el operador navegue al tab Live. Si el hash cambio,
+    // _buildSessionFromPlan se encarga del reset + toast.
+    onPlanChanged: () => {
+      if (!session) return;
+      try { _maybeShowContent(); } catch (e) { console.warn('[livePlan] onPlanChanged:', e); }
+    },
+    // Audit OLA1 BUG#8: clearPlan() de app.js llama a esto para que
+    // la sesion Live no quede HUERFANA en localStorage. Sin esto,
+    // tsagestor_live_session_v2 sobrevivia y si el operador
+    // recalculaba un plan futuro que casualmente coincidia en hash,
+    // la sesion vieja se reactivaba.
+    clearSession: () => {
+      try {
+        _dismissToast('wp-alert');
+        _dismissToast('session-restored');
+        _setEtaAlertIndicator(false);
+        _clearSession();
+        _maybeShowContent();
+      } catch (e) { console.warn('[livePlan] clearSession:', e); }
+    },
   };
 })();

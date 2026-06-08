@@ -827,6 +827,40 @@ window.TSAgestor.flightPlan = (function () {
     const joker = opts.jokerFuel != null && opts.jokerFuel !== '' ? Number(opts.jokerFuel) : null;
     const bingo = opts.bingoFuel != null && opts.bingoFuel !== '' ? Number(opts.bingoFuel) : null;
     const unit = opts.unit || '';
+    // Audit OLA1 BUG#3 + #4: warnings de validacion. Antes valores
+    // absurdos (bingo>initialFuel -> plan arranca en BINGO, fuelFlow=0
+    // -> consumo cero y reachesDestination=true) se silenciaban. Los
+    // acumulamos en un array para que renderPlanResults los muestre y
+    // las eval cards de Live tambien. NO bloquean el calculo (el
+    // operador puede querer un fuelFlow=0 para inspeccionar tiempos)
+    // pero quedan visibles.
+    const validationWarnings = [];
+    if (fuelFlow <= 0) {
+      validationWarnings.push({
+        level: 'warn',
+        text: 'fuelFlow = 0: el log de combustible mostrara consumo cero y "alcanza destino" sera siempre verdadero. Revisa el ratio de consumo del avion.',
+      });
+    }
+    if (initialFuel > 0) {
+      if (bingo !== null && bingo > initialFuel) {
+        validationWarnings.push({
+          level: 'danger',
+          text: `BINGO (${bingo}) > combustible inicial (${initialFuel}): el plan arranca YA en BINGO. Revisa los umbrales.`,
+        });
+      }
+      if (joker !== null && joker > initialFuel) {
+        validationWarnings.push({
+          level: 'danger',
+          text: `JOKER (${joker}) > combustible inicial (${initialFuel}): el plan arranca YA en JOKER. Revisa los umbrales.`,
+        });
+      }
+      if (joker !== null && bingo !== null && joker < bingo) {
+        validationWarnings.push({
+          level: 'warn',
+          text: `JOKER (${joker}) < BINGO (${bingo}): JOKER deberia ser MAYOR que BINGO (es el aviso temprano). Revisa el orden.`,
+        });
+      }
+    }
     const overrides = Array.isArray(opts.legOverrides) ? opts.legOverrides : [];
     // Pronósticos horarios completos por waypoint. Cada item:
     //   { times: [iso strings], windSpeedKt: [...], windDir: [...] }
@@ -1188,7 +1222,12 @@ window.TSAgestor.flightPlan = (function () {
     }
 
     const totalTimeMin = rows.length ? rows[rows.length - 1].cumTimeMin : 0;
-    const reachesDestination = rows.length > 0 && rows[rows.length - 1].remaining > 0;
+    // Audit OLA1 BUG#4: con fuelFlow=0 el remaining nunca baja, asi
+    // que reachesDestination quedaba siempre true. Lo neutralizamos
+    // para que el plan NO de la falsa sensacion de seguridad cuando
+    // el ratio de consumo es invalido. La marca en validationWarnings
+    // ya esta arriba para que la UI lo cuente como warn.
+    const reachesDestination = fuelFlow > 0 && rows.length > 0 && rows[rows.length - 1].remaining > 0;
     return {
       rows,
       unit,
@@ -1208,6 +1247,8 @@ window.TSAgestor.flightPlan = (function () {
       windSource,
       departureMs,
       arrivalMs: rows.length ? rows[rows.length - 1].etaUTC.getTime() : null,
+      // Audit OLA1 BUG#3 + #4: warnings para que UI los muestre.
+      validationWarnings,
     };
   }
 

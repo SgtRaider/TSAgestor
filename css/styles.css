@@ -1261,6 +1261,45 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
 .plan-actions .hint.inline {
   margin: 0;
 }
+/* Audit OLA1 BUG#7: banner pidiendo recalcular tras cambio de
+   ajustes plan-relevantes. No bloqueante, fondo ambar para
+   distinguirlo del error rojo. */
+.plan-settings-changed {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(251, 191, 36, 0.18);
+  border: 1px solid #fbbf24;
+  color: #fde68a;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.plan-settings-changed.hidden { display: none; }
+/* Audit OLA1 BUG#3 + #4: bloque de warnings de validacion del fuel
+   log (joker/bingo/fuelFlow invalidos). Se monta arriba de la card
+   plan-log-summary; uno por warning con severidad coloreada. */
+.plan-log-validation {
+  display: grid;
+  gap: 6px;
+  grid-column: 1 / -1;
+  margin-bottom: 8px;
+}
+.plan-log-warn-warn {
+  background: rgba(251, 191, 36, 0.18);
+  border-left: 3px solid #fbbf24;
+  color: #fde68a;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.plan-log-warn-danger {
+  background: rgba(248, 113, 113, 0.22);
+  border-left: 3px solid var(--danger, #ef4444);
+  color: #fecaca;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
 .plan-error {
   margin-top: 12px;
   padding: 8px 12px;

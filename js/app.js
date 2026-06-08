@@ -2127,6 +2127,9 @@
       return;
     }
     $('#plan-error').classList.add('hidden');
+    // Audit OLA1 BUG#7: tras recalcular se aplican los settings vigentes.
+    const hint = document.getElementById('plan-settings-changed');
+    if (hint) hint.classList.add('hidden');
 
     // Cada recálculo del plan resetea los overrides por tramo (los waypoints
     // pueden haber cambiado). Los vientos cargados anteriormente también se
@@ -2159,6 +2162,13 @@
     $('#plan-meteo-count').textContent = '';
     renderCross();         // refresca el corte aunque no estemos en su pestaña
     refreshExportUI();
+    // Audit OLA1 BUG#6: notifica al modulo Live para que re-valide
+    // contra el plan nuevo (hash). Si cambio estructuralmente,
+    // _buildSessionFromPlan dispara toast "Plan ha cambiado" y
+    // resetea sesion. Sin esto, la sesion Live podia quedar con coords
+    // del plan anterior hasta que el operador abriera Live.
+    const lp = window.TSAgestor && window.TSAgestor.livePlan;
+    if (lp && typeof lp.onPlanChanged === 'function') lp.onPlanChanged();
   }
 
   function showPlanError(msg) {
@@ -2193,6 +2203,19 @@
     state.drawnVia = null;
     state.crossClouds = null;
     $('#btn-cross-clouds-clear').disabled = true;
+    // Audit OLA1 BUG#8: la sesion Live tambien debe borrarse — antes
+    // sobrevivia en localStorage huerfana y reaparecia espuriamente al
+    // recalcular un plan futuro que coincidiera en hash.
+    const lp = window.TSAgestor && window.TSAgestor.livePlan;
+    if (lp && typeof lp.clearSession === 'function') lp.clearSession();
+    // Audit OLA1 BUG#12: sin plan los botones plan-dependientes deben
+    // quedar disabled. Antes clearPlan no invocaba refreshExportUI y
+    // los botones quedaban habilitados hasta que el operador entrara
+    // a Briefing.
+    refreshExportUI();
+    // Ocultar el hint de settings cambiados (ya no hay plan).
+    const hint = document.getElementById('plan-settings-changed');
+    if (hint) hint.classList.add('hidden');
 
     // Capas del mapa relacionadas con plan/meteo
     if (state.mapReady) {
@@ -2489,7 +2512,16 @@
     const warning = !fuel.reachesDestination
       ? '<span class="plan-log-warn"> ⚠ COMBUSTIBLE INSUFICIENTE para llegar al destino</span>'
       : '';
-    sumEl.innerHTML = `
+    // Audit OLA1 BUG#3 + #4: render warnings de validacion
+    // (joker/bingo > initialFuel, fuelFlow=0, joker<bingo). Visibles
+    // arriba de la card para que el operador no los pase por alto.
+    const valWarnings = Array.isArray(fuel.validationWarnings) ? fuel.validationWarnings : [];
+    const valHtml = valWarnings.length
+      ? '<div class="plan-log-validation">' + valWarnings.map(w =>
+          `<div class="plan-log-warn plan-log-warn-${w.level}">${w.level === 'danger' ? '🛑' : '⚠'} ${escapeHTML(w.text)}</div>`
+        ).join('') + '</div>'
+      : '';
+    sumEl.innerHTML = valHtml + `
       <div class="plan-log-stat"><span class="lbl">Inicial:</span> <b>${fmtFuel(fuel.initialFuel)} ${escapeHTML(u)}</b></div>
       <div class="plan-log-stat"><span class="lbl">Consumo base:</span> <b>${fmtFuel(fuel.fuelFlow)} ${escapeHTML(u)}/h</b></div>
       <div class="plan-log-stat"><span class="lbl">Velocidad base:</span> <b>${fuel.defaultSpeedKt} kt</b></div>
@@ -2902,6 +2934,23 @@
     const hint = $('#export-hint');
     const summary = $('#export-summary');
     btn.disabled = !hasPlan && n === 0;
+    // Audit OLA1 BUG#12: botones plan-dependientes deshabilitados sin
+    // plan. Antes pulsarlos lanzaba alert() intrusivo "Calcula primero
+    // un plan de vuelo." en mitad del flujo. Disabled visual con
+    // tooltip es mucho mas claro.
+    const planBtns = [
+      ['#btn-plan-meteo',        'Carga METAR/TAF de aeropuertos cerca de la ruta — requiere plan calculado'],
+      ['#btn-plan-winds',        'Carga vientos en altura para los waypoints — requiere plan calculado'],
+      ['#btn-plan-copy',         'Copia la narrativa al portapapeles — requiere plan calculado'],
+      ['#btn-plan-remarks-copy', 'Copia las observaciones (TSAs / conflictos) — requiere plan calculado'],
+    ];
+    planBtns.forEach(([sel, tipMissing]) => {
+      const b = document.querySelector(sel);
+      if (!b) return;
+      b.disabled = !hasPlan;
+      if (!hasPlan) b.title = tipMissing;
+      else b.removeAttribute('title');
+    });
 
     const parts = [];
     if (hasPlan) parts.push(`Plan de vuelo ${state.lastPlan.origin} → ${state.lastPlan.destination}`);
@@ -3168,6 +3217,34 @@
     showWelcomeIfNeeded();
     if (settings) settings.load();
     applySettingsToPlanForm();
+    // Audit OLA1 BUG#7: cuando el operador cambia un setting de
+    // plan-relevante (fuelFlow / joker / bingo / IAS / FL) desde
+    // Ajustes, el form se reaplica automaticamente, pero state.lastPlan
+    // YA CALCULADO sigue evaluandose contra los valores antiguos
+    // (Live usa session.fuelOpts cacheado, evaluaciones BINGO usan
+    // umbrales viejos). Subscribimos para: (a) reaplicar el form
+    // siempre y (b) si hay plan vivo, mostrar banner indicando que
+    // recalcule para aplicar.
+    if (settings && typeof settings.onChange === 'function') {
+      settings.onChange((path /*, value */) => {
+        if (typeof path !== 'string') return;
+        if (path === '*' || path.startsWith('plan.')) {
+          try { applySettingsToPlanForm(); } catch (_) {}
+          // Si hay plan calculado y el setting modifica un campo que
+          // se persiste en plan.fuelOpts, marcamos para que el
+          // operador recalcule. Solo banner — no recalculo automatico,
+          // porque el operador podria estar en mitad de una sesion
+          // Live con ajustes intencionales distintos del settings.
+          if (state.lastPlan) {
+            const hint = document.getElementById('plan-settings-changed');
+            if (hint) {
+              hint.classList.remove('hidden');
+              hint.textContent = 'Ajustes modificados. Pulsa "Calcular ruta" para aplicar los valores nuevos al plan.';
+            }
+          }
+        }
+      });
+    }
     // Restaurar state.lastPlan ANTES de wire/init que dependa de el
     // (livePlan.init via initLiveTab, mapView.renderFlightPlan en
     // switchTab('map')). Solo restaura el snapshot a memoria — el
