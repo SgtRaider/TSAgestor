@@ -4426,11 +4426,17 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
 .live-log-compact #live-log-table td:nth-child(8) {
   display: none;
 }
-/* Columna Consumo: alineada a la derecha + numeric (consistencia con
-   Restante). Color tenue para no competir con Restante editable. */
-#live-log-table .live-fuel-consumed {
+/* Columna Consumo (posicion 11: # WP FL IAS TAS GS Viento ETA-plan
+   ETA-live Delta CONSUMO Restante). nth-child sobre th y td asegura
+   que cabecera y celdas coincidan en alineacion — antes solo el td
+   tenia .live-fuel-consumed y la cabecera quedaba a la izquierda.
+   Color tenue para no competir con el input editable de Restante. */
+#live-log-table th:nth-child(11),
+#live-log-table td:nth-child(11) {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+#live-log-table td.live-fuel-consumed {
   color: var(--text-mute, #a3a3a3);
 }
 .live-log-head {
