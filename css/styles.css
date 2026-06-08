@@ -4412,7 +4412,8 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
 /* F2.10: modo compacto de la tabla Log live. Oculta las columnas
    secundarias (IAS / TAS / GS / Viento / ETA plan). Las cabeceras
    son las columnas 4, 5, 6, 7, 8 (1-indexed: # WP FL IAS TAS GS
-   Viento ETA-plan ETA-live Δ Restante). */
+   Viento ETA-plan ETA-live Δ Consumo Restante). Consumo (11) y
+   Restante (12) NO se ocultan — son criticos para el operador. */
 .live-log-compact #live-log-table th:nth-child(4),  /* IAS */
 .live-log-compact #live-log-table td:nth-child(4),
 .live-log-compact #live-log-table th:nth-child(5),  /* TAS */
@@ -4424,6 +4425,13 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
 .live-log-compact #live-log-table th:nth-child(8),  /* ETA plan */
 .live-log-compact #live-log-table td:nth-child(8) {
   display: none;
+}
+/* Columna Consumo: alineada a la derecha + numeric (consistencia con
+   Restante). Color tenue para no competir con Restante editable. */
+#live-log-table .live-fuel-consumed {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-mute, #a3a3a3);
 }
 .live-log-head {
   display: flex;

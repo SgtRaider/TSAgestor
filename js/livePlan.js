@@ -640,6 +640,17 @@ window.TSAgestor.livePlan = (function () {
         }
       }
 
+      // Combustible consumido en este leg (delta vs WP anterior).
+      // Para WP 0 es null (origen, sin leg previo). Si alguno de los
+      // dos no es finito, deja null. Usa el row previo si existe.
+      let fuelConsumedLeg = null;
+      if (i > 0 && Number.isFinite(fuelRest)) {
+        const prevRow = rows[i - 1];
+        if (prevRow && Number.isFinite(prevRow.fuelRest)) {
+          fuelConsumedLeg = prevRow.fuelRest - fuelRest;
+        }
+      }
+
       rows.push({
         i,
         name: c.name,
@@ -649,6 +660,7 @@ window.TSAgestor.livePlan = (function () {
         liveEta,
         delta: (planEta != null && liveEta != null) ? (liveEta - planEta) : null,
         fuelRest,
+        fuelConsumedLeg,
         fuelRestOverridden: session.fuelOverrides[i] != null,
         fuelStatus,
         ias:  lp ? lp.ias : null,
@@ -2274,6 +2286,12 @@ window.TSAgestor.livePlan = (function () {
       const fuelInputCls = 'live-fuel-input' + (r.fuelRestOverridden ? ' live-fuel-overridden' : '') +
                           (fuelClass ? ' ' + fuelClass : '');
       const fuelCell = `<td><input type="number" class="${fuelInputCls}" data-idx="${r.i}" value="${Number.isFinite(r.fuelRest) ? Math.round(r.fuelRest) : ''}" step="10" placeholder="edit" title="Combustible restante en este WP — click para editar (valor real medido)"></td>`;
+      // Columna Consumo (combustible consumido en este tramo).
+      // Origen y los WPs sin previo conocido -> "—".
+      const consTxt = Number.isFinite(r.fuelConsumedLeg)
+        ? Math.round(r.fuelConsumedLeg)
+        : '—';
+      const consCell = `<td class="live-fuel-consumed" title="Combustible consumido en este tramo${r.liveHoldMin > 0 ? ' (incluye el hold)' : ''}">${consTxt}</td>`;
       tr.innerHTML =
         `<td>${displayN}</td>` +
         `<td><b>${r.name}</b>${subBadge}${holdTxt}</td>` +
@@ -2285,6 +2303,7 @@ window.TSAgestor.livePlan = (function () {
         `<td>${_fmtTime(r.planEta)}</td>` +
         `<td><b>${_fmtTime(r.liveEta)}</b></td>` +
         `<td class="${deltaClass}">${_fmtDelta(r.delta)}</td>` +
+        consCell +
         fuelCell;
       tbody.appendChild(tr);
     });
