@@ -833,6 +833,47 @@ window.TSAgestor.pdfExport = (function () {
       y = doc.lastAutoTable.finalY + 6;
     }
 
+    // ── OLA3: Event log estructurado (append-only) ──
+    const eventLog = Array.isArray(snapshot.eventLog) ? snapshot.eventLog : [];
+    if (eventLog.length > 0) {
+      y = sectionHeader(doc, 'Event log estructurado (' + eventLog.length + ' eventos)', y, margin);
+      const TYPE_LABEL = {
+        'start': 'DESPEGUE', 'advance': 'AVANCE', 'back': 'RETROCESO',
+        'hold': 'HOLD', 'override-apply': 'OVERRIDE', 'override-clear': 'OV. LIMPIADO',
+        'calibrate': 'CALIBRACION', 'rtb-engage': 'RTB ENGAGE', 'rtb-cancel': 'RTB CANCEL',
+      };
+      const elRows = eventLog.map(ev => {
+        const t = new Date(ev.t || 0);
+        const hh = String(t.getUTCHours()).padStart(2, '0');
+        const mm = String(t.getUTCMinutes()).padStart(2, '0');
+        const ss = String(t.getUTCSeconds()).padStart(2, '0');
+        const detail = ev.payload
+          ? Object.keys(ev.payload).map(k => k + '=' + JSON.stringify(ev.payload[k])).join(' · ')
+          : '';
+        return [
+          hh + ':' + mm + ':' + ss + 'Z',
+          'WP#' + ((ev.currentIdx | 0) + 1),
+          TYPE_LABEL[ev.type] || ev.type,
+          detail,
+        ];
+      });
+      doc.autoTable({
+        startY: y, margin: { left: margin, right: margin },
+        head: [['UTC', 'En WP', 'Accion', 'Payload']],
+        body: elRows,
+        styles: { fontSize: 7.5, cellPadding: 1.2, overflow: 'linebreak' },
+        headStyles: { fillColor: [0, 55, 100], textColor: 255 },
+        columnStyles: {
+          0: { cellWidth: 18 },
+          1: { cellWidth: 14 },
+          2: { cellWidth: 28, fontStyle: 'bold' },
+          3: { fontSize: 7 },
+        },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+      });
+      y = doc.lastAutoTable.finalY + 6;
+    }
+
     const stamp = ymdhm(new Date());
     const fname = `tsagestor-aar-${m.origin || 'XX'}-${m.destination || 'XX'}-${stamp}.pdf`;
     doc.save(fname);

@@ -235,6 +235,10 @@ window.TSAgestor.livePlan = (function () {
       // aire — conservarla si es la misma sesion (mismo planId).
       // Si el plan cambia, se descarta (datos del vuelo anterior).
       calibration:       keep ? (prev.calibration || null) : null,
+      // OLA3: event log append-only de cada accion operativa con
+      // timestamp. Vital para el AAR — proporciona evidencia objetiva
+      // del orden y momento exacto de cada decision durante el vuelo.
+      eventLog:          keep ? (Array.isArray(prev.eventLog) ? prev.eventLog.slice() : []) : [],
     };
     // BUG#1 (audit v2): bumpear el epoch invalida cualquier
     // _refetchWinds en vuelo — su commit detectara el cambio y
@@ -380,6 +384,28 @@ window.TSAgestor.livePlan = (function () {
         message: 'localStorage no disponible: ' + (e && e.message ? e.message : 'unknown'),
         autoDismissMs: 8000,
       });
+    }
+  }
+  // OLA3: append-only event log. Cada accion operativa relevante
+  // (despegue, advance, back, hold, override, calibracion, RTB
+  // engage/cancel, refetch) graba un entry con timestamp + payload
+  // minimo. Persiste en session.eventLog y se incluye en el AAR
+  // (buildFlownSnapshot) y en el PDF AAR (exportLiveDelta) para
+  // proporcionar timeline objetiva del vuelo.
+  function _logEvent(type, payload) {
+    if (!session) return;
+    if (!Array.isArray(session.eventLog)) session.eventLog = [];
+    session.eventLog.push({
+      t: Date.now(),
+      type,
+      currentIdx: session.currentIdx,
+      payload: payload || null,
+    });
+    // Cap el log a 500 eventos (orden cronologico, descartamos los mas
+    // antiguos) — un vuelo razonable tiene ~50-100 eventos; 500 es
+    // proteccion contra acumulacion patologica.
+    if (session.eventLog.length > 500) {
+      session.eventLog.splice(0, session.eventLog.length - 500);
     }
   }
   function _clearSession() {
@@ -1689,6 +1715,7 @@ window.TSAgestor.livePlan = (function () {
       measuredAtFl:  fl,
       calibratedAt:  Date.now(),
     };
+    _logEvent('calibrate', Object.assign({}, session.calibration));
     _saveSession();
     // Refetch fuerza recalculo de TAS/GS con la calibracion aplicada.
     _refetchWinds();
@@ -2040,6 +2067,7 @@ window.TSAgestor.livePlan = (function () {
     session.proposedStartTime = startMs;
     session.currentIdx = 0;
     session.actualPassTimes = { 0: startMs };
+    _logEvent('start', { startMs });
     _saveSession();
     // F2.11: solicitar permiso de notificaciones si esta soportado.
     // Asi cuando el tab pierde foco y se cumple una ETA podemos lanzar
@@ -2220,6 +2248,14 @@ window.TSAgestor.livePlan = (function () {
     }
     events.sort((a, b) => (a.time || 0) - (b.time || 0));
 
+    // OLA3: incluir el eventLog estructurado tal cual — el AAR PDF
+    // lo renderiza como timeline objetiva. El array `events` legacy
+    // (curado para presentacion) se conserva por compatibilidad con
+    // exportLiveDelta de versiones previas.
+    const eventLog = Array.isArray(session.eventLog)
+      ? session.eventLog.slice()
+      : [];
+
     return {
       meta: {
         origin:           session.coords[0] && session.coords[0].name,
@@ -2245,6 +2281,7 @@ window.TSAgestor.livePlan = (function () {
         liveHoldMin: r.liveHoldMin || 0,
       })),
       events,
+      eventLog,
       session: JSON.parse(JSON.stringify(session)),
     };
   }
@@ -3051,6 +3088,10 @@ window.TSAgestor.livePlan = (function () {
     // referencia un leg que ahora es "el actual"). El propio _advance
     // dispara _refetchWinds despues con startIdx actualizado.
     _sessionEpoch++;
+    _logEvent('advance', {
+      toIdx: next,
+      name: session.coords[next] && session.coords[next].name,
+    });
     _saveSession();
     _refresh();
     _refetchWinds();
@@ -3099,6 +3140,10 @@ window.TSAgestor.livePlan = (function () {
     }
     // OLA2 cleanup 4: bumpea epoch — mismo motivo que _advance.
     _sessionEpoch++;
+    _logEvent('back', {
+      toIdx: session.currentIdx,
+      name: session.coords[session.currentIdx] && session.coords[session.currentIdx].name,
+    });
     _saveSession();
     _refresh();
   }
@@ -3110,6 +3155,10 @@ window.TSAgestor.livePlan = (function () {
     if (!Number.isFinite(n)) return;
     const idx = session.currentIdx;
     session.liveHolds[idx] = (session.liveHolds[idx] || 0) + n;
+    _logEvent('hold', {
+      idx, mins: n, totalMins: session.liveHolds[idx],
+      name: session.coords[idx] && session.coords[idx].name,
+    });
     _saveSession();
     _refresh();
   }
@@ -3254,6 +3303,11 @@ window.TSAgestor.livePlan = (function () {
     session.alertedWPs      = {};
     session.refetched       = null;
     session.rtbEngaged      = true;
+    _logEvent('rtb-engage', {
+      returnLegs: returnCoords.length - 1,
+      distNM: cumNm,
+      initialFuelAtEngage: initialFuel,
+    });
     // El initialFuel del fuelOpts se ajusta al combustible REAL en el
     // momento de engage para que la propagacion downstream cuadre.
     session.fuelOpts = Object.assign({}, session.fuelOpts, { initialFuel });
@@ -3324,6 +3378,7 @@ window.TSAgestor.livePlan = (function () {
     if (snap.fuelOpts) session.fuelOpts = Object.assign({}, snap.fuelOpts);
     delete session.rtbEngaged;
     delete session.preRtbSnapshot;
+    _logEvent('rtb-cancel', null);
     // BUG#1+#7: bumpear epoch + re-render del plan original en mapa.
     _sessionEpoch++;
     // Audit OLA1 BUG#11: simetrico al engage — invalida caches para
@@ -3368,11 +3423,13 @@ window.TSAgestor.livePlan = (function () {
       flow: Number.isFinite(flow) && flow >= 0 ? flow : null,
       fl:   Number.isFinite(fl)   && fl   > 0  ? fl   : null,
     };
+    _logEvent('override-apply', Object.assign({}, session.overrides));
     _saveSession();
     _refresh();
   }
   function _clearOverrides() {
     if (!session) return;
+    _logEvent('override-clear', null);
     session.overrides = null;
     document.getElementById('live-override-ias').value  = '';
     document.getElementById('live-override-flow').value = '';

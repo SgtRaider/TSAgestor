@@ -26,7 +26,15 @@ window.TSAgestor.geom = (function () {
 
   function bearing(a, b) {
     const φ1 = toRad(a[0]), φ2 = toRad(b[0]);
-    const Δλ = toRad(b[1] - a[1]);
+    // OLA3: normaliza Δλ a [-180, 180] para que el bearing sea correcto
+    // al cruzar el antimeridiano. Antes b=170,a=-170 daba Δλ=340° en vez
+    // de -20° -> rumbo erroneo (apuntaba "al rodeo" del globo).
+    // Haversine NO necesita esto porque sin²(Δλ/2) es periodico, pero
+    // atan2(y, x) si depende del signo y la magnitud.
+    let dLonDeg = b[1] - a[1];
+    if (dLonDeg > 180)  dLonDeg -= 360;
+    if (dLonDeg < -180) dLonDeg += 360;
+    const Δλ = toRad(dLonDeg);
     const y = Math.sin(Δλ) * Math.cos(φ2);
     const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
     return (toDeg(Math.atan2(y, x)) + 360) % 360;

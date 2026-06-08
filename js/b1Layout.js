@@ -108,8 +108,62 @@ window.TSAgestor.b1Layout = (function () {
     _moveSection(state.section);
     _applyPanelState();
     _applyDrawerState();
+    _wireNetStatus();
+    _wirePwaInstall();
     setTimeout(_invalidateMapSize, 50);
     console.info('[b1Layout] activado, seccion=', state.section);
+  }
+
+  // OLA3: indicador online/offline en header. Importante en cabina
+  // donde la 4G puede ser intermitente — el operador necesita saber
+  // si los METAR/SIGMETs/winds son frescos o cacheados.
+  function _wireNetStatus() {
+    const el = document.getElementById('b1-net-status');
+    if (!el) return;
+    function apply() {
+      const online = (typeof navigator !== 'undefined') ? navigator.onLine : true;
+      el.classList.toggle('b1-net-online',  online);
+      el.classList.toggle('b1-net-offline', !online);
+      el.textContent = online ? '● Online' : '⚠ Offline';
+      el.setAttribute('title', online
+        ? 'Conectado · METAR/SIGMETs/winds frescos'
+        : 'Sin conexion · datos del cache (pueden estar desactualizados)');
+    }
+    apply();
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener('online',  apply);
+      window.addEventListener('offline', apply);
+    }
+  }
+
+  // OLA3: PWA install banner. Captura beforeinstallprompt (Chrome/Edge)
+  // y muestra el boton para invocar el prompt cuando el usuario lo
+  // pulse. Tras instalar, el evento NO vuelve a dispararse.
+  function _wirePwaInstall() {
+    if (typeof window === 'undefined') return;
+    let deferred = null;
+    const btn = document.getElementById('b1-pwa-install');
+    if (!btn) return;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferred = e;
+      btn.style.display = '';
+    });
+    btn.addEventListener('click', async () => {
+      if (!deferred) return;
+      btn.disabled = true;
+      try {
+        deferred.prompt();
+        await deferred.userChoice;
+      } catch (_) {}
+      deferred = null;
+      btn.style.display = 'none';
+    });
+    // Tras install, oculta el boton si ya estabamos en modo standalone.
+    window.addEventListener('appinstalled', () => {
+      btn.style.display = 'none';
+      deferred = null;
+    });
   }
 
   // Mueve #filter-bar dentro de #tab-upload para que viaje con la
@@ -704,6 +758,8 @@ window.TSAgestor.b1Layout = (function () {
         </div>
         <nav class="b1-stepper" role="tablist" aria-label="Secciones de la aplicación"></nav>
         <div class="b1-actions">
+          <span id="b1-net-status" class="b1-net-status" role="status" aria-live="polite" title="Estado de conexion"></span>
+          <button class="b1-icon-btn" id="b1-pwa-install" title="Instalar como aplicacion" aria-label="Instalar app" style="display:none">⤵</button>
           <button class="b1-icon-btn" id="b1-help-btn" title="Ayuda" aria-label="Abrir ayuda">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true">
               <circle cx="12" cy="12" r="10"/>

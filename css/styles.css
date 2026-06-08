@@ -4863,6 +4863,29 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
 }
 .plan-crosscheck-close:hover { opacity: 1; }
 
+/* OLA3: indicador online/offline en header B1. Verde si conectado,
+   ambar si offline. Discreto pero visible para que el operador sepa
+   si los METAR/winds/SIGMETs son frescos o cacheados. */
+.b1-net-status {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.4px;
+  margin-right: 4px;
+}
+.b1-net-online {
+  background: rgba(34, 197, 94, 0.20);
+  color: #86efac;
+  border: 1px solid #22c55e;
+}
+.b1-net-offline {
+  background: rgba(251, 191, 36, 0.20);
+  color: #fde68a;
+  border: 1px solid #fbbf24;
+  animation: liveBadgePulse 2.2s ease-in-out infinite;
+}
+
 /* OLA2: layout de botones Export en linea (Generar PDF + Briefing). */
 .export-actions {
   display: flex;
