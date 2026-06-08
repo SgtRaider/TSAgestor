@@ -26,6 +26,12 @@ window.TSAgestor.fleet = (function () {
   let _refreshTimer = null;
   let _backoffSec = 0;
   let _failCount = 0;
+  // Audit M2: handlers como variables modulo, registrados UNA SOLA
+  // vez en mount() y removidos en unmount(). Antes la arrow anonima
+  // pasada a addEventListener('visibilitychange', ...) en cada
+  // mount() leakeaba listeners y nunca se podia desuscribir.
+  let _onVis = null;
+  let _onEscape = null;
 
   function escapeHTML(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
@@ -65,7 +71,10 @@ window.TSAgestor.fleet = (function () {
     const sh = document.createElement('div');
     sh.className = 'b1-fleet-shell';
     sh.innerHTML =
-      '<h1>FLOTA — Dispatch view</h1>' +
+      '<div class="b1-fleet-topbar">' +
+        '<button id="btn-fleet-exit" type="button" class="btn" title="Salir de Flota y volver al modo cabina (Esc)">← Volver a cabina</button>' +
+        '<h1>FLOTA — Dispatch view</h1>' +
+      '</div>' +
       '<div class="b1-fleet-meta">' +
         '<span id="fleet-unit-info"></span>' +
         '<span id="fleet-update-info"></span>' +
@@ -74,7 +83,20 @@ window.TSAgestor.fleet = (function () {
       '<div id="fleet-banner"></div>' +
       '<div id="fleet-body"></div>';
     document.body.appendChild(sh);
+    // Audit B3 (blocker): exit affordance — el operador en tablet no
+    // podia salir de fleet view sin editar la URL. Boton + tecla
+    // Escape. Recarga la pagina con la URL limpia (sin ?fleet=1) para
+    // que b1Layout reentre en modo cabina.
+    const exitBtn = sh.querySelector('#btn-fleet-exit');
+    if (exitBtn) exitBtn.addEventListener('click', _exitFleet);
     return sh;
+  }
+  function _exitFleet() {
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete('fleet');
+      window.location.href = u.toString();
+    } catch (_) { window.location.reload(); }
   }
 
   function mount() {
@@ -83,36 +105,64 @@ window.TSAgestor.fleet = (function () {
     _shellEl = _buildShell();
     _render();
     _scheduleRefresh();
-    // Pausa refresh cuando el tab no es visible (FIX performance).
+    // Audit M2: handler como variable modulo. Pausa refresh cuando
+    // el tab no es visible (FIX performance + ahorro de fetches).
+    // Guard !_mounted dentro por si llega un evento tras unmount.
     if (typeof document !== 'undefined' && document.addEventListener) {
-      document.addEventListener('visibilitychange', () => {
+      _onVis = () => {
+        if (!_mounted) return;
         if (document.hidden) {
           _stopRefresh();
         } else {
           _render();
           _scheduleRefresh();
         }
-      });
+      };
+      document.addEventListener('visibilitychange', _onVis);
+    }
+    // Audit B3: tecla Escape como atajo para salir de fleet view.
+    _onEscape = (e) => {
+      if (!_mounted) return;
+      if (e.key === 'Escape' || e.key === 'Esc') {
+        if (confirm('¿Salir de Flota y volver al modo cabina?')) _exitFleet();
+      }
+    };
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      document.addEventListener('keydown', _onEscape);
     }
   }
   function unmount() {
     _stopRefresh();
+    // Audit M2: removeEventListener simetrico con mount().
+    if (_onVis && typeof document !== 'undefined' && document.removeEventListener) {
+      document.removeEventListener('visibilitychange', _onVis);
+      _onVis = null;
+    }
+    if (_onEscape && typeof document !== 'undefined' && document.removeEventListener) {
+      document.removeEventListener('keydown', _onEscape);
+      _onEscape = null;
+    }
     if (_shellEl && _shellEl.parentNode) _shellEl.parentNode.removeChild(_shellEl);
     _shellEl = null;
     _mounted = false;
   }
   function _scheduleRefresh() {
     _stopRefresh();
+    if (!_mounted) return; // Audit M2: guard re-entrancia
     const settings = window.TSAgestor && window.TSAgestor.settings;
-    const baseSec = (settings && Number(settings.get('dispatch.autoRefreshSec'))) || 15;
+    // Audit M4: clamp inferior a 1s. Number(-5) || 15 daba -5 (truthy)
+    // -> setTimeout con delay 0 -> fetch storm.
+    const raw = settings ? Number(settings.get('dispatch.autoRefreshSec')) : NaN;
+    const baseSec = (Number.isFinite(raw) && raw >= 1) ? raw : 15;
     const delay = _backoffSec > 0 ? _backoffSec : baseSec;
-    _refreshTimer = setTimeout(_tick, delay * 1000);
+    _refreshTimer = setTimeout(_tick, Math.max(1, delay) * 1000);
   }
   function _stopRefresh() {
     if (_refreshTimer) { try { clearTimeout(_refreshTimer); } catch (_) {} _refreshTimer = null; }
   }
   async function _tick() {
     _refreshTimer = null;
+    if (!_mounted) return; // Audit M2
     await _render();
     _scheduleRefresh();
   }

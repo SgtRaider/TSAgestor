@@ -302,12 +302,23 @@
   // OLA2: exporta el ESTADO completo de la app (todas las claves
   // tsagestor_*) a un JSON descargable. Sirve para clonar config
   // entre dispositivos / respaldar antes de actualizar / migrar.
+  // Audit B2 (blocker): tsagestor_live_session_v2 EXCLUIDA del backup.
+  // Antes el backup incluia la session Live entera (eventLog + holds +
+  // overrides + RTB state). Al importar en otra sesion / dispositivo /
+  // semanas despues, livePlan._loadSession resucitaba una session con
+  // started=true y mostraba toast "Sesion Live restaurada" con datos
+  // fantasma — el operador podia confiar en fuel/timeline obsoletos.
+  // El backup es para CONFIG + plans + AAR, NO para sesion efimera en
+  // curso. tsagestor_last_plan_v1 SI se incluye porque es el plan
+  // calculado (no la sesion).
+  // Igual excluida tsagestor_device_id_v1 (identidad unica del dispositivo,
+  // no debe duplicarse al restaurar en otro device) y
+  // tsagestor_livesync_stub_v1 (datos fake del mock).
   const FULL_STATE_KEYS = [
     'tsagestor_settings_v1',
     'tsagestor_saved_plans_v1',
     'tsagestor_flown_sessions_v1',
     'tsagestor_last_plan_v1',
-    'tsagestor_live_session_v2',
     'tsagestor_live_tts_enabled',
     'tsagestor_b1_layout',
   ];
@@ -372,7 +383,15 @@
       if (parsed._v !== 1) {
         if (!confirm('Version del backup (' + parsed._v + ') distinta a la actual (1). ¿Continuar de todos modos?')) return;
       }
-      if (!confirm('Importar este backup SOBRESCRIBE todos los datos actuales (ajustes, planes guardados, sesion Live, vuelos realizados). ¿Continuar?')) return;
+      if (!confirm('Importar este backup SOBRESCRIBE ajustes, planes guardados y vuelos realizados.\n\nLa sesion Live en curso (si la hay) NO se altera — es estado efimero.\n\n¿Continuar?')) return;
+      // Audit B2: ademas de no restaurar la session del backup,
+      // limpiamos defensivamente cualquier session huerfana del
+      // dispositivo de destino para evitar resucitar fantasmas si el
+      // backup fue tomado en otra instancia con session activa.
+      try {
+        const lp = window.TSAgestor && window.TSAgestor.livePlan;
+        if (lp && typeof lp.clearSession === 'function') lp.clearSession();
+      } catch (_) {}
       try {
         FULL_STATE_KEYS.forEach(k => {
           if (parsed.keys && Object.prototype.hasOwnProperty.call(parsed.keys, k)) {

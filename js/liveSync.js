@@ -37,6 +37,15 @@ window.TSAgestor.liveSync = (function () {
   const DEVICE_ID_KEY = 'tsagestor_device_id_v1';
   const STUB_KEY      = 'tsagestor_livesync_stub_v1';
   const CLIENT_VER    = 'tsagestor-1';
+  // Audit M3 + minor m1: persiste {sessionId, version, lastPlanId} en
+  // localStorage para que tras F5 el push continue con version
+  // monotonica. Sin esto, el backend podria rechazar writes con
+  // version < lastSeenVersion (orden monotonico contractual).
+  const STATE_KEY     = 'tsagestor_livesync_state_v1';
+  // Clave de session local que liveSync ve via storage event para
+  // invalidar su estado in-memory si otra pestana del mismo dispositivo
+  // modifica la session de Live (multi-tab).
+  const PLAN_SESSION_KEY = 'tsagestor_live_session_v2';
 
   // Estado del modulo (singleton).
   let _cfg = {
@@ -99,6 +108,31 @@ window.TSAgestor.liveSync = (function () {
     _deviceId = _uuid();
     try { localStorage.setItem(DEVICE_ID_KEY, _deviceId); } catch (_) {}
     return _deviceId;
+  }
+
+  // Audit M3 + minor m1: rehidrata {sessionId, version, lastPlanId}
+  // tras F5 para que el push continue con la version monotonica.
+  function _loadState() {
+    try {
+      const raw = localStorage.getItem(STATE_KEY);
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      if (s && typeof s === 'object') {
+        if (typeof s.sessionId === 'string') _sessionId = s.sessionId;
+        if (Number.isFinite(s.version))      _version = s.version;
+        if (typeof s.lastPlanId === 'string') _lastPlanId = s.lastPlanId;
+      }
+    } catch (_) {}
+  }
+  function _persistState() {
+    try {
+      localStorage.setItem(STATE_KEY, JSON.stringify({
+        sessionId: _sessionId, version: _version, lastPlanId: _lastPlanId,
+      }));
+    } catch (_) {}
+  }
+  function _clearPersistedState() {
+    try { localStorage.removeItem(STATE_KEY); } catch (_) {}
   }
 
   // FIX-3: sanitiza callsign en cliente. Confiar en UI es fragil.
@@ -335,6 +369,9 @@ window.TSAgestor.liveSync = (function () {
       _version = 0;
     }
     _version++;
+    // Audit M3 + minor m1: persiste tras cada incremento para que
+    // F5 conserve la version monotonica.
+    _persistState();
     const last = session.coords ? session.coords.length - 1 : 0;
     const meta = {
       origin:      session.coords && session.coords[0] && session.coords[0].name,
@@ -399,7 +436,14 @@ window.TSAgestor.liveSync = (function () {
       // FIX-16: distinguir auth vs general.
       if (e && (e.status === 401 || e.status === 403)) {
         _kind = 'auth-fail';
-        _emit({ type: 'auth-fail', error: _lastError });
+        // Audit B1 (blocker): tras 401/403 el operador tiene que
+        // reconfigurar el token explicitamente. Setemos el backoff
+        // al maximo (retryMaxSec) para evitar hammering al backend
+        // cada intervalSec con un token revocado/mal pegado. El
+        // operador puede pulsar retry() (chip click) o cambiar el
+        // token en Ajustes (reconfigure resetea el backoff).
+        _backoffSec = _cfg.retryMaxSec || 300;
+        _emit({ type: 'auth-fail', error: _lastError, backoffSec: _backoffSec });
         return null;
       }
       _kind = 'fail';
@@ -424,6 +468,10 @@ window.TSAgestor.liveSync = (function () {
   async function _tick() {
     _timer = null;
     if (!isConfigured()) { _kind = 'off'; return; }
+    // Audit B1: si estamos en auth-fail no se reintenta automaticamente.
+    // El operador debe reconfigurar el token (que dispara configure() y
+    // resetea estado) o llamar retry() explicitamente desde el chip.
+    if (_kind === 'auth-fail') { _scheduleNext(); return; }
     // Solo pusha si _dirty O en heartbeat sin cambios cada 5 min.
     const now = Date.now();
     const sinceLast = now - _lastPushTs;
@@ -451,6 +499,9 @@ window.TSAgestor.liveSync = (function () {
       retryMaxSec: Number(opts.retryMaxSec) > 0 ? Number(opts.retryMaxSec) : 300,
     };
     _loadDeviceId();
+    // Audit M3 + minor m1: rehidrata state persistido para preservar
+    // version monotonica entre F5. Solo si no estamos finalizando.
+    if (!_finalized) _loadState();
     if (!isConfigured()) { _kind = 'off'; _emit({ type: 'config', configured: false }); return; }
     _kind = 'idle';
     _emit({ type: 'config', configured: true, stub: _isStub() });
@@ -479,6 +530,7 @@ window.TSAgestor.liveSync = (function () {
     _version = 0;
     _lastBodyDigest = null;
     _finalized = false;
+    _clearPersistedState();
   }
   async function finalize(/* payload */) {
     if (!isConfigured()) return;
@@ -514,6 +566,7 @@ window.TSAgestor.liveSync = (function () {
     // siguiente push genere nuevo sessionId.
     _sessionId = null; _lastPlanId = null; _version = 0; _lastBodyDigest = null;
     _finalized = false;
+    _clearPersistedState();
   }
 
   // FIX-18: capturar unhandledrejection marcadas como _liveSync sin
@@ -525,10 +578,27 @@ window.TSAgestor.liveSync = (function () {
         console.warn('[liveSync] rejected:', e.reason.message || e.reason);
       }
     });
-    // Disparar push inmediato al volver online
+    // Audit minor m2: al volver online, push INMEDIATO (no
+    // reprogramar el timer hasta intervalSec). Antes _scheduleNext()
+    // dejaba un delay de hasta 30s aunque tuvieramos _dirty=true.
     window.addEventListener('online', () => {
-      if (isConfigured() && (_dirty || _failCount > 0)) {
-        _scheduleNext();
+      if (isConfigured() && (_dirty || _failCount > 0) && _kind !== 'auth-fail') {
+        try { pushNow({ reason: 'online' }); } catch (_) {}
+      }
+    });
+    // Audit M3: storage event listener para sincronia cross-tab.
+    // Si otra pestana cambia el state persistido del liveSync
+    // (sessionId/version/lastPlanId), recargamos nuestra copia.
+    // Si otra pestana muta la session Live local, invalidamos el
+    // digest para que el proximo tick lo recompute correctamente.
+    window.addEventListener('storage', (e) => {
+      if (!e || !e.key) return;
+      if (e.key === STATE_KEY) {
+        _loadState();
+        _emit({ type: 'state-synced' });
+      } else if (e.key === PLAN_SESSION_KEY) {
+        _lastBodyDigest = null;
+        _dirty = true;
       }
     });
   }

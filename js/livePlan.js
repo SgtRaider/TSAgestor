@@ -424,15 +424,25 @@ window.TSAgestor.livePlan = (function () {
     }
   }
   function _clearSession() {
-    // OLA4: notifica al backend ANTES de borrar la session local.
-    // Si liveSync no esta cargado, el hook es no-op.
-    try { _syncHook('deleteRemote'); } catch (_) {}
+    // Audit M5 (major): antes deleteRemote se llamaba ANTES del clear
+    // local pero sin await -> race. Si el operador iniciaba ruta nueva
+    // inmediatamente, el DELETE stale podia llegar tras el primer PUT
+    // y clobberar la session nueva. Ahora: clear local primero +
+    // epoch bump (siguiente _saveSession dispara push con nuevo
+    // sessionId), y liveSync.delete async como fire-and-forget DESPUES.
+    // El sessionId del DELETE corresponde al del momento de la llamada
+    // (capturado en la closure de liveSync), no al nuevo.
     session = null;
     _invalidateRecalc();
     // BUG#1: epoch++ para que un _refetchWinds en vuelo no committee
     // su resultado sobre la session siguiente.
     _sessionEpoch++;
     try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+    // Audit M5: DELETE remoto AL FINAL como fire-and-forget. Si el
+    // operador inicia ruta nueva inmediatamente, el push del nuevo
+    // PUT lleva sessionId distinto (resetSessionId resetea la closure
+    // de liveSync) y no colisiona con este DELETE.
+    try { _syncHook('deleteRemote'); } catch (_) {}
   }
 
   // ── Sistema de toasts no-bloqueantes (top-right) ──────────────────
@@ -2321,7 +2331,7 @@ window.TSAgestor.livePlan = (function () {
     };
   }
 
-  function _saveFlown() {
+  async function _saveFlown() {
     const snap = buildFlownSnapshot();
     if (!snap) {
       _showToast({ id: 'aar-result', level: 'warn',
@@ -2346,17 +2356,46 @@ window.TSAgestor.livePlan = (function () {
     const name = prompt('Nombre del vuelo realizado:', defaultName);
     if (!name) return;
     sp.saveFlown(name, snap);
-    // OLA4: marca la session como finalizada en el backend.
-    try { _syncHook('finalize'); } catch (_) {}
-    // Visible en DOS sitios: (1) Plan → Planes guardados (seccion
-    // "📂 Vuelos realizados (AAR)"), (2) preflight Live cuando no
-    // hay sesion arrancada (card verde con boton "Ver lista").
-    _showToast({
-      id: 'aar-result', level: 'success',
-      title: '✓ Vuelo realizado guardado',
-      message: `"${name}" persistido. Visible en Plan → Planes guardados (seccion AAR) y en el preflight Live al resetear la sesion.`,
-      autoDismissMs: 10000,
-    });
+    // Audit M1 (major): antes el toast "persistido" se mostraba ANTES
+    // de await finalize() — si el backend estaba offline o devolvia 5xx,
+    // el operador veia OK verde pero el sync nunca llegaba. Ahora
+    // await el finalize y distinguimos:
+    //   - sync OK            -> toast success verde (local + backend)
+    //   - sync FAIL / offline -> toast WARN ambar (local OK, backend pendiente)
+    //   - sync disabled      -> toast success verde (sin mencion de sync)
+    let syncStatus = 'disabled';
+    try {
+      const ls = window.TSAgestor && window.TSAgestor.liveSync;
+      if (ls && typeof ls.isConfigured === 'function' && ls.isConfigured()) {
+        try {
+          await ls.finalize();
+          syncStatus = (ls.getStatus && ls.getStatus().kind === 'auth-fail') ? 'auth-fail' : 'ok';
+        } catch (_) { syncStatus = 'fail'; }
+      }
+    } catch (_) {}
+    const baseMsg = `"${name}" persistido. Visible en Plan → Planes guardados (seccion AAR) y en el preflight Live al resetear la sesion.`;
+    if (syncStatus === 'fail') {
+      _showToast({
+        id: 'aar-result', level: 'warn',
+        title: '✓ Guardado local · ⚠ sync pendiente',
+        message: baseMsg + ' Backend no respondio — el guardado local esta OK pero el dispatch no ha recibido la finalizacion. Pulsa el chip de sync para reintentar.',
+        autoDismissMs: 12000,
+      });
+    } else if (syncStatus === 'auth-fail') {
+      _showToast({
+        id: 'aar-result', level: 'warn',
+        title: '✓ Guardado local · 🔒 sync auth fail',
+        message: baseMsg + ' Token de unidad rechazado por el backend — reconfigura en Ajustes para sincronizar.',
+        autoDismissMs: 12000,
+      });
+    } else {
+      _showToast({
+        id: 'aar-result', level: 'success',
+        title: '✓ Vuelo realizado guardado',
+        message: baseMsg,
+        autoDismissMs: 10000,
+      });
+    }
   }
 
   async function _exportFlownPdf() {
