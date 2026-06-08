@@ -2094,7 +2094,18 @@
   function calcPlan() {
     const origin = $('#plan-origin').value.trim();
     const destination = $('#plan-dest').value.trim();
-    const fl = Number($('#plan-fl').value) || 350;
+    // OLA2 cleanup 1: clamp FL a [50, 600] (min/max del HTML no
+    // bloquean parseFloat; un usuario pegando "FL900" o "FL10" creaba
+    // calculos con DA absurda). Si el valor estaba fuera, lo
+    // re-asignamos al input asi el operador ve la correccion.
+    let fl = Number($('#plan-fl').value);
+    if (!Number.isFinite(fl)) fl = 350;
+    const flClamped = Math.max(50, Math.min(600, fl));
+    if (flClamped !== fl) {
+      $('#plan-fl').value = flClamped;
+      console.warn('[app] FL fuera de rango (50-600) corregido a', flClamped);
+    }
+    fl = flClamped;
     const speedKt = Number($('#plan-speed').value) || 450;
     const depStr = $('#plan-departure').value;
     const departureUTC = depStr ? new Date(depStr + ':00Z') : new Date();
@@ -2547,6 +2558,15 @@
 
   // Recompute en vivo cuando el usuario edita un input de Vel o Consumo en
   // la tabla. Actualiza sólo las celdas calculadas para no perder el foco.
+  // OLA2 cleanup 2: debounce 150ms del rebuild del fuel log. Antes
+  // cada keystroke en un override de IAS/Flow/HoldMin disparaba un
+  // buildFuelLog completo (O(N) con winds + 3 iteraciones de
+  // refinamiento) + sync de ETAs en la tabla de waypoints — coste >50ms
+  // por tecla en planes grandes (>30 WPs). El debounce agrupa rafagas
+  // del operador (tecleo rapido) en una sola actualizacion sin perder
+  // responsividad perceptible.
+  let _legInputDebounce = null;
+  let _legInputPending = null;
   function onLegInputChange(e) {
     const inp = e.target;
     if (!inp.matches || !inp.matches('.leg-input')) return;
@@ -2556,12 +2576,22 @@
     const field = inp.dataset.field;
     const val = Number(inp.value);
     if (!Number.isFinite(val) || val < 0) return;
+    // Mutacion del override es sincrona (para que reads posteriores
+    // vean el ultimo valor). Solo el rebuild del fuel log se difiere.
     plan.fuelOpts.legOverrides = plan.fuelOpts.legOverrides || [];
     plan.fuelOpts.legOverrides[idx] = plan.fuelOpts.legOverrides[idx] || {};
     plan.fuelOpts.legOverrides[idx][field] = val;
-    plan.fuel = flightPlan.buildFuelLog(plan.coords, plan.fuelOpts);
-    updateFuelLogInPlace(plan.fuel);
-    syncEtaUTCToCoords(plan);
+    _legInputPending = plan;
+    if (_legInputDebounce != null) clearTimeout(_legInputDebounce);
+    _legInputDebounce = setTimeout(() => {
+      const p = _legInputPending;
+      _legInputDebounce = null;
+      _legInputPending = null;
+      if (!p || !p.coords || !p.fuelOpts) return;
+      p.fuel = flightPlan.buildFuelLog(p.coords, p.fuelOpts);
+      updateFuelLogInPlace(p.fuel);
+      syncEtaUTCToCoords(p);
+    }, 150);
   }
 
   // Tras rebuild del fuel log, las ETAs cambian (cambio de velocidad /

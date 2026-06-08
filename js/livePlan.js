@@ -2522,6 +2522,13 @@ window.TSAgestor.livePlan = (function () {
     // cierra el toast y quita el badge.
     _dismissToast('wp-alert');
     _setEtaAlertIndicator(false);
+    // OLA2 cleanup 4: bumpea el epoch para invalidar cualquier
+    // _refetchWinds en vuelo. El refetch fue lanzado con startIdx
+    // antiguo, y aplicar sus legTimes/winds a la session post-advance
+    // las metia en indices desfasados (la ETA del WP siguiente
+    // referencia un leg que ahora es "el actual"). El propio _advance
+    // dispara _refetchWinds despues con startIdx actualizado.
+    _sessionEpoch++;
     _saveSession();
     _refresh();
     _refetchWinds();
@@ -2549,6 +2556,27 @@ window.TSAgestor.livePlan = (function () {
         }
       });
     }
+    // OLA2 cleanup 3: si hay overrides cuyo fromIdx > currentIdx nuevo,
+    // los descartamos — fueron metidos cuando el operador estaba mas
+    // adelante y el rango ya no aplica al estado actual. Si todos los
+    // campos quedan null/inactivos, ponemos overrides=null para que
+    // _renderOverridesUI muestre estado limpio.
+    if (session.overrides && Number.isFinite(session.overrides.fromIdx) &&
+        session.overrides.fromIdx > session.currentIdx + 1) {
+      session.overrides = null;
+    }
+    // OLA2 cleanup 3: refetched.startIdx puede haber quedado por
+    // delante de currentIdx — los legTimes/winds son aun validos para
+    // legs >= startIdx, pero las ETAs intermedias asumian timing
+    // distinto. Invalidamos para que el proximo _refetchWinds reescriba
+    // con el nuevo currentIdx; mientras tanto el log cae al lp.gs
+    // cacheado (mejor que mostrar ETAs derivadas de timing antiguo).
+    if (session.refetched && Number.isFinite(session.refetched.startIdx) &&
+        session.refetched.startIdx > session.currentIdx) {
+      session.refetched = null;
+    }
+    // OLA2 cleanup 4: bumpea epoch — mismo motivo que _advance.
+    _sessionEpoch++;
     _saveSession();
     _refresh();
   }

@@ -9,7 +9,7 @@
  * Para forzar invalidación al desplegar nueva versión, sube CACHE_VERSION.
  */
 
-const CACHE_VERSION = 'tsagestor-v229';
+const CACHE_VERSION = 'tsagestor-v230';
 const SHELL_CACHE   = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
