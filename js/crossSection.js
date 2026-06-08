@@ -433,6 +433,10 @@ window.TSAgestor.crossSection = (function () {
     if (planPts && planPts.length >= 2) {
       drawPlanRoute(g, svg, planPts, xScale, yScale, panel, plotTop, plotBottom);
     }
+    // OLA2: ruta REAL (cyan dashed) sobre los WPs ya pasados.
+    if (livePts && livePts.length >= 1) {
+      drawLiveRoute(g, svg, livePts, xScale, yScale, panel);
+    }
 
     // Callouts (nombre + altitud apilados) sólo para primarios.
     const callouts = layoutCallouts(primary, xScale, yScale);
@@ -583,12 +587,54 @@ window.TSAgestor.crossSection = (function () {
     return 10 * pow;
   }
 
+  // OLA2: ruta REAL volada — trace cyan sobre los WPs ya pasados
+  // segun session.actualPassTimes. Acepta livePts[] = array de
+  // { xKm, fl, etaUTC, name } solo para WPs con paso registrado.
+  // Etiqueta cada WP realizado con su hora UTC para que el operador
+  // pueda comparar visualmente plan vs real sobre el corte.
+  function drawLiveRoute(g, svg, livePts, xScale, yScale, panel) {
+    if (!livePts || livePts.length < 1) return;
+    const inPanel = (xKm) => xKm >= panel.xMinKm - 1 && xKm <= panel.xMaxKm + 1;
+    const visIdx = [];
+    for (let i = 0; i < livePts.length; i++) {
+      if (inPanel(livePts[i].xKm)) visIdx.push(i);
+    }
+    if (!visIdx.length) return;
+    if (visIdx[0] > 0) visIdx.unshift(visIdx[0] - 1);
+    if (visIdx[visIdx.length - 1] < livePts.length - 1) visIdx.push(visIdx[visIdx.length - 1] + 1);
+    // Polilinea cyan dashed para enfatizar trayectoria real
+    if (visIdx.length >= 2) {
+      const points = visIdx.map(i => `${xScale(livePts[i].xKm)},${yScale(livePts[i].fl * 100)}`).join(' ');
+      g.appendChild(el('polyline', {
+        points, fill: 'none', stroke: '#06b6d4',
+        'stroke-width': 3, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+        'stroke-dasharray': '6 3',
+      }));
+    }
+    // Marcadores + etiqueta UTC bajo el FL existente
+    for (const i of visIdx) {
+      const wp = livePts[i];
+      const x = xScale(wp.xKm), y = yScale(wp.fl * 100);
+      g.appendChild(el('circle', {
+        cx: x, cy: y + 3, r: 4,
+        fill: '#06b6d4', stroke: '#155e75', 'stroke-width': 1.5,
+      }));
+      if (wp.etaUTC) {
+        svg.appendChild(haloText(x, y + 30, wp.etaUTC, {
+          'text-anchor': 'middle', 'font-size': 9,
+          fill: '#0e7490', 'font-weight': 600,
+        }));
+      }
+    }
+  }
+
   // ── Render principal ─────────────────────────────────────────────────
-  // opts = { plan, clouds }
+  // opts = { plan, clouds, liveSession }
   function render(svgEl, tsas, opts) {
     opts = opts || {};
     const plan = opts.plan || null;
     const clouds = opts.clouds || null;
+    const liveSession = opts.liveSession || null;
     tsas = tsas || [];
 
     while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
@@ -626,6 +672,31 @@ window.TSAgestor.crossSection = (function () {
         tsa: c.tsa || null,
         xKm: c.cumDistKm || 0,
       }));
+    }
+    // OLA2: livePts solo para WPs con paso registrado en la sesion
+    // Live (actualPassTimes). Mapeamos session.coords[i].originalIdx
+    // a plan.coords[orig].cumDistKm para obtener el xKm correcto.
+    // Etiqueta ETA = HH:MMZ corto.
+    let livePts = null;
+    if (liveSession && Array.isArray(liveSession.coords) && plan && plan.coords) {
+      const pts = [];
+      const passT = liveSession.actualPassTimes || {};
+      liveSession.coords.forEach((c, i) => {
+        if (passT[i] == null) return; // solo WPs realmente pasados
+        const orig = c.originalIdx != null ? c.originalIdx : i;
+        const planC = plan.coords[orig];
+        if (!planC) return;
+        const t = new Date(passT[i]);
+        const hh = String(t.getUTCHours()).padStart(2, '0');
+        const mm = String(t.getUTCMinutes()).padStart(2, '0');
+        pts.push({
+          name: c.name,
+          fl: c.fl != null ? c.fl : (plan.flightLevel || 350),
+          xKm: planC.cumDistKm || 0,
+          etaUTC: hh + ':' + mm + 'Z',
+        });
+      });
+      if (pts.length) livePts = pts;
     }
 
     // maxY: máx entre TSAs, banda de nubes altas y FL del plan.

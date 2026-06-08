@@ -1360,9 +1360,17 @@
     const info = $('#cross-info');
 
     const visible = getVisible();
+    // OLA2: pasamos la session Live para que crossSection dibuje la
+    // ruta REAL volada en cyan dashed sobre el corte del plan.
+    let liveSession = null;
+    try {
+      const raw = localStorage.getItem('tsagestor_live_session_v2');
+      if (raw) liveSession = JSON.parse(raw);
+    } catch (_) {}
     const opts = {
       plan: state.lastPlan || null,
       clouds: state.crossClouds || null,
+      liveSession,
     };
     let res;
     try {
