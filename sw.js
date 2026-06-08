@@ -9,7 +9,7 @@
  * Para forzar invalidación al desplegar nueva versión, sube CACHE_VERSION.
  */
 
-const CACHE_VERSION = 'tsagestor-v240';
+const CACHE_VERSION = 'tsagestor-v241';
 const SHELL_CACHE   = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -33,6 +33,7 @@ const SHELL_ASSETS = [
   './js/metarDecode.js',
   './js/parser.js',
   './js/scheduleFmt.js',
+  './js/i18n.js',
   './js/filters.js',
   './js/mapView.js',
   './js/trafficLayer.js',

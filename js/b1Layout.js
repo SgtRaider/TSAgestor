@@ -91,6 +91,16 @@ window.TSAgestor.b1Layout = (function () {
   function init() {
     if (!isEnabled()) return;
     _loadState();
+    // OLA3: activar Copilot view si la URL trae ?copilot=1. Aplica
+    // body class .b1-copilot que CSS usa para fonts grandes, hide
+    // de controles editables y forzar seccion Live.
+    try {
+      const usp = new URLSearchParams(window.location.search);
+      if (usp.get('copilot') === '1') {
+        document.body.classList.add('b1-copilot');
+        state.section = 'live';
+      }
+    } catch (_) {}
     _buildShell();
     _wireStepper();
     _wireResize();

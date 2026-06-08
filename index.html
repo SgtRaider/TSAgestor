@@ -677,22 +677,22 @@
           </div>
           <div class="live-actions">
             <button id="btn-live-advance" class="btn btn-primary" type="button" title="Marca que has pasado por el próximo waypoint AHORA y refresca vientos">
-              ▶ Estoy en próximo WP
+              ▶ <span data-i18n="live.advance">Estoy en próximo WP</span>
             </button>
             <button id="btn-live-back" class="btn btn-ghost" type="button" title="Retrocede al waypoint anterior (deshace el último paso)">
-              ◀ Retroceder
+              ◀ <span data-i18n="live.back">Retroceder</span>
             </button>
             <button id="btn-live-hold" class="btn btn-ghost" type="button" title="Añade un hold en el WP actual">
-              + Hold
+              <span data-i18n="live.hold">+ Hold</span>
             </button>
             <button id="btn-live-rtb" class="btn btn-ghost" type="button" title="Evalúa la vuelta inmediata al aeródromo de origen desde la posición actual">
-              ↩ Vuelta a base
+              ↩ <span data-i18n="live.rtb">Vuelta a base</span>
             </button>
             <button id="btn-live-refetch-winds" class="btn btn-ghost" type="button" title="Forzar refresco manual del viento (Open-Meteo)">
-              ⟳ Refresh viento
+              ⟳ <span data-i18n="live.refresh">Refresh viento</span>
             </button>
             <button id="btn-live-reset" class="btn btn-ghost" type="button" title="Resetea la sesión live al estado inicial del plan">
-              ⟲ Reset sesión
+              ⟲ <span data-i18n="live.reset">Reset sesión</span>
             </button>
             <button id="btn-live-tts" class="btn btn-ghost" type="button" title="Activa/desactiva los avisos por voz (Web Speech API): WP alcanzado, BINGO, conflictos">
               🔊 TTS
@@ -974,6 +974,15 @@
       </div>
 
       <div class="settings-card">
+        <h3 data-i18n="set.lang">Idioma</h3>
+        <p class="hint">Cambio en caliente sin recargar. Cobertura parcial — los strings mas visibles se traducen, los secundarios se mantienen en es.</p>
+        <div class="settings-actions">
+          <label><input type="radio" name="i18n-lang" value="es"> <span data-i18n="set.lang.es">Español</span></label>
+          <label><input type="radio" name="i18n-lang" value="en"> <span data-i18n="set.lang.en">English</span></label>
+        </div>
+      </div>
+
+      <div class="settings-card">
         <h3>Copia de seguridad</h3>
         <p class="hint">Exporta o restaura TODO el estado de la app: ajustes, planes guardados, vuelos realizados, sesión Live actual y layout. Útil para clonar configuración entre dispositivos o como respaldo antes de actualizar.</p>
         <div class="settings-actions">
@@ -1008,18 +1017,19 @@
 <script src="js/metarDecode.js"></script>
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
+<script src="js/i18n.js?v=241"></script>
 <script src="js/filters.js"></script>
-<script src="js/notamHub.js?v=240"></script>
-<script src="js/kmlIO.js?v=240"></script>
-<script src="js/notamView.js?v=240"></script>
-<script src="js/mapView.js?v=240"></script>
-<script src="js/trafficLayer.js?v=240"></script>
+<script src="js/notamHub.js?v=241"></script>
+<script src="js/kmlIO.js?v=241"></script>
+<script src="js/notamView.js?v=241"></script>
+<script src="js/mapView.js?v=241"></script>
+<script src="js/trafficLayer.js?v=241"></script>
 <script src="js/crossSection.js"></script>
 <script src="js/flightPlan.js"></script>
-<script src="js/livePlan.js?v=240"></script>
+<script src="js/livePlan.js?v=241"></script>
 <script src="js/pdfExport.js"></script>
 <script src="js/app.js"></script>
-<script src="js/b1Layout.js?v=240"></script>
+<script src="js/b1Layout.js?v=241"></script>
 
 <!-- Service Worker (PWA) -->
 <script>

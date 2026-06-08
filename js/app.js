@@ -275,6 +275,17 @@
     // OLA2: backup / restore completo del estado de la app.
     $('#btn-settings-backup-export').addEventListener('click', exportFullState);
     $('#settings-backup-import-file').addEventListener('change', onImportFullStateChange);
+    // OLA3: toggle de idioma (i18n es/en) con cambio en caliente.
+    const i18n = window.TSAgestor && window.TSAgestor.i18n;
+    if (i18n) {
+      const curr = i18n.getLang();
+      document.querySelectorAll('input[name="i18n-lang"]').forEach(r => {
+        r.checked = (r.value === curr);
+        r.addEventListener('change', () => {
+          if (r.checked) i18n.setLang(r.value);
+        });
+      });
+    }
   }
 
   // OLA2: exporta el ESTADO completo de la app (todas las claves
@@ -3594,6 +3605,13 @@
     wireTsaFilterChips();
     wireQuickSelect();
     refreshExportUI();
+    // OLA3: aplicar i18n al DOM una vez todos los strings estaticos
+    // estan en su sitio. Luego cualquier UI dinamica puede llamar
+    // i18n.applyToDOM() para retraducir.
+    try {
+      const i18n = window.TSAgestor && window.TSAgestor.i18n;
+      if (i18n) i18n.applyToDOM();
+    } catch (_) {}
     console.log('[TSAgestor] listo.');
   });
 })();
