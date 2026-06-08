@@ -1500,7 +1500,7 @@ window.TSAgestor.mapView = (function () {
       for (const pt of tsa.polygon) allLatLngs.push(pt);
     }
     if (allLatLngs.length) {
-      map.fitBounds(L.latLngBounds(allLatLngs), { padding: [30, 30] });
+      map.fitBounds(L.latLngBounds(allLatLngs), _safeBoundsPadding(30));
     }
   }
 
@@ -1516,7 +1516,7 @@ window.TSAgestor.mapView = (function () {
         }
       });
       if (pts.length) {
-        map.fitBounds(L.latLngBounds(pts), { padding: [30, 30] });
+        map.fitBounds(L.latLngBounds(pts), _safeBoundsPadding(30));
         return;
       }
     }
@@ -1532,19 +1532,81 @@ window.TSAgestor.mapView = (function () {
         }
       });
       if (pts.length) {
-        map.fitBounds(L.latLngBounds(pts), { padding: [40, 40] });
+        map.fitBounds(L.latLngBounds(pts), _safeBoundsPadding(40));
         return;
       }
     }
     // 3) Vista por defecto: Iberia + Baleares
-    map.fitBounds(DEFAULT_BOUNDS, { padding: [10, 10] });
+    map.fitBounds(DEFAULT_BOUNDS, _safeBoundsPadding(10));
   }
 
   function invalidateSize() { if (map) map.invalidateSize(); }
 
+  // ── Padding seguro para fitBounds ────────────────────────────────────
+  // La .b1-map-toolbar (position:fixed, top-right, z-index 9100) y la
+  // tsa-legend (tambien top-right, debajo del toolbar) tapan parte del
+  // mapa. Leaflet no las "ve" — calcula los bounds contra el centro
+  // geometrico del div del mapa, asi que cuando el toolbar esta visible
+  // la ruta/TSAs quedan visualmente descentradas hacia la izquierda
+  // (el operador no ve el extremo derecho).
+  //
+  // Esta helper devuelve { paddingTopLeft, paddingBottomRight } con
+  // insets calculados runtime para que el contenido quede centrado en
+  // el AREA VISIBLE (no la geometrica). Llamada por todas las rutas de
+  // fitBounds del modulo.
+  function _safeBoundsPadding(basePad) {
+    const p = Number.isFinite(basePad) ? basePad : 30;
+    const topLeft     = [p, p];
+    const bottomRight = [p, p];
+    if (!map) return { paddingTopLeft: topLeft, paddingBottomRight: bottomRight };
+    const mapEl = map.getContainer();
+    if (!mapEl) return { paddingTopLeft: topLeft, paddingBottomRight: bottomRight };
+    const mr = mapEl.getBoundingClientRect();
+    const overlaps = (r) => r && r.width > 0 && r.height > 0 &&
+                            r.right > mr.left && r.left < mr.right &&
+                            r.bottom > mr.top && r.top < mr.bottom;
+    // Helper que extiende paddingTopLeft/paddingBottomRight para que
+    // el rect dado quede FUERA del area visible interior. `r` esta en
+    // coordenadas de viewport (getBoundingClientRect).
+    function reserveFor(r) {
+      if (!overlaps(r)) return;
+      // ¿Esta pegado al lado derecho? (toolbars top-right + legends)
+      const rightSide = (mr.right - r.right) < (r.left - mr.left);
+      // ¿Esta pegado al lado superior? (toolbar)
+      const topSide   = (r.top - mr.top) < (mr.bottom - r.bottom);
+      const margin = 8;
+      if (rightSide) {
+        const inset = Math.max(0, mr.right - r.left) + margin;
+        if (inset > bottomRight[0]) bottomRight[0] = inset;
+      } else {
+        // Izquierda — raro en B1 pero defensivo
+        const inset = Math.max(0, r.right - mr.left) + margin;
+        if (inset > topLeft[0]) topLeft[0] = inset;
+      }
+      if (topSide) {
+        const inset = Math.max(0, r.bottom - mr.top) + margin;
+        if (inset > topLeft[1]) topLeft[1] = inset;
+      } else {
+        const inset = Math.max(0, mr.bottom - r.top) + margin;
+        if (inset > bottomRight[1]) bottomRight[1] = inset;
+      }
+    }
+    // Toolbar superior fija top-right
+    document.querySelectorAll('.b1-map-toolbar').forEach(el => {
+      if (el.offsetParent !== null) reserveFor(el.getBoundingClientRect());
+    });
+    // Leyenda TSAs (tambien anchored top-right, debajo del toolbar)
+    document.querySelectorAll('.tsa-legend').forEach(el => {
+      if (el.offsetParent !== null && !el.classList.contains('hidden')) {
+        reserveFor(el.getBoundingClientRect());
+      }
+    });
+    return { paddingTopLeft: topLeft, paddingBottomRight: bottomRight };
+  }
+
   function fitToDefault() {
     if (!map) return;
-    map.fitBounds(DEFAULT_BOUNDS, { padding: [10, 10] });
+    map.fitBounds(DEFAULT_BOUNDS, _safeBoundsPadding(10));
   }
 
   // Aplica las opacidades actuales de settings a TODAS las capas vivas.
@@ -1683,7 +1745,7 @@ window.TSAgestor.mapView = (function () {
       }
     }
 
-    map.fitBounds(L.latLngBounds(pts), { padding: [40, 40] });
+    map.fitBounds(L.latLngBounds(pts), _safeBoundsPadding(40));
   }
 
   function clearFlightPlan() {
@@ -1730,7 +1792,7 @@ window.TSAgestor.mapView = (function () {
     map.doubleClickZoom.disable();
     redrawDrawing();
     const fitPts = [[opts.origin.lat, opts.origin.lon], [opts.destination.lat, opts.destination.lon]];
-    map.fitBounds(L.latLngBounds(fitPts), { padding: [60, 60] });
+    map.fitBounds(L.latLngBounds(fitPts), _safeBoundsPadding(60));
   }
 
   function finishDrawingRoute() {
