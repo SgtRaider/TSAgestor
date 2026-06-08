@@ -423,13 +423,30 @@ window.TSAgestor.livePlan = (function () {
     div.className = 'live-toast live-toast-' + (opts.level || 'info');
     if (opts.centered) div.classList.add('live-toast-centered');
     if (opts.id) div.dataset.toastId = opts.id;
-    div.setAttribute('role', opts.level === 'danger' ? 'alert' : 'status');
+    // OLA2 ARIA: si es centered con backdrop (modal-like), usar
+    // alertdialog + aria-modal para que screen readers lo tratan como
+    // dialogo modal. Si es toast normal top-right, status/alert region.
+    // El title pasa a ser aria-labelledby de un id local.
+    const isModalLike = opts.centered && opts.backdrop !== false;
+    if (isModalLike) {
+      div.setAttribute('role', 'alertdialog');
+      div.setAttribute('aria-modal', 'true');
+      div.setAttribute('tabindex', '-1');
+    } else {
+      div.setAttribute('role', opts.level === 'danger' ? 'alert' : 'status');
+      div.setAttribute('aria-live', opts.level === 'danger' ? 'assertive' : 'polite');
+    }
     let innerHTML = '';
-    if (opts.title)   innerHTML += '<div class="live-toast-title">' + opts.title + '</div>';
+    let titleId = null;
+    if (opts.title) {
+      titleId = 'live-toast-title-' + (opts.id || Math.floor(performance.now()));
+      innerHTML += '<div class="live-toast-title" id="' + titleId + '">' + opts.title + '</div>';
+    }
     if (opts.message) innerHTML += '<div class="live-toast-message">' + opts.message + '</div>';
     if (opts.bodyHTML) innerHTML += '<div class="live-toast-body">' + opts.bodyHTML + '</div>';
     if (opts.actionsHTML) innerHTML += '<div class="live-toast-actions">' + opts.actionsHTML + '</div>';
     div.innerHTML = innerHTML;
+    if (titleId && isModalLike) div.setAttribute('aria-labelledby', titleId);
     if (opts.closeable !== false) {
       const close = document.createElement('button');
       close.className = 'live-toast-close';
@@ -453,6 +470,30 @@ window.TSAgestor.livePlan = (function () {
     } else {
       container.appendChild(div);
     }
+    // OLA2 ARIA: focus trap para alertdialog. Tab y Shift+Tab ciclean
+    // entre los elementos focusables del dialogo. Escape NO cierra
+    // (cerrar requiere boton explicito — el WP-alert necesita accion
+    // operativa, no descartable por accidente).
+    if (isModalLike) {
+      div._prevActiveEl = (typeof document !== 'undefined') ? document.activeElement : null;
+      div._trapHandler = function (e) {
+        if (e.key !== 'Tab') return;
+        const focusables = div.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (!focusables.length) return;
+        const first = focusables[0];
+        const last  = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      };
+      document.addEventListener('keydown', div._trapHandler, true);
+    }
     if (opts.autoDismissMs && opts.autoDismissMs > 0) {
       setTimeout(() => { _dismissToast(opts.id || div); }, opts.autoDismissMs);
     }
@@ -460,13 +501,25 @@ window.TSAgestor.livePlan = (function () {
   }
   function _dismissToast(idOrEl) {
     if (!idOrEl) return;
+    // OLA2 ARIA: helper para limpiar trap + restaurar focus previo
+    // antes de quitar el elemento del DOM.
+    function _cleanupTrap(el) {
+      if (!el) return;
+      if (el._trapHandler) {
+        try { document.removeEventListener('keydown', el._trapHandler, true); } catch (_) {}
+      }
+      if (el._prevActiveEl && typeof el._prevActiveEl.focus === 'function') {
+        try { el._prevActiveEl.focus({ preventScroll: true }); } catch (_) {}
+      }
+    }
     if (typeof idOrEl === 'string') {
       const el = document.querySelector('.live-toast[data-toast-id="' + idOrEl + '"]');
-      if (el) el.remove();
+      if (el) { _cleanupTrap(el); el.remove(); }
       const bd = document.querySelector('.live-toast-backdrop[data-toast-id="' + idOrEl + '"]');
       if (bd) bd.remove();
     } else if (idOrEl.parentElement) {
       const id = idOrEl.dataset && idOrEl.dataset.toastId;
+      _cleanupTrap(idOrEl);
       idOrEl.remove();
       if (id) {
         const bd = document.querySelector('.live-toast-backdrop[data-toast-id="' + id + '"]');
