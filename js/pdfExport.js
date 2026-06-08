@@ -424,6 +424,86 @@ window.TSAgestor.pdfExport = (function () {
     return doc.lastAutoTable.finalY + 8;
   }
 
+  // ── OLA2: SIGMETs (briefing PDF unificado) ───────────────────────
+  function renderSigmetsSection(doc, sigmets, margin, pageW, y) {
+    if (!Array.isArray(sigmets) || !sigmets.length) return y;
+    y = sectionHeader(doc, `SIGMETs activos en area — ${sigmets.length} avisos`, y, margin);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(80);
+    doc.text(
+      'Aviation Weather Center · cruce con la ruta no se evalua aqui (ver corte y card Amenazas en Live).',
+      margin, y, { maxWidth: pageW - margin * 2 });
+    y += 5;
+    doc.setTextColor(0);
+    const rows = sigmets.map(s => {
+      const id   = s.icaoId || s.firId || '';
+      const tipo = s.hazard || s.type || '';
+      const fl1  = s.altitudeLow1 || '';
+      const fl2  = s.altitudeHi1 || '';
+      const fl   = (fl1 || fl2) ? `FL${fl1}-FL${fl2}` : '—';
+      const valid = (s.validTimeFrom && s.validTimeTo)
+        ? `${shortIso(s.validTimeFrom)} → ${shortIso(s.validTimeTo)}` : '—';
+      const raw = s.rawSigmet || '—';
+      return [id, tipo, fl, valid, raw];
+    });
+    doc.autoTable({
+      startY: y,
+      head: [['FIR/ID', 'Tipo', 'FL', 'Validez UTC', 'Texto']],
+      body: rows,
+      styles: { fontSize: 7.5, cellPadding: 2, valign: 'top', overflow: 'linebreak' },
+      columnStyles: {
+        0: { cellWidth: 22 },
+        1: { cellWidth: 25 },
+        2: { cellWidth: 22 },
+        3: { cellWidth: 35 },
+        4: { fontSize: 7 },
+      },
+      headStyles: { fillColor: [120, 53, 15], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+      margin: { left: margin, right: margin },
+    });
+    return doc.lastAutoTable.finalY + 8;
+  }
+  function shortIso(s) {
+    try {
+      const d = new Date(s);
+      const p = n => String(n).padStart(2, '0');
+      return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}Z`;
+    } catch (_) { return s; }
+  }
+
+  // ── OLA2: Minimos meteorologicos (briefing) ──────────────────────
+  function renderWxLimitsSection(doc, wxLimits, margin, pageW, y) {
+    if (!wxLimits || typeof wxLimits !== 'object') return y;
+    y = sectionHeader(doc, 'Minimos meteorologicos (Weather Hold)', y, margin);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(80);
+    doc.text(
+      'Umbrales operativos para reproducir las decisiones GO / NO-GO de la pestania NOTAMs.',
+      margin, y, { maxWidth: pageW - margin * 2 });
+    y += 5;
+    doc.setTextColor(0);
+    const rows = [
+      ['Ceiling DURO (no-go)',        wxLimits.ceilingHardFt + ' ft AGL'],
+      ['Ceiling MARGINAL (warn)',     wxLimits.ceilingMarginalFt + ' ft AGL'],
+      ['Visibilidad DURA (no-go)',    wxLimits.visibilityHardM + ' m'],
+      ['Visibilidad MARGINAL (warn)', wxLimits.visibilityMarginalM + ' m'],
+    ].filter(r => r[1] != null && r[1] !== '' && !String(r[1]).startsWith('undefined'));
+    doc.autoTable({
+      startY: y,
+      head: [['Concepto', 'Valor']],
+      body: rows,
+      styles: { fontSize: 8.5, cellPadding: 2 },
+      columnStyles: {
+        0: { cellWidth: 80, fontStyle: 'bold' },
+      },
+      headStyles: { fillColor: [30, 41, 59], textColor: 255 },
+      margin: { left: margin, right: margin },
+    });
+    return doc.lastAutoTable.finalY + 8;
+  }
+
   // ── Corte transversal ─────────────────────────────────────────────
 
   async function renderCrossSection(doc, svgEl, margin, pageW, y) {
@@ -553,6 +633,13 @@ window.TSAgestor.pdfExport = (function () {
       if (plan.meteo && plan.meteo.length) {
         y = renderMeteoSection(doc, plan.meteo, margin, pageW, y);
       }
+    }
+    // OLA2 briefing: SIGMETs y minimos meteo si fueron pasados en opts.
+    if (Array.isArray(opts.sigmets) && opts.sigmets.length) {
+      y = renderSigmetsSection(doc, opts.sigmets, margin, pageW, y);
+    }
+    if (opts.wxLimits) {
+      y = renderWxLimitsSection(doc, opts.wxLimits, margin, pageW, y);
     }
 
     // TSAs (si hay)

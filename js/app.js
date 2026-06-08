@@ -2972,6 +2972,10 @@
     const hint = $('#export-hint');
     const summary = $('#export-summary');
     btn.disabled = !hasPlan && n === 0;
+    // OLA2: Briefing PDF unificado SOLO con plan (no tiene sentido
+    // sin plan calculado).
+    const bBrief = document.querySelector('#btn-export-briefing');
+    if (bBrief) bBrief.disabled = !hasPlan;
     // Audit OLA1 BUG#12: botones plan-dependientes deshabilitados sin
     // plan. Antes pulsarlos lanzaba alert() intrusivo "Calcula primero
     // un plan de vuelo." en mitad del flujo. Disabled visual con
@@ -3041,6 +3045,63 @@
       const after = getVisible();
       btn.disabled = !state.lastPlan && after.length === 0;
       btn.textContent = 'Generar PDF';
+    }
+  }
+
+  // OLA2: Briefing PDF unificado. Extiende exportReport con SIGMETs +
+  // minimos meteorologicos en addition al plan + fuel + METAR/TAF +
+  // TSAs + corte. Fetching de SIGMETs en paralelo a la generacion
+  // del PDF para minimizar latencia. Si fetchSigmets rechaza, se
+  // continua sin ellos (graceful degradation).
+  async function exportBriefing() {
+    const svg = $('#cross-svg');
+    const btn = $('#btn-export-briefing');
+    const visible = getVisible();
+    if (!state.lastPlan) {
+      alert('Calcula primero un plan de vuelo.');
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Generando briefing…';
+    try {
+      // Refresca el corte con el plan (incluye perfil live si hay sesion).
+      let liveSession = null;
+      try {
+        const raw = localStorage.getItem('tsagestor_live_session_v2');
+        if (raw) liveSession = JSON.parse(raw);
+      } catch (_) {}
+      crossSection.render(svg, visible, {
+        plan: state.lastPlan,
+        clouds: state.crossClouds || null,
+        liveSession,
+      });
+      // SIGMETs (fire-and-forget con fallback a [] si falla)
+      let sigmets = [];
+      if (meteoApi && typeof meteoApi.fetchSigmets === 'function') {
+        try {
+          const sg = await meteoApi.fetchSigmets();
+          if (Array.isArray(sg)) sigmets = sg;
+        } catch (e) {
+          console.warn('[briefing] fetchSigmets fallo, sigo sin SIGMETs:', e && e.message);
+        }
+      }
+      // Minimos meteorologicos del operador
+      const wxLimits = settings ? settings.get('wxLimits', null) : null;
+      const fname = await pdfExport.exportReport({
+        tsas: visible,
+        filterState: state.filter,
+        svgEl: svg,
+        plan: state.lastPlan,
+        sigmets,
+        wxLimits,
+      });
+      console.log('[TSAgestor] briefing PDF:', fname);
+    } catch (err) {
+      console.error(err);
+      alert('Error generando el briefing: ' + (err && err.message ? err.message : err));
+    } finally {
+      btn.disabled = !state.lastPlan;
+      btn.textContent = '📋 Briefing completo';
     }
   }
 
@@ -3172,6 +3233,7 @@
     wireTrafficLayer();
     $('#btn-download-cross').addEventListener('click', downloadCrossPNG);
     $('#btn-export-pdf').addEventListener('click', exportPDF);
+    $('#btn-export-briefing').addEventListener('click', exportBriefing);
     $('#btn-plan-calc').addEventListener('click', calcPlan);
     $('#btn-plan-clear').addEventListener('click', clearPlan);
     $('#btn-plan-copy').addEventListener('click', copyNarrative);

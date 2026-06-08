@@ -823,7 +823,10 @@
         <h2>Generar informe PDF</h2>
         <p>Incluirá la tabla de TSAs filtradas (nombre, apertura, cierre, altitudes) y la imagen del corte transversal.</p>
         <div id="export-summary" class="export-summary"></div>
-        <button id="btn-export-pdf" class="btn btn-primary" disabled>Generar PDF</button>
+        <div class="export-actions">
+          <button id="btn-export-pdf" class="btn btn-primary" disabled>Generar PDF</button>
+          <button id="btn-export-briefing" class="btn btn-ghost" disabled title="PDF unificado: plan + log de combustible + METAR/TAF + SIGMETs + minimos meteo + corte transversal. Requiere plan calculado.">📋 Briefing completo</button>
+        </div>
         <p id="export-hint" class="hint">Carga un documento para habilitar la exportación.</p>
       </div>
     </section>
@@ -987,17 +990,17 @@
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
 <script src="js/filters.js"></script>
-<script src="js/notamHub.js?v=234"></script>
-<script src="js/kmlIO.js?v=234"></script>
-<script src="js/notamView.js?v=234"></script>
-<script src="js/mapView.js?v=234"></script>
-<script src="js/trafficLayer.js?v=234"></script>
+<script src="js/notamHub.js?v=235"></script>
+<script src="js/kmlIO.js?v=235"></script>
+<script src="js/notamView.js?v=235"></script>
+<script src="js/mapView.js?v=235"></script>
+<script src="js/trafficLayer.js?v=235"></script>
 <script src="js/crossSection.js"></script>
 <script src="js/flightPlan.js"></script>
-<script src="js/livePlan.js?v=234"></script>
+<script src="js/livePlan.js?v=235"></script>
 <script src="js/pdfExport.js"></script>
 <script src="js/app.js"></script>
-<script src="js/b1Layout.js?v=234"></script>
+<script src="js/b1Layout.js?v=235"></script>
 
 <!-- Service Worker (PWA) -->
 <script>
