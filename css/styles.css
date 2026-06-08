@@ -4826,6 +4826,64 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   letter-spacing: 0.5px;
   animation: liveBadgePulse 1.4s ease-in-out infinite;
 }
+/* OLA2: card de Amenazas (threats unificados). Timeline ordenada
+   por urgencia (now > 30min > 1h > info). Cada chip tiene color
+   segun urgencia + el operador puede hover para detalle. */
+.live-threats-card .live-threats-count {
+  margin-left: auto;
+  font-size: 12px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.live-threats-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.live-threat {
+  padding: 5px 10px;
+  border-left: 3px solid var(--border);
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: default;
+}
+.live-threat-now {
+  background: rgba(239, 68, 68, 0.22);
+  border-left-color: #ef4444;
+  color: #fecaca;
+  animation: liveBadgePulse 1.4s ease-in-out infinite;
+}
+.live-threat-high {
+  background: rgba(251, 191, 36, 0.18);
+  border-left-color: #fbbf24;
+  color: #fde68a;
+}
+.live-threat-med {
+  background: rgba(251, 191, 36, 0.10);
+  border-left-color: #fbbf24;
+  color: #fde68a;
+}
+.live-threat-low {
+  background: rgba(96, 165, 250, 0.15);
+  border-left-color: #60a5fa;
+  color: #bfdbfe;
+}
+.live-threat-info {
+  background: rgba(148, 163, 184, 0.12);
+  border-left-color: #94a3b8;
+  color: var(--text-mute);
+}
+.live-threat-sub {
+  font-size: 11px;
+  font-weight: 400;
+  margin-left: 4px;
+}
+
 /* Test report: marcar visualmente las celdas IAS/FL en el log Live
    cuando el override en vuelo aplica. Antes el operador no veia
    ningun cambio porque la tabla seguia mostrando los valores del

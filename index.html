@@ -718,6 +718,20 @@
           </div>
         </div>
 
+        <!-- Amenazas: timeline unificada de SIGMETs + TSAs activas +
+             desviaciones ISA + alertas RTB/fuel. Ordenadas por urgencia
+             (NOW > <30min > >1h). El operador ve de un vistazo el panorama
+             tactico sin tener que cruzar varias secciones. -->
+        <div class="live-card live-threats-card">
+          <div class="live-card-head">
+            <h3>Amenazas</h3>
+            <span id="live-threats-count" class="live-threats-count dim">0</span>
+          </div>
+          <ul id="live-threats-list" class="live-threats-list">
+            <li class="dim">Sin amenazas detectadas.</li>
+          </ul>
+        </div>
+
         <!-- Evaluación / alertas -->
         <div class="live-card live-eval-card">
           <div class="live-card-head">
@@ -973,17 +987,17 @@
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
 <script src="js/filters.js"></script>
-<script src="js/notamHub.js?v=232"></script>
-<script src="js/kmlIO.js?v=232"></script>
-<script src="js/notamView.js?v=232"></script>
-<script src="js/mapView.js?v=232"></script>
-<script src="js/trafficLayer.js?v=232"></script>
+<script src="js/notamHub.js?v=233"></script>
+<script src="js/kmlIO.js?v=233"></script>
+<script src="js/notamView.js?v=233"></script>
+<script src="js/mapView.js?v=233"></script>
+<script src="js/trafficLayer.js?v=233"></script>
 <script src="js/crossSection.js"></script>
 <script src="js/flightPlan.js"></script>
-<script src="js/livePlan.js?v=232"></script>
+<script src="js/livePlan.js?v=233"></script>
 <script src="js/pdfExport.js"></script>
 <script src="js/app.js"></script>
-<script src="js/b1Layout.js?v=232"></script>
+<script src="js/b1Layout.js?v=233"></script>
 
 <!-- Service Worker (PWA) -->
 <script>

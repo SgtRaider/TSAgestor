@@ -1783,6 +1783,7 @@ window.TSAgestor.livePlan = (function () {
     _renderStatus(rows);
     _renderTable(rows);
     _renderEval(rows);
+    _renderThreats(rows);
     _updateMapOverlay();
     // F2.4: auto-refresh METAR/TAF destino si falta poco para llegar.
     // Fire-and-forget — no bloquea el render.
@@ -2669,6 +2670,140 @@ window.TSAgestor.livePlan = (function () {
         else doFocus();
       }
     }
+  }
+
+  // ── OLA2: Render Amenazas (threats timeline unificado) ────────────
+  // Consolida en una sola card las fuentes que antes vivian dispersas
+  // por la card de Evaluacion + toasts: SIGMETs cruzando la ruta,
+  // TSAs activas en este momento, desviaciones ISA significativas,
+  // estado RTB no viable, antiguedad del viento, conflictos del plan
+  // que aun no se han atravesado. Cada item es un chip con nivel de
+  // urgencia (now/30m/1h/info) y un dataset que el operador puede
+  // expandir al clicarlo (popup con info).
+  function _renderThreats() {
+    const ul = document.getElementById('live-threats-list');
+    const countEl = document.getElementById('live-threats-count');
+    if (!ul) return;
+    ul.innerHTML = '';
+    if (!session) {
+      if (countEl) countEl.textContent = '0';
+      return;
+    }
+    const threats = [];
+    const nowMs = Date.now();
+    const fmtMin = (ms) => {
+      if (!Number.isFinite(ms)) return '—';
+      const min = Math.round(ms / 60000);
+      if (min <= 0) return 'ahora';
+      if (min < 60) return 'en ' + min + ' min';
+      const h = Math.floor(min / 60), m = min % 60;
+      return 'en ' + h + 'h' + (m ? ' ' + m + 'min' : '');
+    };
+    // Urgencia: now (<=5min), high (<=30min), med (<=60min), low
+    const urgencyOf = (etaMs) => {
+      if (!Number.isFinite(etaMs)) return 'info';
+      const minTo = (etaMs - nowMs) / 60000;
+      if (minTo <= 5)  return 'now';
+      if (minTo <= 30) return 'high';
+      if (minTo <= 60) return 'med';
+      return 'low';
+    };
+    const orderUrgency = { now: 0, high: 1, med: 2, low: 3, info: 4 };
+
+    // 1) SIGMETs cruzando ruta — _sigmetCrossings ya esta computado.
+    if (Array.isArray(_sigmetCrossings)) {
+      _sigmetCrossings.forEach(c => {
+        const tipo = (c.sig && (c.sig.hazard || c.sig.icaoId || c.sig.type)) || 'SIGMET';
+        const validTo = c.sig && c.sig.validTimeTo ? new Date(c.sig.validTimeTo).getTime() : null;
+        const fl1 = (c.sig && c.sig.altitudeLow1) || '';
+        const fl2 = (c.sig && c.sig.altitudeHi1) || '';
+        const altTxt = (fl1 || fl2) ? ' · FL' + fl1 + '-' + fl2 : '';
+        threats.push({
+          urgency: 'high',
+          label: '⚠ SIGMET ' + tipo + altTxt,
+          detail: c.sig && c.sig.rawSigmet ? c.sig.rawSigmet : 'SIGMET cruzando ruta restante',
+          subtext: validTo ? 'Valido hasta ' + _fmtTime(validTo) : '',
+        });
+      });
+    }
+    // 2) TSAs activas en este instante que la ruta cruza.
+    if (Array.isArray(_activeTSAcrossings)) {
+      _activeTSAcrossings.forEach(c => {
+        const name = c.tsa && c.tsa.name || 'TSA';
+        const ends = c.activeUntil ? _fmtTime(c.activeUntil) : null;
+        threats.push({
+          urgency: 'now',
+          label: '🛑 TSA activa: ' + name,
+          detail: 'Cruza tu ruta restante. ' + (ends ? 'Activa hasta ' + ends + 'Z.' : ''),
+          subtext: ends ? 'Activa hasta ' + ends + 'Z' : '',
+        });
+      });
+    }
+    // 3) Conflictos del plan (calculados al calcular plan) que aun
+    //    no se han atravesado.
+    const plan = _getPlan();
+    if (plan && Array.isArray(plan.conflicts)) {
+      plan.conflicts.forEach(cf => {
+        // Idx del WP "to" del segmento conflictivo
+        const segTo = cf.segment && cf.segment.to;
+        if (!segTo) return;
+        // Solo si esta delante de currentIdx (mirando coords del plan).
+        const idxInCoords = plan.coords.findIndex(c => c.lat === segTo.lat && c.lon === segTo.lon);
+        if (idxInCoords < 0) return;
+        const liveIdx = session.coords.findIndex(c => c.originalIdx === idxInCoords);
+        if (liveIdx < 0 || liveIdx <= session.currentIdx) return;
+        // ETA estimada para llegar
+        const planEta = session.plannedEtas[liveIdx];
+        threats.push({
+          urgency: urgencyOf(planEta),
+          label: '⚠ Conflicto TSA: ' + (cf.tsa && cf.tsa.name || ''),
+          detail: 'Cruce planificado del area en aprox ' + fmtMin(planEta - nowMs) + '.',
+          subtext: planEta ? _fmtTime(planEta) + 'Z' : '',
+        });
+      });
+    }
+    // 4) Desviaciones ISA del refetched.
+    if (session.refetched && Array.isArray(session.refetched.isaDeviations)) {
+      session.refetched.isaDeviations.forEach(d => {
+        threats.push({
+          urgency: 'info',
+          label: '🌡 ISA dev: WP ' + (d.name || '#' + (d.idx + 1)) + ' ΔT ' +
+                 (d.devC >= 0 ? '+' : '') + Math.round(d.devC) + '°C',
+          detail: 'OAT ' + Math.round(d.oatC) + '°C vs ISA ' + Math.round(d.isaC) +
+                  '°C en FL' + d.fl + ' → DA ' + Math.round(d.daFt) + ' ft. Afecta TAS y consumo.',
+          subtext: '',
+        });
+      });
+    }
+    // 5) Antiguedad de viento (warn si >30 min).
+    if (session.refetched && Number.isFinite(session.refetched.fetchedAt)) {
+      const ageMin = Math.floor((nowMs - session.refetched.fetchedAt) / 60000);
+      if (ageMin >= 30) {
+        threats.push({
+          urgency: 'med',
+          label: '⌛ Viento refetched hace ' + ageMin + ' min',
+          detail: 'GS y consumo en el log usan datos meteo antiguos. Pulsa "Refresh viento" para reanalizar.',
+          subtext: '',
+        });
+      }
+    }
+    // Ordena por urgencia + alfabetico estable.
+    threats.sort((a, b) => (orderUrgency[a.urgency] - orderUrgency[b.urgency]));
+    if (countEl) countEl.textContent = threats.length;
+    if (!threats.length) {
+      ul.innerHTML = '<li class="dim">Sin amenazas detectadas en la ruta restante.</li>';
+      return;
+    }
+    threats.forEach(t => {
+      const li = document.createElement('li');
+      li.className = 'live-threat live-threat-' + t.urgency;
+      const subtext = t.subtext ? '<span class="live-threat-sub dim"> · ' + t.subtext + '</span>' : '';
+      li.innerHTML = '<span class="live-threat-label"><b>' + t.label + '</b>' + subtext + '</span>';
+      if (t.detail) {
+        li.title = t.detail;
+      }
+      ul.appendChild(li);
+    });
   }
 
   // ── Render: evaluacion ─────────────────────────────────────────────
