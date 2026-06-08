@@ -272,6 +272,86 @@
       applySettingsToPlanForm();  // refleja en form de plan también
       if (state.mapReady && mapView.applyOpacities) mapView.applyOpacities();
     });
+    // OLA2: backup / restore completo del estado de la app.
+    $('#btn-settings-backup-export').addEventListener('click', exportFullState);
+    $('#settings-backup-import-file').addEventListener('change', onImportFullStateChange);
+  }
+
+  // OLA2: exporta el ESTADO completo de la app (todas las claves
+  // tsagestor_*) a un JSON descargable. Sirve para clonar config
+  // entre dispositivos / respaldar antes de actualizar / migrar.
+  const FULL_STATE_KEYS = [
+    'tsagestor_settings_v1',
+    'tsagestor_saved_plans_v1',
+    'tsagestor_flown_sessions_v1',
+    'tsagestor_last_plan_v1',
+    'tsagestor_live_session_v2',
+    'tsagestor_live_tts_enabled',
+    'tsagestor_b1_layout',
+  ];
+  function exportFullState() {
+    const payload = {
+      _format: 'tsagestor-full-state',
+      _v: 1,
+      _exportedAt: new Date().toISOString(),
+      _appVersion: (typeof window.TSAgestor !== 'undefined' && window.TSAgestor.version) || '0',
+      keys: {},
+    };
+    FULL_STATE_KEYS.forEach(k => {
+      try {
+        const raw = localStorage.getItem(k);
+        if (raw != null) payload.keys[k] = raw;
+      } catch (_) {}
+    });
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const stamp = (function () {
+      const d = new Date();
+      const p = n => String(n).padStart(2, '0');
+      return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}-${p(d.getUTCHours())}${p(d.getUTCMinutes())}`;
+    })();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tsagestor-backup-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+  function onImportFullStateChange(e) {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = ''; // permite re-importar el mismo archivo
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      let parsed;
+      try { parsed = JSON.parse(reader.result); }
+      catch (err) { alert('Archivo invalido (no es JSON): ' + err.message); return; }
+      if (!parsed || parsed._format !== 'tsagestor-full-state') {
+        alert('No reconozco este formato. Debe ser un backup tsagestor-full-state.');
+        return;
+      }
+      if (parsed._v !== 1) {
+        if (!confirm('Version del backup (' + parsed._v + ') distinta a la actual (1). ¿Continuar de todos modos?')) return;
+      }
+      if (!confirm('Importar este backup SOBRESCRIBE todos los datos actuales (ajustes, planes guardados, sesion Live, vuelos realizados). ¿Continuar?')) return;
+      try {
+        FULL_STATE_KEYS.forEach(k => {
+          if (parsed.keys && Object.prototype.hasOwnProperty.call(parsed.keys, k)) {
+            try { localStorage.setItem(k, parsed.keys[k]); } catch (_) {}
+          } else {
+            try { localStorage.removeItem(k); } catch (_) {}
+          }
+        });
+      } catch (err) {
+        alert('Error escribiendo en localStorage: ' + err.message);
+        return;
+      }
+      alert('Backup importado. La pagina se recargara para aplicar todo el estado nuevo.');
+      location.reload();
+    };
+    reader.onerror = () => alert('No se pudo leer el archivo.');
+    reader.readAsText(f);
   }
 
   // ── Agrupamiento visual de TSAs por nombre similar ──────────────────
