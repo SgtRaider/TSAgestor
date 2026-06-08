@@ -630,6 +630,8 @@ window.TSAgestor.livePlan = (function () {
       // legPlan cacheado del plan original.
       let tasToUse = lp ? lp.tas : null;
       let gsToUse  = lp ? lp.gs  : null;
+      let iasToUse = lp ? lp.ias : null;
+      let flToUse  = c.fl;
       if (session.refetched && i >= session.refetched.startIdx) {
         const rIdx = i - session.refetched.startIdx;
         const wdir = session.refetched.legWindDir   && session.refetched.legWindDir[rIdx];
@@ -643,6 +645,76 @@ window.TSAgestor.livePlan = (function () {
           const tMin = session.refetched.legTimes && session.refetched.legTimes[rIdx];
           if (Number.isFinite(tMin) && tMin > 0) {
             gsToUse = (lp.legNM / tMin) * 60;
+          }
+        }
+      }
+      // Test report: las columnas IAS/TAS/GS/FL ignoraban
+      // session.overrides — solo la ETA (via _legTimeMinAt) y el
+      // FF (via _computeFuelRest) cambiaban. El operador veia "nada
+      // se modifica" porque las cifras que mira (IAS/TAS/GS) seguian
+      // mostrando los valores del plan. Ademas ov.fl no se leia en
+      // NINGUN sitio. Ahora aplicamos el override aqui para que sea
+      // visible Y consistente con el calculo downstream.
+      const ovRow = session.overrides;
+      const ovApplies = ovRow && Number.isFinite(ovRow.fromIdx) && ovRow.fromIdx <= i;
+      let overriddenIas = false, overriddenFl = false;
+      if (ovApplies) {
+        const geomRow = window.TSAgestor && window.TSAgestor.geom;
+        if (Number.isFinite(ovRow.fl) && ovRow.fl > 0) {
+          flToUse = ovRow.fl;
+          overriddenFl = true;
+        }
+        if (Number.isFinite(ovRow.ias) && ovRow.ias > 0) {
+          iasToUse = ovRow.ias;
+          overriddenIas = true;
+          // Recompone TAS via kiasToTAS con la DA del FL efectivo.
+          // La calibracion (oatDeltaC) ya se aplica en _refetchWinds
+          // a session.refetched.legDa[]; si no hay refetched, usamos
+          // ISA del FL efectivo + delta (si hay calibracion).
+          if (geomRow && typeof geomRow.kiasToTAS === 'function') {
+            let daFt = null;
+            if (session.refetched && Array.isArray(session.refetched.legDa) &&
+                i >= session.refetched.startIdx) {
+              const rIdx = i - session.refetched.startIdx;
+              const refDa = session.refetched.legDa[rIdx];
+              if (Number.isFinite(refDa)) daFt = refDa;
+            }
+            // Sin refetched o si el FL fue override, recomputa DA.
+            // El override de FL invalida el refetched.legDa (es para
+            // el FL original).
+            if (daFt == null || overriddenFl) {
+              const paFt = (Number.isFinite(flToUse) ? flToUse : 100) * 100;
+              if (typeof geomRow.densityAltitudeFt === 'function' &&
+                  typeof geomRow.isaTempC === 'function') {
+                let oatC = geomRow.isaTempC(paFt);
+                if (session.calibration && Number.isFinite(session.calibration.oatDeltaC)) {
+                  oatC += session.calibration.oatDeltaC;
+                }
+                daFt = geomRow.densityAltitudeFt(paFt, oatC);
+              } else {
+                daFt = paFt;
+              }
+            }
+            const tasNew = geomRow.kiasToTAS(ovRow.ias, daFt);
+            if (Number.isFinite(tasNew) && tasNew > 0) tasToUse = tasNew;
+            // GS efectiva: TAS - HW del refetched (si disponible y
+            // mismo leg). Sin viento, GS ≈ TAS.
+            let hw = 0;
+            if (session.refetched && i >= session.refetched.startIdx &&
+                Array.isArray(session.refetched.legWindDir) &&
+                Array.isArray(session.refetched.legWindSpeed) &&
+                i > 0) {
+              const rIdx = i - session.refetched.startIdx;
+              const wDir = session.refetched.legWindDir[rIdx];
+              const wSpd = session.refetched.legWindSpeed[rIdx];
+              if (Number.isFinite(wDir) && Number.isFinite(wSpd)) {
+                const bearing = _bearingDeg(session.coords[i - 1], session.coords[i]);
+                hw = -wSpd * Math.cos((wDir - bearing) * Math.PI / 180);
+              }
+            }
+            if (Number.isFinite(tasToUse) && tasToUse > 0) {
+              gsToUse = Math.max(30, tasToUse - hw);
+            }
           }
         }
       }
@@ -661,7 +733,8 @@ window.TSAgestor.livePlan = (function () {
       rows.push({
         i,
         name: c.name,
-        fl: c.fl,
+        fl: flToUse,
+        flOverridden: overriddenFl,
         isSub: c.isSub,
         planEta,
         liveEta,
@@ -670,7 +743,8 @@ window.TSAgestor.livePlan = (function () {
         fuelConsumedLeg,
         fuelRestOverridden: session.fuelOverrides[i] != null,
         fuelStatus,
-        ias:  lp ? lp.ias : null,
+        ias:  iasToUse,
+        iasOverridden: overriddenIas,
         tas:  tasToUse,
         gs:   gsToUse,
         wind: windToUse,
@@ -726,20 +800,24 @@ window.TSAgestor.livePlan = (function () {
     }
     for (let k = baseIdx + 1; k <= i; k++) {
       const lp = session.legPlan[k];
-      let legFuel = lp ? lp.legFuel : 0;
-      // Si hay override de flow que aplica a este leg, recalcula
-      if (flowOv && Number.isFinite(flowOv.flow) && flowOv.flow >= 0 &&
-          flowOv.fromIdx != null && flowOv.fromIdx <= k) {
-        const planFlow = lp ? lp.flow : 0;
-        if (planFlow > 0) legFuel = legFuel * (flowOv.flow / planFlow);
-      }
+      // Test report: antes legFuel partia de lp.legFuel (calculado al
+      // calcular el plan con el IAS y FL ORIGINALES). Si el override
+      // cambia IAS o FL, el timeMin efectivo cambia (mas lento ->
+      // mas tiempo en aire), pero el legFuel cacheado seguia siendo
+      // el del plan -> consumo desalineado con la ETA. Ahora
+      // partimos del timeMin EFECTIVO (que _legTimeMinAt ya calcula
+      // con overrides + refetched) y aplicamos el flow efectivo.
+      const ovAppliesLeg = flowOv && Number.isFinite(flowOv.flow) && flowOv.flow >= 0 &&
+                           flowOv.fromIdx != null && flowOv.fromIdx <= k;
+      const effectiveFlow = ovAppliesLeg
+        ? flowOv.flow
+        : (lp && Number.isFinite(lp.flow) ? lp.flow : session.fuelOpts.fuelFlow);
+      const effectiveTimeMin = _legTimeMinAt(k);
+      let legFuel = (effectiveTimeMin / 60) * effectiveFlow;
       // Holds vivos en este k anyaden tiempo y por tanto combustible.
       // Audit OLA1 BUG#10: el override de flow se aplica al hold AL
       // ARRANCAR el override (fromIdx==k+1, convencion de
-      // _confirmWpAlert). Antes el hold AT k usaba lp.flow (leg
-      // precedente) porque exigiamos fromIdx<=k — el operador acababa
-      // de definir el override en el WP-alert pero el hold AT el
-      // mismo WP no lo veia. Aceptamos tambien fromIdx==k+1.
+      // _confirmWpAlert). Aceptamos fromIdx<=k+1 para captar el caso.
       const holdMin = Number(session.liveHolds[k]) || 0;
       if (holdMin > 0) {
         const ovAppliesHere = flowOv && Number.isFinite(flowOv.flow) &&
@@ -2531,6 +2609,14 @@ window.TSAgestor.livePlan = (function () {
       const windTxt = _fmtWind(r.wind);
       const holdTxt = r.liveHoldMin > 0 ? `<span class="dim"> · hold ${r.liveHoldMin}'</span>` : '';
       const subBadge = r.isSub ? '<span class="dim"> · sub</span>' : '';
+      // Test report: marcar visualmente las celdas que estan
+      // affectadas por override en vuelo, para que el operador vea
+      // de un vistazo qué valores son del plan vs del override
+      // recien aplicado. Asterisco + clase para el styling.
+      const flCellCls  = r.flOverridden  ? ' live-cell-override' : '';
+      const iasCellCls = r.iasOverridden ? ' live-cell-override' : '';
+      const flMark  = r.flOverridden  ? '<span class="live-override-mark" title="Override de FL activo">✱</span> ' : '';
+      const iasMark = r.iasOverridden ? '<span class="live-override-mark" title="Override de IAS activo">✱</span> ' : '';
       const fuelInputCls = 'live-fuel-input' + (r.fuelRestOverridden ? ' live-fuel-overridden' : '') +
                           (fuelClass ? ' ' + fuelClass : '');
       const fuelCell = `<td><input type="number" class="${fuelInputCls}" data-idx="${r.i}" value="${Number.isFinite(r.fuelRest) ? Math.round(r.fuelRest) : ''}" step="10" placeholder="edit" title="Combustible restante en este WP — click para editar (valor real medido)"></td>`;
@@ -2543,8 +2629,8 @@ window.TSAgestor.livePlan = (function () {
       tr.innerHTML =
         `<td>${displayN}</td>` +
         `<td><b>${r.name}</b>${subBadge}${holdTxt}</td>` +
-        `<td>${flTxt}</td>` +
-        `<td>${iasTxt}</td>` +
+        `<td class="${flCellCls}">${flMark}${flTxt}</td>` +
+        `<td class="${iasCellCls}">${iasMark}${iasTxt}</td>` +
         `<td>${tasTxt}</td>` +
         `<td>${gsTxt}</td>` +
         `<td>${windTxt}</td>` +

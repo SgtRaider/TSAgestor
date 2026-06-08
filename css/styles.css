@@ -4826,6 +4826,23 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   letter-spacing: 0.5px;
   animation: liveBadgePulse 1.4s ease-in-out infinite;
 }
+/* Test report: marcar visualmente las celdas IAS/FL en el log Live
+   cuando el override en vuelo aplica. Antes el operador no veia
+   ningun cambio porque la tabla seguia mostrando los valores del
+   plan, aunque el calculo downstream (ETA, consumo) si los usaba. */
+#live-log-table td.live-cell-override {
+  background: rgba(99, 102, 241, 0.15);
+  font-weight: 700;
+  color: #c7d2fe;
+}
+.live-override-mark {
+  display: inline-block;
+  margin-right: 1px;
+  color: #818cf8;
+  font-size: 10px;
+  vertical-align: super;
+}
+
 /* OLA2: chip de calibracion OAT/QNH activa. Verde (operacional) +
    pequenyo + click para borrar. Vive en la cabecera de la card
    "Estado actual" junto al titulo. */
