@@ -54,6 +54,67 @@ window.TSAgestor.settings = (function () {
     },
   };
 
+  // OLA3: catalogo de perfiles de avion. Cada perfil aplica defaults
+  // al form Plan cuando el operador lo selecciona en el dropdown
+  // "Aeronave". Defaults conservadores tipicos de cruise — el
+  // operador debe verificar contra el POH/manual del avion antes de
+  // usar. id en minusculas para usarse como value del select.
+  //
+  // limits.vmoKt: maximum operating IAS — usado para warn si el
+  // operador pone IAS > Vmo en form o override en vuelo.
+  const AIRCRAFT_PROFILES = [
+    {
+      id: 't-21', name: 'T-21 (Pilatus PC-21)',
+      family: 'Turboprop entrenador avanzado',
+      defaults: {
+        flightLevel: 200, speedKt: 240,
+        fuelInitial: 1100, fuelFlow: 400, fuelUnit: 'lb',
+        joker: 400, bingo: 250,
+      },
+      limits: { vmoKt: 320, flMax: 250 },
+    },
+    {
+      id: 't-25', name: 'T-25 (CASA C-101 Aviojet)',
+      family: 'Reactor entrenador',
+      defaults: {
+        flightLevel: 250, speedKt: 280,
+        fuelInitial: 1800, fuelFlow: 800, fuelUnit: 'lb',
+        joker: 600, bingo: 350,
+      },
+      limits: { vmoKt: 415, flMax: 400 },
+    },
+    {
+      id: 'f-5', name: 'F-5 (Northrop F-5M Tiger II)',
+      family: 'Caza ligero',
+      defaults: {
+        flightLevel: 300, speedKt: 360,
+        fuelInitial: 4500, fuelFlow: 3200, fuelUnit: 'lb',
+        joker: 1200, bingo: 700,
+      },
+      limits: { vmoKt: 720, flMax: 500 },
+    },
+    {
+      id: 'f-18', name: 'F-18 (McDonnell Douglas EF-18A Hornet)',
+      family: 'Caza multirole',
+      defaults: {
+        flightLevel: 350, speedKt: 420,
+        fuelInitial: 10800, fuelFlow: 5400, fuelUnit: 'lb',
+        joker: 2500, bingo: 1500,
+      },
+      limits: { vmoKt: 700, flMax: 500 },
+    },
+    {
+      id: 'nr-05', name: 'NR.05',
+      family: 'Perfil EA — verificar especificaciones reales',
+      defaults: {
+        flightLevel: 200, speedKt: 220,
+        fuelInitial: 2000, fuelFlow: 400, fuelUnit: 'lb',
+        joker: 600, bingo: 350,
+      },
+      limits: { vmoKt: 300, flMax: 300 },
+    },
+  ];
+
   let data = null;
   const listeners = [];
 
@@ -123,5 +184,12 @@ window.TSAgestor.settings = (function () {
     c[parts[parts.length - 1]] = v;
   }
 
-  return { load, get, set, reset, onChange, DEFAULTS };
+  return {
+    load, get, set, reset, onChange, DEFAULTS,
+    // OLA3: catalogo + getters auxiliares para perfiles de aeronave.
+    AIRCRAFT_PROFILES,
+    getAircraftProfile(id) {
+      return AIRCRAFT_PROFILES.find(p => p.id === id) || null;
+    },
+  };
 })();

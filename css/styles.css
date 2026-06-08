@@ -4863,6 +4863,37 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
 }
 .plan-crosscheck-close:hover { opacity: 1; }
 
+/* OLA3: dropdown de perfil de aeronave + hint con limites. Aparece
+   encima del form Plan para que sea lo primero que el operador
+   configure. */
+.plan-aircraft {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: rgba(99, 102, 241, 0.08);
+  border-left: 3px solid #818cf8;
+  border-radius: 4px;
+}
+.plan-aircraft label {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 4px;
+  min-width: 220px;
+}
+.plan-aircraft select {
+  padding: 4px 6px;
+  font-size: 13px;
+}
+#plan-aircraft-info {
+  font-size: 11px;
+  flex: 1 1 auto;
+}
+
 /* OLA3: indicador online/offline en header B1. Verde si conectado,
    ambar si offline. Discreto pero visible para que el operador sepa
    si los METAR/winds/SIGMETs son frescos o cacheados. */

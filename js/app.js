@@ -1729,7 +1729,57 @@
     // Sobreescribe los defaults del HTML con los valores guardados en Ajustes.
     applySettingsToPlanForm();
     renderSavedPlansList();
+    // OLA3: poblar dropdown de perfiles aeronave + handler de cambio.
+    _populateAircraftDropdown();
     state.planWPsLoaded = true;
+  }
+
+  // OLA3: dropdown de aeronaves. Llena las opciones desde
+  // settings.AIRCRAFT_PROFILES y cablea el change handler para
+  // aplicar defaults al form (FL, IAS, fuelInitial, fuelFlow, joker,
+  // bingo, fuelUnit). El valor 'Personalizado' (vacio) NO toca nada.
+  function _populateAircraftDropdown() {
+    if (!settings || !Array.isArray(settings.AIRCRAFT_PROFILES)) return;
+    const sel = document.getElementById('plan-aircraft');
+    if (!sel) return;
+    // Limpia options existentes excepto la primera (Personalizado).
+    while (sel.options.length > 1) sel.remove(1);
+    settings.AIRCRAFT_PROFILES.forEach(p => {
+      const opt = new Option(p.name, p.id);
+      sel.appendChild(opt);
+    });
+    sel.addEventListener('change', _applyAircraftProfile);
+  }
+  function _applyAircraftProfile() {
+    const sel = document.getElementById('plan-aircraft');
+    const info = document.getElementById('plan-aircraft-info');
+    if (!sel) return;
+    const id = sel.value;
+    if (!id) {
+      if (info) info.textContent = '';
+      return;
+    }
+    const profile = settings.getAircraftProfile(id);
+    if (!profile) return;
+    const d = profile.defaults || {};
+    const setIfDefined = (sel2, val) => {
+      const el = document.querySelector(sel2);
+      if (el && val != null && val !== '') el.value = val;
+    };
+    setIfDefined('#plan-fl',           d.flightLevel);
+    setIfDefined('#plan-speed',        d.speedKt);
+    setIfDefined('#plan-fuel-initial', d.fuelInitial);
+    setIfDefined('#plan-fuel-flow',    d.fuelFlow);
+    setIfDefined('#plan-fuel-unit',    d.fuelUnit);
+    setIfDefined('#plan-joker',        d.joker);
+    setIfDefined('#plan-bingo',        d.bingo);
+    if (info) {
+      const lim = profile.limits || {};
+      info.textContent =
+        (profile.family || '') +
+        (lim.vmoKt ? ' · Vmo ' + lim.vmoKt + ' kt' : '') +
+        (lim.flMax ? ' · FL max ' + lim.flMax : '');
+    }
   }
 
   // ── Planes guardados ────────────────────────────────────────────────
@@ -2270,6 +2320,35 @@
       if (state.mapReady) mapView.clearFlightPlan();
       return;
     }
+    // OLA3: si hay perfil de aeronave seleccionado, comprueba que la
+    // IAS no excede Vmo (Maximum Operating Speed). Aviso no-bloqueante
+    // — el operador puede tener una razon tactica (combate, descenso
+    // de emergencia) para superar Vmo, pero debe ser consciente.
+    try {
+      const acSel = document.getElementById('plan-aircraft');
+      if (acSel && acSel.value && settings && typeof settings.getAircraftProfile === 'function') {
+        const profile = settings.getAircraftProfile(acSel.value);
+        if (profile && profile.limits) {
+          const warnings = [];
+          if (Number.isFinite(profile.limits.vmoKt) && speedKt > profile.limits.vmoKt) {
+            warnings.push('IAS ' + speedKt + ' kt EXCEDE Vmo ' + profile.limits.vmoKt + ' kt del perfil ' + profile.name + '.');
+          }
+          if (Number.isFinite(profile.limits.flMax) && fl > profile.limits.flMax) {
+            warnings.push('FL ' + fl + ' EXCEDE FL max ' + profile.limits.flMax + ' del perfil ' + profile.name + '.');
+          }
+          if (warnings.length) {
+            const banner = document.getElementById('plan-error');
+            if (banner) {
+              banner.classList.remove('hidden');
+              banner.style.background = 'rgba(251, 191, 36, 0.18)';
+              banner.style.borderColor = '#fbbf24';
+              banner.style.color = '#fde68a';
+              banner.textContent = '⚠ ' + warnings.join(' ');
+            }
+          }
+        }
+      }
+    } catch (_) {}
     $('#plan-error').classList.add('hidden');
     // Audit OLA1 BUG#7: tras recalcular se aplican los settings vigentes.
     const hint = document.getElementById('plan-settings-changed');

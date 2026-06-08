@@ -420,6 +420,15 @@
       </div>
 
       <div class="plan-form">
+        <div class="plan-aircraft" id="plan-aircraft-row">
+          <label for="plan-aircraft">Aeronave
+            <select id="plan-aircraft" title="Selecciona un perfil para autocompletar el formulario con defaults tipicos del avion. Cambia a 'Personalizado' para no aplicar nada.">
+              <option value="">Personalizado</option>
+              <!-- Opciones inyectadas por initPlanTab desde settings.AIRCRAFT_PROFILES -->
+            </select>
+          </label>
+          <span id="plan-aircraft-info" class="hint inline"></span>
+        </div>
         <div class="plan-fields">
           <label>Origen
             <input type="text" id="plan-origin" list="plan-wps" value="LEBZ" placeholder="LEMD" autocomplete="off">
@@ -1000,17 +1009,17 @@
 <script src="js/parser.js"></script>
 <script src="js/scheduleFmt.js"></script>
 <script src="js/filters.js"></script>
-<script src="js/notamHub.js?v=239"></script>
-<script src="js/kmlIO.js?v=239"></script>
-<script src="js/notamView.js?v=239"></script>
-<script src="js/mapView.js?v=239"></script>
-<script src="js/trafficLayer.js?v=239"></script>
+<script src="js/notamHub.js?v=240"></script>
+<script src="js/kmlIO.js?v=240"></script>
+<script src="js/notamView.js?v=240"></script>
+<script src="js/mapView.js?v=240"></script>
+<script src="js/trafficLayer.js?v=240"></script>
 <script src="js/crossSection.js"></script>
 <script src="js/flightPlan.js"></script>
-<script src="js/livePlan.js?v=239"></script>
+<script src="js/livePlan.js?v=240"></script>
 <script src="js/pdfExport.js"></script>
 <script src="js/app.js"></script>
-<script src="js/b1Layout.js?v=239"></script>
+<script src="js/b1Layout.js?v=240"></script>
 
 <!-- Service Worker (PWA) -->
 <script>
