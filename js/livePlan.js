@@ -1825,11 +1825,14 @@ window.TSAgestor.livePlan = (function () {
     const name = prompt('Nombre del vuelo realizado:', defaultName);
     if (!name) return;
     sp.saveFlown(name, snap);
+    // Visible en DOS sitios: (1) Plan → Planes guardados (seccion
+    // "📂 Vuelos realizados (AAR)"), (2) preflight Live cuando no
+    // hay sesion arrancada (card verde con boton "Ver lista").
     _showToast({
       id: 'aar-result', level: 'success',
       title: '✓ Vuelo realizado guardado',
-      message: `"${name}" persistido en localStorage. Disponible en Plan -> Planes guardados (sección Vuelos realizados).`,
-      autoDismissMs: 8000,
+      message: `"${name}" persistido. Visible en Plan → Planes guardados (seccion AAR) y en el preflight Live al resetear la sesion.`,
+      autoDismissMs: 10000,
     });
   }
 

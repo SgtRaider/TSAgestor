@@ -2175,6 +2175,19 @@ tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
   font-size: 11px;
   color: var(--text-mute);
 }
+.saved-plans-flown-header {
+  margin: 12px 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #22c55e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.saved-plan-flown {
+  border-left: 3px solid rgba(34, 197, 94, 0.5);
+}
 .saved-plan-actions {
   display: flex;
   gap: 6px;

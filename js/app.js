@@ -1858,27 +1858,73 @@
     const container = $('#saved-plans-list');
     if (!container) return;
     const plans = savedPlans.list();
+    const flown = (typeof savedPlans.listFlown === 'function') ? savedPlans.listFlown() : [];
+
+    let html = '';
     if (!plans.length) {
-      container.innerHTML = '<p class="hint" style="margin:0">No hay planes guardados todavía.</p>';
-      return;
+      html += '<p class="hint" style="margin:0">No hay planes guardados todavía.</p>';
+    } else {
+      html += plans.map(p => {
+        const meta = `${escapeHTML(p.origin || '?')} → ${escapeHTML(p.destination || '?')} · FL${p.flightLevel || '—'} · ${p.speedKt || '—'} kt`;
+        const sub  = `Guardado: ${formatSavedDate(p.saved)}`;
+        return `
+          <div class="saved-plan">
+            <div class="saved-plan-info">
+              <b>${escapeHTML(p.name)}</b>
+              <span class="dim">${meta}</span>
+              <span class="dim">${sub}</span>
+            </div>
+            <div class="saved-plan-actions">
+              <button class="btn btn-ghost" type="button" data-action="load"   data-name="${escapeHTML(p.name)}">Cargar</button>
+              <button class="btn btn-ghost" type="button" data-action="export" data-name="${escapeHTML(p.name)}">Exportar</button>
+              <button class="btn btn-ghost" type="button" data-action="del"    data-name="${escapeHTML(p.name)}">Borrar</button>
+            </div>
+          </div>`;
+      }).join('');
     }
-    container.innerHTML = plans.map(p => {
-      const meta = `${escapeHTML(p.origin || '?')} → ${escapeHTML(p.destination || '?')} · FL${p.flightLevel || '—'} · ${p.speedKt || '—'} kt`;
-      const sub  = `Guardado: ${formatSavedDate(p.saved)}`;
-      return `
-        <div class="saved-plan">
-          <div class="saved-plan-info">
-            <b>${escapeHTML(p.name)}</b>
-            <span class="dim">${meta}</span>
-            <span class="dim">${sub}</span>
-          </div>
-          <div class="saved-plan-actions">
-            <button class="btn btn-ghost" type="button" data-action="load"   data-name="${escapeHTML(p.name)}">Cargar</button>
-            <button class="btn btn-ghost" type="button" data-action="export" data-name="${escapeHTML(p.name)}">Exportar</button>
-            <button class="btn btn-ghost" type="button" data-action="del"    data-name="${escapeHTML(p.name)}">Borrar</button>
-          </div>
-        </div>`;
-    }).join('');
+
+    // Bug 7 v2 (test report): los vuelos realizados (AAR) tambien
+    // viven en savedPlans (clave separada FLOWN_KEY). Los muestro
+    // aqui como segunda seccion porque el operador busca "Planes
+    // guardados" mentalmente y el toast tras "Guardar como vuelo
+    // realizado" apuntaba a este sitio.
+    if (flown && flown.length) {
+      html += '<h4 class="saved-plans-flown-header">📂 Vuelos realizados (AAR)</h4>';
+      // Ordenar por savedAt (meta.savedAt o saved iso) desc.
+      flown.sort((a, b) => {
+        const aT = (a.meta && a.meta.savedAt) || Date.parse(a.saved || '') || 0;
+        const bT = (b.meta && b.meta.savedAt) || Date.parse(b.saved || '') || 0;
+        return bT - aT;
+      });
+      html += flown.map(f => {
+        const m = f.meta || {};
+        const meta = `${escapeHTML(m.origin || '?')} → ${escapeHTML(m.destination || '?')}`;
+        const savMs = m.savedAt || Date.parse(f.saved || '') || null;
+        const sav = savMs ? formatSavedDate(new Date(savMs).toISOString()) : '—';
+        let extra = '';
+        if (Number.isFinite(m.startMs) && Number.isFinite(m.endMs)) {
+          const durMin = Math.round((m.endMs - m.startMs) / 60000);
+          extra += ` · ${durMin} min`;
+        }
+        if (Number.isFinite(m.fuelConsumed)) {
+          extra += ` · ${Math.round(m.fuelConsumed)} ${m.fuelUnit || ''} consumidos`;
+        }
+        return `
+          <div class="saved-plan saved-plan-flown">
+            <div class="saved-plan-info">
+              <b>${escapeHTML(f.name)}</b>
+              <span class="dim">${meta}${extra}</span>
+              <span class="dim">Guardado: ${sav}</span>
+            </div>
+            <div class="saved-plan-actions">
+              <button class="btn btn-ghost" type="button" data-action="pdf-flown" data-name="${escapeHTML(f.name)}" title="Re-exportar PDF AAR">📄 PDF</button>
+              <button class="btn btn-ghost" type="button" data-action="del-flown" data-name="${escapeHTML(f.name)}" title="Borrar este vuelo realizado">Borrar</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    container.innerHTML = html;
   }
 
   function formatSavedDate(iso) {
@@ -1948,9 +1994,29 @@
     const btn = e.target.closest('button[data-action]');
     if (!btn) return;
     const name = btn.dataset.name;
-    if (btn.dataset.action === 'load')         loadPlanByName(name);
-    else if (btn.dataset.action === 'export')  exportPlanByName(name);
-    else if (btn.dataset.action === 'del')     deletePlanByName(name);
+    if (btn.dataset.action === 'load')             loadPlanByName(name);
+    else if (btn.dataset.action === 'export')      exportPlanByName(name);
+    else if (btn.dataset.action === 'del')         deletePlanByName(name);
+    // Bug 7 v2 (test report): acciones sobre vuelos realizados (AAR)
+    // listados en la misma seccion. PDF reusa pdfExport.exportLiveDelta.
+    else if (btn.dataset.action === 'pdf-flown')   exportFlownPdfByName(name);
+    else if (btn.dataset.action === 'del-flown')   deleteFlownByName(name);
+  }
+  function exportFlownPdfByName(name) {
+    if (!savedPlans || typeof savedPlans.getFlown !== 'function') return;
+    const flown = savedPlans.getFlown(name);
+    if (!flown) return;
+    const pdf = window.TSAgestor && window.TSAgestor.pdfExport;
+    if (!pdf || typeof pdf.exportLiveDelta !== 'function') return;
+    pdf.exportLiveDelta(flown).catch(err => {
+      alert('Error generando PDF AAR: ' + (err && err.message ? err.message : err));
+    });
+  }
+  function deleteFlownByName(name) {
+    if (!savedPlans || typeof savedPlans.removeFlown !== 'function') return;
+    if (!confirm(`¿Borrar el vuelo realizado "${name}"? No se puede deshacer.`)) return;
+    savedPlans.removeFlown(name);
+    renderSavedPlansList();
   }
 
   // ── Export / import de planes guardados a JSON ─────────────────────
