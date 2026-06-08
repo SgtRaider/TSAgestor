@@ -9,7 +9,7 @@
  * Para forzar invalidación al desplegar nueva versión, sube CACHE_VERSION.
  */
 
-const CACHE_VERSION = 'tsagestor-v241';
+const CACHE_VERSION = 'tsagestor-v242';
 const SHELL_CACHE   = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -34,6 +34,8 @@ const SHELL_ASSETS = [
   './js/parser.js',
   './js/scheduleFmt.js',
   './js/i18n.js',
+  './js/liveSync.js',
+  './js/fleet.js',
   './js/filters.js',
   './js/mapView.js',
   './js/trafficLayer.js',
@@ -117,6 +119,14 @@ self.addEventListener('fetch', (event) => {
 
   let url;
   try { url = new URL(req.url); } catch (e) { return; }
+
+  // OLA4 FIX-7: bypass total para /api/live/*. El sync de session
+  // NO debe servirse desde cache (datos rancios serian fatales para
+  // dispatch). Network puro, sin tocar caches del SW.
+  if (url.pathname.indexOf('/api/live/') === 0) {
+    event.respondWith(fetch(req));
+    return;
+  }
 
   // Navegaciones: intenta red, cae a index.html cacheado.
   if (req.mode === 'navigate') {

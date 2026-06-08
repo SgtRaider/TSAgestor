@@ -4951,6 +4951,100 @@ body.b1-copilot .b1-header { position: relative; }
   flex: 1 1 auto;
 }
 
+/* OLA4: chip de estado liveSync en header (al lado de net-status). */
+.b1-sync-status {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.4px;
+  margin-right: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+.b1-sync-status.hidden { display: none; }
+.b1-sync-ok       { background: rgba(34, 197, 94, 0.20); color: #86efac; border: 1px solid #22c55e; }
+.b1-sync-pushing  { background: rgba(96, 165, 250, 0.20); color: #bfdbfe; border: 1px solid #60a5fa; }
+.b1-sync-fail     { background: rgba(239, 68, 68, 0.22); color: #fecaca; border: 1px solid #ef4444; animation: liveBadgePulse 2.2s ease-in-out infinite; }
+.b1-sync-offline  { background: rgba(148, 163, 184, 0.20); color: var(--text-mute); border: 1px solid #94a3b8; }
+.b1-sync-off      { background: rgba(148, 163, 184, 0.12); color: var(--text-mute); border: 1px solid #475569; }
+
+/* OLA4: Fleet view (?fleet=1). Layout fullscreen con tabla de
+   sesiones activas, esconde el shell B1 normal. */
+body.b1-fleet .b1-shell,
+body.b1-fleet .b1-header,
+body.b1-fleet .b1-main { display: none !important; }
+body.b1-fleet .b1-fleet-shell {
+  display: flex; flex-direction: column;
+  position: fixed; inset: 0;
+  background: var(--bg, #0f172a);
+  color: var(--text, #e2e8f0);
+  padding: 16px;
+  font-family: 'Archivo', sans-serif;
+  z-index: 100;
+}
+.b1-fleet-shell h1 {
+  margin: 0 0 12px; font-size: 20px;
+  border-bottom: 2px solid var(--ea-amarillo, #fbbf24);
+  padding-bottom: 6px; letter-spacing: 1px;
+}
+.b1-fleet-shell .b1-fleet-meta {
+  display: flex; gap: 16px; font-size: 12px; color: var(--text-mute, #94a3b8);
+  margin-bottom: 12px;
+}
+.b1-fleet-table {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+}
+.b1-fleet-table th, .b1-fleet-table td {
+  padding: 8px 12px; text-align: left;
+  border-bottom: 1px solid var(--border, #334155);
+}
+.b1-fleet-table th { font-size: 11px; text-transform: uppercase; color: var(--text-mute); letter-spacing: 0.5px; }
+.b1-fleet-row-flying { background: rgba(34, 197, 94, 0.06); }
+.b1-fleet-row-stale  { background: rgba(251, 191, 36, 0.06); }
+.b1-fleet-row-lost   { background: rgba(239, 68, 68, 0.08); }
+.b1-fleet-row-landed { background: rgba(148, 163, 184, 0.05); color: var(--text-mute); }
+.b1-fleet-chip {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+}
+.b1-fleet-chip-flying { background: rgba(34, 197, 94, 0.20); color: #86efac; }
+.b1-fleet-chip-stale  { background: rgba(251, 191, 36, 0.20); color: #fde68a; }
+.b1-fleet-chip-lost   { background: rgba(239, 68, 68, 0.20); color: #fca5a5; }
+.b1-fleet-chip-landed { background: rgba(148, 163, 184, 0.20); color: #cbd5e1; }
+.b1-fleet-empty {
+  padding: 40px; text-align: center; color: var(--text-mute);
+  border: 1px dashed var(--border); border-radius: 4px;
+}
+.b1-fleet-banner {
+  padding: 16px; background: rgba(251, 191, 36, 0.18);
+  border-left: 4px solid #fbbf24; color: #fde68a;
+  border-radius: 4px; margin-bottom: 16px; font-size: 13px;
+}
+
+/* OLA4: card Settings de sync con layout flexible (URL + token + callsign + intervalo) */
+#settings-card-livesync .settings-row {
+  display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 10px;
+}
+#settings-card-livesync .settings-row-label {
+  display: flex; flex-direction: column; gap: 4px;
+  flex: 1 1 200px; font-size: 12px; font-weight: 600;
+}
+#settings-card-livesync input[type="text"],
+#settings-card-livesync input[type="password"],
+#settings-card-livesync input[type="number"] {
+  padding: 6px 8px; font-size: 13px;
+  background: var(--bg-panel, #1e293b);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+.livesync-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+}
+#livesync-test-result { font-size: 12px; margin-left: 6px; }
+
 /* OLA3: indicador online/offline en header B1. Verde si conectado,
    ambar si offline. Discreto pero visible para que el operador sepa
    si los METAR/winds/SIGMETs son frescos o cacheados. */

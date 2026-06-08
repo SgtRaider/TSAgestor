@@ -52,6 +52,26 @@ window.TSAgestor.settings = (function () {
       windHardKt:         30,
       windMarginalKt:     20,
     },
+    // OLA4: sync con servidor (multi-dispositivo via OCI). Opt-in.
+    // enabled=false por defecto -> backwards-compat absoluta para
+    // instalaciones existentes. Si el operador no lo activa, NINGUN
+    // push se hace y el modulo liveSync queda en stand-by.
+    liveSync: {
+      enabled:      false,
+      baseUrl:      '',     // ej 'https://oci.example.com/api' o 'stub' para mock local
+      token:        '',     // unitToken bearer; vacio si stub
+      callsign:     '',     // texto libre max 16 chars; sanitizado al push
+      intervalSec:  30,
+      retryMaxSec:  300,    // cap del backoff exponencial
+    },
+    // OLA4: dashboard de flota (?fleet=1). unitId es el identificador
+    // que se manda en GET /api/live/sessions?unit=... para filtrar
+    // solo los aviones de tu unidad.
+    dispatch: {
+      unitId:         '',
+      autoRefreshSec: 15,
+      showLanded:     false,
+    },
   };
 
   // OLA3: catalogo de perfiles de avion. Cada perfil aplica defaults

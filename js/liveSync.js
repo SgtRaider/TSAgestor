@@ -1,0 +1,555 @@
+// OLA4: sync de session Live a servidor remoto (multi-dispositivo).
+//
+// CONTRATO API (push entero ~10-30 kB cada intervalSec):
+//   PUT    /api/live/sessions/{deviceId}    -> upsert sesion
+//   DELETE /api/live/sessions/{deviceId}    -> cerrar
+//   POST   /api/live/sessions/{deviceId}/finalize  -> marcar terminada (AAR)
+//   GET    /api/live/sessions?unit={unitId} -> lista activas
+//   GET    /api/live/sessions/{deviceId}    -> detalle
+//   GET    /api/live/health                 -> ping
+//
+// AUTH: Authorization: Bearer <unitToken>. Si la respuesta es
+// 401/403, kind='auth-fail' con CTA. Si es 5xx/network, 'fail' con
+// backoff exponencial (5s -> 10s -> ... -> retryMaxSec).
+//
+// PAYLOAD PUT body:
+//   {
+//     deviceId, sessionId, version (monotonico), clientPushId,
+//     callsign, unitId, clientVersion,
+//     meta: { origin, destination, currentIdx, fuelRest, started },
+//     session: { ... } // session JSON completa
+//   }
+//
+// STUB MODE: si baseUrl === 'stub' o '', toda I/O es a localStorage
+// (clave tsagestor_livesync_stub_v1) — util para testing E2E sin
+// backend. listActive lee de la misma clave + storage events de
+// otras pestanyas para simular multi-device en el mismo navegador.
+//
+// BACKWARDS-COMPAT (BC-1..BC-16): si liveSync.js NO se carga, los
+// hooks de livePlan son no-ops via typeof guard. Si carga pero
+// enabled=false, todos los metodos publicos son early-return.
+// session local sigue siendo la fuente de verdad.
+
+window.TSAgestor = window.TSAgestor || {};
+window.TSAgestor.liveSync = (function () {
+  'use strict';
+
+  const DEVICE_ID_KEY = 'tsagestor_device_id_v1';
+  const STUB_KEY      = 'tsagestor_livesync_stub_v1';
+  const CLIENT_VER    = 'tsagestor-1';
+
+  // Estado del modulo (singleton).
+  let _cfg = {
+    enabled: false,
+    baseUrl: '',
+    token: '',
+    callsign: '',
+    unitId: '',
+    intervalSec: 30,
+    retryMaxSec: 300,
+  };
+  let _deviceId   = null;
+  let _sessionId  = null;       // generado al primer push de una nueva session
+  let _lastPlanId = null;
+  let _version    = 0;          // monotonico (FIX-17)
+  let _lastBodyDigest = null;   // gating: NO push si nada cambio
+  let _lastPushTs  = 0;
+  let _lastErrorTs = 0;
+  let _lastError   = null;
+  let _failCount   = 0;
+  let _backoffSec  = 0;
+  let _kind        = 'off';     // off | idle | pushing | ok | fail | auth-fail | offline
+  let _inflight    = false;
+  let _dirty       = false;
+  let _finalized   = false;     // FIX-9: ignora markDirty hasta nueva session
+  let _timer       = null;
+  let _abortCtrl   = null;
+  const _listeners = [];
+
+  // ── Util ─────────────────────────────────────────────────────────
+  function _safeCrypto() {
+    return (typeof crypto !== 'undefined' && crypto) || null;
+  }
+  function _uuid() {
+    const c = _safeCrypto();
+    if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+    // Fallback (no usa Math.random como recomienda FIX-1):
+    // hexstring desde getRandomValues si esta disponible.
+    if (c && typeof c.getRandomValues === 'function') {
+      const a = new Uint8Array(16);
+      c.getRandomValues(a);
+      // RFC4122 v4 simplificado
+      a[6] = (a[6] & 0x0f) | 0x40;
+      a[8] = (a[8] & 0x3f) | 0x80;
+      const hex = Array.from(a, b => b.toString(16).padStart(2, '0')).join('');
+      return hex.slice(0,8) + '-' + hex.slice(8,12) + '-' + hex.slice(12,16) + '-' +
+             hex.slice(16,20) + '-' + hex.slice(20);
+    }
+    // Ultimo recurso (no random pero unico-por-tab): timestamp+counter
+    return 'devid-' + (typeof performance !== 'undefined' ? performance.now() : 0) + '-' + (_devidFallbackCounter++);
+  }
+  let _devidFallbackCounter = 0;
+
+  function _loadDeviceId() {
+    if (_deviceId) return _deviceId;
+    try {
+      const raw = localStorage.getItem(DEVICE_ID_KEY);
+      if (raw && raw.length >= 8) { _deviceId = raw; return _deviceId; }
+    } catch (_) {}
+    _deviceId = _uuid();
+    try { localStorage.setItem(DEVICE_ID_KEY, _deviceId); } catch (_) {}
+    return _deviceId;
+  }
+
+  // FIX-3: sanitiza callsign en cliente. Confiar en UI es fragil.
+  function _sanitizeCallsign(s) {
+    if (typeof s !== 'string') return '';
+    return s.trim().toUpperCase().slice(0, 16).replace(/[^A-Z0-9 -]/g, '');
+  }
+
+  // FIX-4: URL validation. http SOLO loopback. Stub aceptado.
+  function _isAllowedBaseUrl(url) {
+    if (!url) return false;
+    if (url === 'stub' || url.indexOf('stub:') === 0) return true;
+    try {
+      const u = new URL(url);
+      if (u.protocol === 'https:') return true;
+      if (u.protocol === 'http:') {
+        return ['localhost', '127.0.0.1', '::1', '[::1]'].indexOf(u.hostname) >= 0;
+      }
+      return false;
+    } catch (_) { return false; }
+  }
+  function _isStub() {
+    return !_cfg.baseUrl || _cfg.baseUrl === 'stub' || _cfg.baseUrl.indexOf('stub:') === 0;
+  }
+  function _apiUrl(path) {
+    if (_isStub()) return 'stub://' + path;
+    return _cfg.baseUrl.replace(/\/+$/,'') + path;
+  }
+
+  // FIX-12: requestId estable mientras (sessionId, version) no cambian.
+  // Implementacion: digest barato djb2-like del body relevante. Si el
+  // server es idempotente, dos reintentos con el mismo body llevan el
+  // mismo requestId.
+  function _hashStr(s) {
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) {
+      h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+    }
+    return ((h >>> 0).toString(36));
+  }
+  function _digestBody(body) {
+    // Subset relevante: lo que CAMBIA influye.
+    return _hashStr(
+      (body.sessionId || '') + '|' +
+      (body.version || 0)    + '|' +
+      ((body.meta && body.meta.currentIdx) || 0) + '|' +
+      ((body.meta && body.meta.fuelRest) || '') + '|' +
+      (body.session && body.session.eventLog ? body.session.eventLog.length : 0)
+    );
+  }
+
+  // FIX-14: digest enriquecido para markDirty gate.
+  // Incluye campos que importan al dispatch — cambios de hold/override
+  // disparan push sin esperar al heartbeat de intervalSec.
+  function _sessionDigest(s) {
+    if (!s) return null;
+    const holdKeys = s.liveHolds ? Object.keys(s.liveHolds).join(',') : '';
+    const fovrKeys = s.fuelOverrides ? Object.keys(s.fuelOverrides).join(',') : '';
+    const ov = s.overrides ? JSON.stringify(s.overrides).slice(0, 64) : '';
+    const elLen = Array.isArray(s.eventLog) ? s.eventLog.length : 0;
+    const cal = s.calibration ? (s.calibration.calibratedAt || 0) : 0;
+    return _hashStr([
+      s.planId || '',
+      s.currentIdx | 0,
+      s.started ? '1' : '0',
+      s.rtbEngaged ? 'R' : '-',
+      holdKeys, fovrKeys, ov, elLen, cal,
+    ].join('|'));
+  }
+
+  // ── Snapshot reading (FIX-8 defensiva) ───────────────────────────
+  function _getSnapshot() {
+    try {
+      const lp = window.TSAgestor && window.TSAgestor.livePlan;
+      if (!lp || typeof lp.getSessionSnapshot !== 'function') return null;
+      return lp.getSessionSnapshot();
+    } catch (_) { return null; }
+  }
+
+  // ── Listeners (observable) ───────────────────────────────────────
+  function _emit(evt) {
+    for (let i = 0; i < _listeners.length; i++) {
+      try { _listeners[i](evt); } catch (_) {}
+    }
+  }
+  function subscribe(fn) {
+    if (typeof fn !== 'function') return () => {};
+    _listeners.push(fn);
+    return function unsubscribe() {
+      const idx = _listeners.indexOf(fn);
+      if (idx >= 0) _listeners.splice(idx, 1);
+    };
+  }
+
+  // ── Estado / status ──────────────────────────────────────────────
+  function getStatus() {
+    return {
+      kind: _kind,
+      inflight: _inflight,
+      dirty: _dirty,
+      lastPushTs: _lastPushTs,
+      lastError: _lastError,
+      failCount: _failCount,
+      backoffSec: _backoffSec,
+      deviceId: _deviceId,
+      sessionId: _sessionId,
+      version: _version,
+      finalized: _finalized,
+      stub: _isStub(),
+      configured: isConfigured(),
+      online: isOnline(),
+    };
+  }
+  function getDeviceId() { _loadDeviceId(); return _deviceId; }
+  function isOnline() { return typeof navigator === 'undefined' || navigator.onLine !== false; }
+  function isConfigured() {
+    return !!_cfg.enabled && _isAllowedBaseUrl(_cfg.baseUrl);
+  }
+
+  // ── Push real (fetch) o stub ─────────────────────────────────────
+  async function _doFetch(method, path, body, opts) {
+    opts = opts || {};
+    // FIX-7: bypass de cache al servidor real.
+    const headers = { 'Content-Type': 'application/json' };
+    if (_cfg.token) headers['Authorization'] = 'Bearer ' + _cfg.token;
+
+    if (_isStub()) {
+      // Stub: persiste en localStorage. NO hace network.
+      return _stubHandle(method, path, body);
+    }
+    _abortCtrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const timeoutMs = opts.timeoutMs || 8000;
+    const timer = _abortCtrl ? setTimeout(() => _abortCtrl.abort(), timeoutMs) : null;
+    try {
+      const res = await fetch(_apiUrl(path), {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+        cache: 'no-store',
+        credentials: 'same-origin',
+        signal: _abortCtrl ? _abortCtrl.signal : undefined,
+      });
+      if (timer) clearTimeout(timer);
+      if (!res.ok) {
+        // FIX-16: distingue auth-fail vs fail.
+        const err = new Error('HTTP ' + res.status);
+        err.status = res.status;
+        err._liveSync = true;
+        throw err;
+      }
+      const txt = await res.text();
+      return txt ? JSON.parse(txt) : { ok: true };
+    } catch (e) {
+      if (timer) clearTimeout(timer);
+      if (!e._liveSync) {
+        e._liveSync = true;
+      }
+      throw e;
+    }
+  }
+
+  // Stub: simula la API en localStorage.
+  function _stubHandle(method, path, body) {
+    let store = {};
+    try { store = JSON.parse(localStorage.getItem(STUB_KEY) || '{}'); } catch (_) { store = {}; }
+    store.sessions = store.sessions || {};
+    // PUT /api/live/sessions/{id}
+    const putMatch = /^\/api\/live\/sessions\/([^/]+)$/.exec(path);
+    if (method === 'PUT' && putMatch) {
+      const id = putMatch[1];
+      store.sessions[id] = Object.assign({}, body, { tsPushed: Date.now() });
+      try { localStorage.setItem(STUB_KEY, JSON.stringify(store)); } catch (_) {}
+      return Promise.resolve({ ok: true, serverTs: Date.now() });
+    }
+    if (method === 'DELETE' && putMatch) {
+      const id = putMatch[1];
+      if (store.sessions[id]) {
+        store.sessions[id].tsEnded = Date.now();
+        try { localStorage.setItem(STUB_KEY, JSON.stringify(store)); } catch (_) {}
+      }
+      return Promise.resolve({ ok: true });
+    }
+    if (method === 'POST' && /^\/api\/live\/sessions\/[^/]+\/finalize$/.test(path)) {
+      const id = path.split('/')[4];
+      if (store.sessions[id]) {
+        store.sessions[id].tsEnded = Date.now();
+        store.sessions[id].finalized = true;
+        try { localStorage.setItem(STUB_KEY, JSON.stringify(store)); } catch (_) {}
+      }
+      return Promise.resolve({ ok: true });
+    }
+    // GET /api/live/sessions?unit=...
+    if (method === 'GET' && /^\/api\/live\/sessions(\?.*)?$/.test(path)) {
+      const nowMs = Date.now();
+      const list = Object.values(store.sessions || {})
+        .filter(s => !s.tsEnded || (nowMs - s.tsEnded) < 10 * 60 * 1000)
+        .map(s => ({
+          deviceId:    s.deviceId,
+          callsign:    s.callsign,
+          origin:      s.meta && s.meta.origin,
+          destination: s.meta && s.meta.destination,
+          currentIdx:  s.meta && s.meta.currentIdx,
+          fuelRest:    s.meta && s.meta.fuelRest,
+          tsPushed:    s.tsPushed,
+          tsEnded:     s.tsEnded || null,
+        }));
+      return Promise.resolve({ sessions: list, serverTimeMs: nowMs });
+    }
+    if (method === 'GET' && /^\/api\/live\/sessions\/[^/]+$/.test(path)) {
+      const id = path.split('/').pop();
+      const s = store.sessions[id];
+      if (!s) {
+        const err = new Error('not found');
+        err.status = 404; err._liveSync = true;
+        return Promise.reject(err);
+      }
+      return Promise.resolve(s);
+    }
+    if (method === 'GET' && path === '/api/live/health') {
+      return Promise.resolve({ ok: true, stub: true, serverTimeMs: Date.now() });
+    }
+    return Promise.resolve({ ok: true });
+  }
+
+  // ── Build payload PUT ────────────────────────────────────────────
+  function _buildBody(session) {
+    if (!session) return null;
+    _loadDeviceId();
+    // Si la sesion empezo nueva (planId distinto del ultimo
+    // pusheado o session.started recien activado), gen nuevo sessionId.
+    if (!_sessionId || (session.planId && session.planId !== _lastPlanId)) {
+      _sessionId = getDeviceId() + '-' + Date.now().toString(36);
+      _lastPlanId = session.planId;
+      _version = 0;
+    }
+    _version++;
+    const last = session.coords ? session.coords.length - 1 : 0;
+    const meta = {
+      origin:      session.coords && session.coords[0] && session.coords[0].name,
+      destination: session.coords && session.coords[last] && session.coords[last].name,
+      currentIdx:  session.currentIdx | 0,
+      fuelRest:    null, // se rellena si livePlan lo expone; opt
+      started:     !!session.started,
+      rtbEngaged:  !!session.rtbEngaged,
+    };
+    const body = {
+      deviceId:      _deviceId,
+      sessionId:     _sessionId,
+      version:       _version,
+      clientPushId:  null,
+      callsign:      _sanitizeCallsign(_cfg.callsign),
+      unitId:        _cfg.unitId || null,
+      clientVersion: CLIENT_VER,
+      meta,
+      session,
+    };
+    body.clientPushId = _digestBody(body);
+    return body;
+  }
+
+  // ── Push (con backoff) ───────────────────────────────────────────
+  async function _push(reason) {
+    if (!isConfigured()) return null;
+    if (_inflight) return null;
+    if (!isOnline()) {
+      _kind = 'offline'; _emit({ type: 'fail', reason: 'offline' }); return null;
+    }
+    if (_finalized) return null; // FIX-9
+    const snap = _getSnapshot();
+    if (!snap) return null;
+    if (!snap.started) return null;
+    const digest = _sessionDigest(snap);
+    if (digest === _lastBodyDigest && reason !== 'force' && reason !== 'rtb' && reason !== 'start') {
+      return null; // nada cambio
+    }
+    const body = _buildBody(snap);
+    if (!body) return null;
+    _inflight = true;
+    _kind = 'pushing';
+    _emit({ type: 'start', reason });
+    try {
+      const res = await _doFetch('PUT', '/api/live/sessions/' + encodeURIComponent(_deviceId), body);
+      _inflight = false;
+      _lastPushTs = Date.now();
+      _lastBodyDigest = digest;
+      _kind = 'ok';
+      _lastError = null;
+      _failCount = 0;
+      _backoffSec = 0;
+      _dirty = false;
+      _emit({ type: 'ok', res });
+      return res;
+    } catch (e) {
+      _inflight = false;
+      _lastErrorTs = Date.now();
+      _lastError = (e && e.message) || 'unknown';
+      _failCount++;
+      // FIX-16: distinguir auth vs general.
+      if (e && (e.status === 401 || e.status === 403)) {
+        _kind = 'auth-fail';
+        _emit({ type: 'auth-fail', error: _lastError });
+        return null;
+      }
+      _kind = 'fail';
+      // Backoff 5,10,20,40,80,160,300 capped
+      const next = Math.min(_cfg.retryMaxSec || 300, Math.pow(2, _failCount) * 5);
+      _backoffSec = next;
+      _emit({ type: 'fail', error: _lastError, backoffSec: next });
+      return null;
+    }
+  }
+
+  // ── Timer loop ───────────────────────────────────────────────────
+  function _scheduleNext() {
+    _stopTimer();
+    if (!isConfigured()) { _kind = 'off'; return; }
+    const delaySec = _backoffSec > 0 ? _backoffSec : (_cfg.intervalSec || 30);
+    _timer = setTimeout(_tick, delaySec * 1000);
+  }
+  function _stopTimer() {
+    if (_timer) { try { clearTimeout(_timer); } catch (_) {} _timer = null; }
+  }
+  async function _tick() {
+    _timer = null;
+    if (!isConfigured()) { _kind = 'off'; return; }
+    // Solo pusha si _dirty O en heartbeat sin cambios cada 5 min.
+    const now = Date.now();
+    const sinceLast = now - _lastPushTs;
+    const heartbeat = sinceLast >= (5 * 60 * 1000);
+    if (_dirty || heartbeat || _failCount > 0) {
+      await _push(_failCount > 0 ? 'retry' : (heartbeat ? 'heartbeat' : 'dirty'));
+    }
+    _scheduleNext();
+  }
+
+  // ── API publica ──────────────────────────────────────────────────
+  function configure(opts) {
+    opts = opts || {};
+    // Drena estado previo: timer + abort + emit config event.
+    _stopTimer();
+    if (_abortCtrl) { try { _abortCtrl.abort(); } catch (_) {} _abortCtrl = null; }
+    _inflight = false;
+    _cfg = {
+      enabled:    !!opts.enabled,
+      baseUrl:    typeof opts.baseUrl === 'string' ? opts.baseUrl.trim() : '',
+      token:      typeof opts.token === 'string' ? opts.token : '',
+      callsign:   _sanitizeCallsign(opts.callsign || ''),
+      unitId:     typeof opts.unitId === 'string' ? opts.unitId.trim() : (opts.dispatch && opts.dispatch.unitId) || '',
+      intervalSec: Number(opts.intervalSec) > 0 ? Number(opts.intervalSec) : 30,
+      retryMaxSec: Number(opts.retryMaxSec) > 0 ? Number(opts.retryMaxSec) : 300,
+    };
+    _loadDeviceId();
+    if (!isConfigured()) { _kind = 'off'; _emit({ type: 'config', configured: false }); return; }
+    _kind = 'idle';
+    _emit({ type: 'config', configured: true, stub: _isStub() });
+    _scheduleNext();
+  }
+  function markDirty() {
+    if (!isConfigured() || _finalized) return;
+    _dirty = true;
+  }
+  async function pushNow(opts) {
+    if (!isConfigured()) return null;
+    opts = opts || {};
+    _stopTimer();
+    const r = await _push(opts.reason || 'force');
+    _scheduleNext();
+    return r;
+  }
+  async function deleteRemote() {
+    if (!isConfigured()) return;
+    _loadDeviceId();
+    try {
+      await _doFetch('DELETE', '/api/live/sessions/' + encodeURIComponent(_deviceId));
+    } catch (_) { /* best-effort */ }
+    _sessionId = null;
+    _lastPlanId = null;
+    _version = 0;
+    _lastBodyDigest = null;
+    _finalized = false;
+  }
+  async function finalize(/* payload */) {
+    if (!isConfigured()) return;
+    _loadDeviceId();
+    try {
+      await _doFetch('POST', '/api/live/sessions/' + encodeURIComponent(_deviceId) + '/finalize');
+    } catch (_) {}
+    _finalized = true;
+  }
+  async function testConnection() {
+    if (!isConfigured()) return { ok: false, error: 'no configurado' };
+    const t0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    try {
+      const r = await _doFetch('GET', '/api/live/health', null, { timeoutMs: 5000 });
+      const t1 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+      return { ok: true, latencyMs: Math.round(t1 - t0), stub: _isStub(), serverVersion: r && r.version };
+    } catch (e) {
+      return { ok: false, error: (e && e.message) || 'unknown' };
+    }
+  }
+  async function listActive() {
+    if (!_cfg.enabled && !_isStub()) return { sessions: [], serverTimeMs: Date.now() };
+    const q = _cfg.unitId ? ('?unit=' + encodeURIComponent(_cfg.unitId)) : '';
+    return _doFetch('GET', '/api/live/sessions' + q);
+  }
+  async function getById(deviceId) {
+    return _doFetch('GET', '/api/live/sessions/' + encodeURIComponent(deviceId));
+  }
+  function forcePush() { return pushNow({ reason: 'force' }); }
+  function retry() { _backoffSec = 0; _failCount = 0; return pushNow({ reason: 'retry' }); }
+  function resetSessionId() {
+    // Llamado desde livePlan cuando el plan cambia para que el
+    // siguiente push genere nuevo sessionId.
+    _sessionId = null; _lastPlanId = null; _version = 0; _lastBodyDigest = null;
+    _finalized = false;
+  }
+
+  // FIX-18: capturar unhandledrejection marcadas como _liveSync sin
+  // contaminar la consola con stacks irrelevantes.
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('unhandledrejection', e => {
+      if (e && e.reason && e.reason._liveSync) {
+        try { e.preventDefault(); } catch (_) {}
+        console.warn('[liveSync] rejected:', e.reason.message || e.reason);
+      }
+    });
+    // Disparar push inmediato al volver online
+    window.addEventListener('online', () => {
+      if (isConfigured() && (_dirty || _failCount > 0)) {
+        _scheduleNext();
+      }
+    });
+  }
+
+  return {
+    configure,
+    markDirty,
+    pushNow,
+    forcePush,
+    retry,
+    'delete': deleteRemote,    // 'delete' reservada, exportada via bracket
+    deleteRemote,
+    finalize,
+    testConnection,
+    listActive,
+    getById,
+    subscribe,
+    getStatus,
+    getDeviceId,
+    isConfigured,
+    isOnline,
+    resetSessionId,
+  };
+})();

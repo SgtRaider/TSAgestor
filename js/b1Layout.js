@@ -91,9 +91,41 @@ window.TSAgestor.b1Layout = (function () {
   function init() {
     if (!isEnabled()) return;
     _loadState();
-    // OLA3: activar Copilot view si la URL trae ?copilot=1. Aplica
-    // body class .b1-copilot que CSS usa para fonts grandes, hide
-    // de controles editables y forzar seccion Live.
+    // OLA4: activar Fleet view (?fleet=1). Gate de seguridad: si hay
+    // sesion Live activa (started=true), pedir confirm() para que el
+    // operador no se quede sin su cabina por un parametro pegado.
+    // Si confirma, body class b1-fleet + delega a window.TSAgestor.fleet
+    // que monta la tabla read-only.
+    try {
+      const usp = new URLSearchParams(window.location.search);
+      if (usp.get('fleet') === '1') {
+        let live = null;
+        try { live = JSON.parse(localStorage.getItem('tsagestor_live_session_v2') || 'null'); } catch (_) {}
+        const hasLive = live && live.started === true;
+        const proceed = !hasLive || confirm(
+          'Modo FLOTA solicitado por URL.\n\n' +
+          'Tienes una sesion Live ACTIVA en este dispositivo. Si entras a Flota dejaras de ver tu cabina.\n\n' +
+          '¿Continuar a Flota? (Cancela para mantener la cabina)'
+        );
+        if (proceed) {
+          document.body.classList.add('b1-fleet');
+          // Delega a fleet.js para montar la UI.
+          const fleet = window.TSAgestor && window.TSAgestor.fleet;
+          if (fleet && typeof fleet.mount === 'function') {
+            try { fleet.mount(); } catch (e) { console.warn('[fleet] mount fallo:', e); }
+          }
+          return; // NO continuar con el shell B1 normal
+        } else {
+          // Limpiar el parametro de la URL para evitar bucle
+          try {
+            const u = new URL(window.location.href);
+            u.searchParams.delete('fleet');
+            window.history.replaceState({}, '', u.toString());
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+    // OLA3: activar Copilot view si la URL trae ?copilot=1.
     try {
       const usp = new URLSearchParams(window.location.search);
       if (usp.get('copilot') === '1') {
@@ -120,8 +152,73 @@ window.TSAgestor.b1Layout = (function () {
     _applyDrawerState();
     _wireNetStatus();
     _wirePwaInstall();
+    _wireSyncStatus();
     setTimeout(_invalidateMapSize, 50);
     console.info('[b1Layout] activado, seccion=', state.section);
+  }
+
+  // OLA4: chip de estado liveSync en header. Suscribe a eventos del
+  // modulo y refresca el texto + clase CSS. Si liveSync no esta
+  // configurado, queda hidden. Click para popover con detalle + retry.
+  function _wireSyncStatus() {
+    const el = document.getElementById('b1-sync-status');
+    if (!el) return;
+    const ls = window.TSAgestor && window.TSAgestor.liveSync;
+    if (!ls || typeof ls.subscribe !== 'function') return;
+    function escapeHTML(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;',
+      }[c]));
+    }
+    function render() {
+      const st = ls.getStatus();
+      if (!st.configured) { el.classList.add('hidden'); return; }
+      el.classList.remove('hidden');
+      const ageSec = st.lastPushTs ? Math.floor((Date.now() - st.lastPushTs) / 1000) : null;
+      let kind = st.kind;
+      if (!st.online) kind = 'offline';
+      let txt, cls;
+      switch (kind) {
+        case 'ok':
+          txt = '🛰 Sync ' + (ageSec != null ? ageSec + 's' : 'OK');
+          cls = 'b1-sync-ok'; break;
+        case 'pushing':
+          txt = '🛰 Pushing...'; cls = 'b1-sync-pushing'; break;
+        case 'fail':
+          txt = '⚠ Sync fail (' + (st.failCount | 0) + ')';
+          cls = 'b1-sync-fail'; break;
+        case 'auth-fail':
+          txt = '🔒 Auth fail'; cls = 'b1-sync-fail'; break;
+        case 'offline':
+          txt = '🚫 Sin red'; cls = 'b1-sync-offline'; break;
+        case 'idle':
+          txt = '🛰 Sync...'; cls = 'b1-sync-pushing'; break;
+        default:
+          txt = '💤 Sync off'; cls = 'b1-sync-off';
+      }
+      el.className = 'b1-sync-status ' + cls;
+      el.textContent = txt;
+      const stub = st.stub ? ' (stub)' : '';
+      el.setAttribute('title',
+        'Sync: ' + escapeHTML(kind) + stub +
+        (st.lastError ? '\nUltimo error: ' + escapeHTML(st.lastError) : '') +
+        '\nClick para reintentar'
+      );
+    }
+    ls.subscribe(() => { try { render(); } catch (_) {} });
+    el.addEventListener('click', () => {
+      const st = ls.getStatus();
+      if (st.kind === 'fail' || st.kind === 'auth-fail') {
+        try { ls.retry(); } catch (_) {}
+      } else {
+        try { ls.forcePush(); } catch (_) {}
+      }
+    });
+    // Refresca cada 5s solo si visible (no hidden) y tab activo.
+    setInterval(() => {
+      if (!el.classList.contains('hidden') && !document.hidden) render();
+    }, 5000);
+    render();
   }
 
   // OLA3: indicador online/offline en header. Importante en cabina
@@ -768,6 +865,7 @@ window.TSAgestor.b1Layout = (function () {
         </div>
         <nav class="b1-stepper" role="tablist" aria-label="Secciones de la aplicación"></nav>
         <div class="b1-actions">
+          <span id="b1-sync-status" class="b1-sync-status hidden" role="status" aria-live="polite" title="Estado del sync con servidor"></span>
           <span id="b1-net-status" class="b1-net-status" role="status" aria-live="polite" title="Estado de conexion"></span>
           <button class="b1-icon-btn" id="b1-pwa-install" title="Instalar como aplicacion" aria-label="Instalar app" style="display:none">⤵</button>
           <button class="b1-icon-btn" id="b1-help-btn" title="Ayuda" aria-label="Abrir ayuda">

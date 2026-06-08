@@ -368,6 +368,17 @@ window.TSAgestor.livePlan = (function () {
       }
     } catch (_) { session = null; }
   }
+  // OLA4: helper defensivo para hooks de liveSync. Triple guardia:
+  // (1) typeof window.TSAgestor.liveSync; (2) method existe; (3)
+  // try/catch para que NUNCA propague excepciones a callers — el
+  // ecosistema actual funciona aunque liveSync.js no este cargado.
+  function _syncHook(method) {
+    try {
+      const ls = window.TSAgestor && window.TSAgestor.liveSync;
+      if (!ls || typeof ls[method] !== 'function') return;
+      ls[method]();
+    } catch (_) { /* no propagar */ }
+  }
   function _saveSession() {
     if (!session) return;
     // F2.8: cualquier guardado implica mutacion del estado -> el cache
@@ -375,6 +386,10 @@ window.TSAgestor.livePlan = (function () {
     _invalidateRecalc();
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+      // OLA4 FIX-15: hook a liveSync DENTRO del try pero DESPUES del
+      // setItem OK, en su propio try/catch para que cualquier fallo de
+      // liveSync NUNCA dispare el toast "Sesión NO persistida".
+      try { _syncHook('markDirty'); } catch (_) {}
     } catch (e) {
       console.warn('[livePlan] localStorage.setItem fallo:', e && e.message);
       // QuotaExceededError o disabled. Avisa al operador (toast).
@@ -409,6 +424,9 @@ window.TSAgestor.livePlan = (function () {
     }
   }
   function _clearSession() {
+    // OLA4: notifica al backend ANTES de borrar la session local.
+    // Si liveSync no esta cargado, el hook es no-op.
+    try { _syncHook('deleteRemote'); } catch (_) {}
     session = null;
     _invalidateRecalc();
     // BUG#1: epoch++ para que un _refetchWinds en vuelo no committee
@@ -2069,6 +2087,11 @@ window.TSAgestor.livePlan = (function () {
     session.actualPassTimes = { 0: startMs };
     _logEvent('start', { startMs });
     _saveSession();
+    // OLA4: push inmediato (transicion critica — empieza la operativa).
+    try {
+      const ls = window.TSAgestor && window.TSAgestor.liveSync;
+      if (ls && typeof ls.pushNow === 'function') ls.pushNow({ reason: 'start' });
+    } catch (_) {}
     // F2.11: solicitar permiso de notificaciones si esta soportado.
     // Asi cuando el tab pierde foco y se cumple una ETA podemos lanzar
     // una Notification del SO ademas del toast in-page.
@@ -2311,6 +2334,8 @@ window.TSAgestor.livePlan = (function () {
     const name = prompt('Nombre del vuelo realizado:', defaultName);
     if (!name) return;
     sp.saveFlown(name, snap);
+    // OLA4: marca la session como finalizada en el backend.
+    try { _syncHook('finalize'); } catch (_) {}
     // Visible en DOS sitios: (1) Plan → Planes guardados (seccion
     // "📂 Vuelos realizados (AAR)"), (2) preflight Live cuando no
     // hay sesion arrancada (card verde con boton "Ver lista").
@@ -3308,6 +3333,11 @@ window.TSAgestor.livePlan = (function () {
       distNM: cumNm,
       initialFuelAtEngage: initialFuel,
     });
+    // OLA4: transicion critica -> push inmediato.
+    try {
+      const ls = window.TSAgestor && window.TSAgestor.liveSync;
+      if (ls && typeof ls.pushNow === 'function') ls.pushNow({ reason: 'rtb' });
+    } catch (_) {}
     // El initialFuel del fuelOpts se ajusta al combustible REAL en el
     // momento de engage para que la propagacion downstream cuadre.
     session.fuelOpts = Object.assign({}, session.fuelOpts, { initialFuel });
@@ -3379,6 +3409,11 @@ window.TSAgestor.livePlan = (function () {
     delete session.rtbEngaged;
     delete session.preRtbSnapshot;
     _logEvent('rtb-cancel', null);
+    // OLA4: push inmediato.
+    try {
+      const ls = window.TSAgestor && window.TSAgestor.liveSync;
+      if (ls && typeof ls.pushNow === 'function') ls.pushNow({ reason: 'rtb' });
+    } catch (_) {}
     // BUG#1+#7: bumpear epoch + re-render del plan original en mapa.
     _sessionEpoch++;
     // Audit OLA1 BUG#11: simetrico al engage — invalida caches para
@@ -3479,6 +3514,27 @@ window.TSAgestor.livePlan = (function () {
     onPlanChanged: () => {
       if (!session) return;
       try { _maybeShowContent(); } catch (e) { console.warn('[livePlan] onPlanChanged:', e); }
+      // OLA4: resetea sessionId remoto (nuevo plan -> nueva session
+      // logica en el backend, con sessionId distinto).
+      try {
+        const ls = window.TSAgestor && window.TSAgestor.liveSync;
+        if (ls && typeof ls.resetSessionId === 'function') ls.resetSessionId();
+      } catch (_) {}
+    },
+    // OLA4: snapshot defensivo de la session actual (FIX-8).
+    // liveSync usa esto como UNICO punto de lectura. structuredClone
+    // si esta disponible (mas robusto), fallback JSON.parse(stringify).
+    getSessionSnapshot: () => {
+      if (!session) return null;
+      try {
+        if (typeof structuredClone === 'function') return structuredClone(session);
+      } catch (_) {}
+      try {
+        return JSON.parse(JSON.stringify(session));
+      } catch (e) {
+        console.warn('[livePlan] getSessionSnapshot fallo:', e && e.message);
+        return null;
+      }
     },
     // Audit OLA1 BUG#8: clearPlan() de app.js llama a esto para que
     // la sesion Live no quede HUERFANA en localStorage. Sin esto,

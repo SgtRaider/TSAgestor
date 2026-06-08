@@ -240,6 +240,11 @@
         input.value = pct;
         const out = input.parentElement.querySelector('.settings-value');
         if (out) out.textContent = pct + ' %';
+      } else if (input.type === 'checkbox') {
+        // OLA4 FIX-11: checkbox -> boolean. Antes la rama generica
+        // hacia input.value = v, persistiendo 'true' como string al
+        // disparar input.
+        input.checked = (v === true);
       } else if (v !== undefined && v !== null) {
         input.value = v;
       }
@@ -247,13 +252,19 @@
     if (_settingsWired) return;
     _settingsWired = true;
     document.querySelectorAll('#tab-settings [data-setting]').forEach(input => {
-      input.addEventListener('input', () => {
+      // OLA4 FIX-11: checkbox necesita evento 'change' + escribir
+      // boolean. El resto de inputs usa 'input' para reactividad por
+      // keystroke (comportamiento previo conservado).
+      const eventName = input.type === 'checkbox' ? 'change' : 'input';
+      input.addEventListener(eventName, () => {
         const path = input.dataset.setting;
         if (input.type === 'range') {
           const pct = Number(input.value);
           const out = input.parentElement.querySelector('.settings-value');
           if (out) out.textContent = pct + ' %';
           settings.set(path, pct / 100);
+        } else if (input.type === 'checkbox') {
+          settings.set(path, !!input.checked);
         } else if (input.type === 'number') {
           settings.set(path, Number(input.value));
         } else {
@@ -311,7 +322,23 @@
     FULL_STATE_KEYS.forEach(k => {
       try {
         const raw = localStorage.getItem(k);
-        if (raw != null) payload.keys[k] = raw;
+        if (raw == null) return;
+        // OLA4 FIX-5: scrubea liveSync.token del backup. El token es
+        // un secreto compartido por unidad — no debe viajar en un
+        // JSON que el operador puede compartir / subir / commitear.
+        // Se mantiene el resto de liveSync (URL, callsign, enabled).
+        // El operador re-introduce el token tras importar.
+        if (k === 'tsagestor_settings_v1') {
+          try {
+            const obj = JSON.parse(raw);
+            if (obj && obj.liveSync && Object.prototype.hasOwnProperty.call(obj.liveSync, 'token')) {
+              obj.liveSync.token = '';
+            }
+            payload.keys[k] = JSON.stringify(obj);
+            return;
+          } catch (_) { /* si parse falla, conservador: incluye crudo */ }
+        }
+        payload.keys[k] = raw;
       } catch (_) {}
     });
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -3606,11 +3633,51 @@
     wireQuickSelect();
     refreshExportUI();
     // OLA3: aplicar i18n al DOM una vez todos los strings estaticos
-    // estan en su sitio. Luego cualquier UI dinamica puede llamar
-    // i18n.applyToDOM() para retraducir.
+    // estan en su sitio.
     try {
       const i18n = window.TSAgestor && window.TSAgestor.i18n;
       if (i18n) i18n.applyToDOM();
+    } catch (_) {}
+    // OLA4: configura liveSync (UNA VEZ) desde settings + suscribe a
+    // cambios de la rama liveSync/dispatch para reconfigurar sin
+    // recargar.
+    try {
+      const ls = window.TSAgestor && window.TSAgestor.liveSync;
+      if (ls && settings) {
+        const buildCfg = () => Object.assign(
+          {},
+          settings.get('liveSync', {}) || {},
+          { unitId: settings.get('dispatch.unitId', '') || '' }
+        );
+        ls.configure(buildCfg());
+        settings.onChange((path) => {
+          if (typeof path !== 'string') return;
+          if (path === '*' || path.startsWith('liveSync.') || path === 'dispatch.unitId') {
+            try { ls.configure(buildCfg()); } catch (_) {}
+          }
+        });
+      }
+    } catch (e) { console.warn('[app] liveSync wire fallo:', e && e.message); }
+    // OLA4: boton "Probar conexion" en Ajustes.
+    try {
+      const btn = document.getElementById('btn-livesync-test');
+      const out = document.getElementById('livesync-test-result');
+      if (btn && out) {
+        btn.addEventListener('click', async () => {
+          out.textContent = 'Probando...';
+          const ls = window.TSAgestor && window.TSAgestor.liveSync;
+          if (!ls) { out.textContent = 'liveSync no cargado.'; return; }
+          const r = await ls.testConnection();
+          if (r && r.ok) {
+            out.textContent = '✓ OK' + (r.stub ? ' (stub local)' : '') +
+                              (Number.isFinite(r.latencyMs) ? ' · ' + r.latencyMs + ' ms' : '');
+            out.style.color = '#22c55e';
+          } else {
+            out.textContent = '✗ Falló: ' + ((r && r.error) || 'desconocido');
+            out.style.color = '#ef4444';
+          }
+        });
+      }
     } catch (_) {}
     console.log('[TSAgestor] listo.');
   });
