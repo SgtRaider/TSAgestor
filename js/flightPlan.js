@@ -532,13 +532,22 @@ window.TSAgestor.flightPlan = (function () {
         // conflicto.
         if (seg.from.tsa && seg.from.tsa.id === tsa.id) continue;
         if (seg.to.tsa   && seg.to.tsa.id   === tsa.id) continue;
-        if (segHighFt < tsa.vertical.lowerFt) continue;
-        if (segLowFt  > tsa.vertical.upperFt) continue;
+        // Audit v3 BLOCKER#1: TSAs sin vertical (KML importado o parse
+        // incompleto) hacian crashear con TypeError. Si no tenemos
+        // limites verticales, no podemos descartar por FL — la opcion
+        // conservadora es INCLUIR el TSA en el cross-check lateral
+        // (mejor falso positivo que silenciar un cruce real).
+        const vert = tsa.vertical;
+        const haveLower = vert && Number.isFinite(vert.lowerFt);
+        const haveUpper = vert && Number.isFinite(vert.upperFt);
+        if (haveLower && segHighFt < vert.lowerFt) continue;
+        if (haveUpper && segLowFt  > vert.upperFt) continue;
         if (!segCrossesPolygon(
           [seg.from.lat, seg.from.lon],
           [seg.to.lat, seg.to.lon],
           tsa.polygon)) continue;
         const sched = (tsa.schedules || []).find(s =>
+          s && s.startUTC && s.endUTC &&
           s.startUTC.getTime() < tEnd && s.endUTC.getTime() > tStart
         );
         if (!sched) continue;
@@ -574,6 +583,10 @@ window.TSAgestor.flightPlan = (function () {
       const b = [seg.to.lat,   seg.to.lon];
       for (const tsa of tsas) {
         if (seen.has(tsa.id)) continue;
+        // Audit v3 BLOCKER#1: TSA sin polygon valido se ignora (KMLs
+        // importados pueden venir incompletos). Evita TypeError en
+        // segCrossesPolygon -> pointInPoly.
+        if (!tsa || !Array.isArray(tsa.polygon) || tsa.polygon.length < 3) continue;
         if (segCrossesPolygon(a, b, tsa.polygon)) add(tsa);
       }
     }

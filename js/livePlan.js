@@ -631,31 +631,102 @@ window.TSAgestor.livePlan = (function () {
   }
 
   // ── Vuelta a base (RTB) ────────────────────────────────────────────
+  // Audit v3 BLOCKER#2: el calculo anterior usaba GS = IAS (sin viento
+  // ni correccion DA) y distancia como suma de legs de IDA, lo que
+  // subestimaba el tiempo y combustible 30-40% con viento adverso —
+  // decision GO/NO-GO comprometida. La version corregida:
+  //   1. Distancia: directa actual->origen (haversine), no la ruta de
+  //      ida. RTB es un divert directo, no devolver por la misma ruta.
+  //      Tambien se ofrece la suma de legs como referencia para el
+  //      operador, pero la decision usa la directa.
+  //   2. TAS: kiasToTAS(IAS, DA) usando el FL actual y la DA del
+  //      refetched.legDa si disponible, sino la DA estandar ISA.
+  //   3. GS: TAS + headwind componente desde el viento medio del
+  //      refetched, evaluado en el bearing actual->origen.
+  //   4. Warn si BINGO no esta configurado (fuelOpts.bingo == null).
   function _evalRTB() {
     if (!session) return null;
     const curr = session.currentIdx;
-    if (curr <= 0) return { distanceNM: 0, minutes: 0, fuelNeeded: 0, ok: true };
+    if (curr <= 0) return { distanceNM: 0, minutes: 0, fuelNeeded: 0, ok: true, bingoConfigured: Number.isFinite(session.fuelOpts.bingo) };
     const coords = session.coords;
-    let distKM = 0;
+    // Distancia DIRECTA actual -> origen (great-circle), no la suma de
+    // legs por la ruta de ida. RTB es un divert: el avion vuela
+    // directo al aerodromo de origen, no rebobina la ruta.
+    const A = coords[curr];
+    const O = coords[0];
+    const distKMDirect = _greatCircleKM(A.lat, A.lon, O.lat, O.lon);
+    const distNM = distKMDirect / 1.852;
+    // Suma de legs (referencia operativa, no decision)
+    let distKMviaPlan = 0;
     for (let k = 1; k <= curr; k++) {
-      const A = coords[k - 1], B = coords[k];
-      distKM += _greatCircleKM(A.lat, A.lon, B.lat, B.lon);
+      const P = coords[k - 1], Q = coords[k];
+      distKMviaPlan += _greatCircleKM(P.lat, P.lon, Q.lat, Q.lon);
     }
-    const distNM = distKM / 1.852;
+    const distNMviaPlan = distKMviaPlan / 1.852;
+
     const ov = session.overrides;
-    const ias = (ov && Number.isFinite(ov.ias)) ? ov.ias : (_planIasFromPlan() || 120);
-    const gs = ias;
-    const hours = distNM / Math.max(gs, 30);
+    const iasUsed = (ov && Number.isFinite(ov.ias)) ? ov.ias : (_planIasFromPlan() || 120);
+
+    // TAS via DA real (refetched si disponible) o ISA del FL actual.
+    const fl = Number.isFinite(A.fl) ? A.fl : (session.fuelOpts.flightLevel || 100);
+    const paFt = fl * 100;
+    const geom = window.TSAgestor && window.TSAgestor.geom;
+    let daFt = paFt; // fallback ISA
+    if (session.refetched && Array.isArray(session.refetched.legDa)) {
+      const rIdx = curr - session.refetched.startIdx;
+      if (rIdx >= 0 && Number.isFinite(session.refetched.legDa[rIdx])) {
+        daFt = session.refetched.legDa[rIdx];
+      }
+    }
+    let tas = iasUsed;
+    if (geom && typeof geom.kiasToTAS === 'function') {
+      const t = geom.kiasToTAS(iasUsed, daFt);
+      if (Number.isFinite(t) && t > 0) tas = t;
+    }
+
+    // Headwind component: viento del refetched (en el WP actual) o sin
+    // viento si no hay datos. Bearing actual->origen.
+    let headwindKt = 0;
+    let windAvailable = false;
+    if (session.refetched && Array.isArray(session.refetched.legWindDir) &&
+        Array.isArray(session.refetched.legWindSpeed)) {
+      const rIdx = curr - session.refetched.startIdx;
+      const wDir = session.refetched.legWindDir[rIdx];
+      const wSpd = session.refetched.legWindSpeed[rIdx];
+      if (Number.isFinite(wDir) && Number.isFinite(wSpd)) {
+        const bearing = _bearingDeg(A, O);
+        // Viento meteorologico (FROM): headwind positivo = cara.
+        headwindKt = -wSpd * Math.cos((wDir - bearing) * Math.PI / 180);
+        windAvailable = true;
+      }
+    }
+    const gs = Math.max(30, tas - headwindKt);
+
+    const hours = distNM / gs;
     const minutes = hours * 60;
     const flow = (ov && Number.isFinite(ov.flow)) ? ov.flow : session.fuelOpts.fuelFlow;
     const fuelNeeded = hours * flow;
     const rows = _recalc();
     const currentRow = rows[curr];
     const fuelNow = currentRow ? currentRow.fuelRest : 0;
-    const bingo = session.fuelOpts.bingo || 0;
+    const bingoConfigured = Number.isFinite(session.fuelOpts.bingo);
+    const bingo = bingoConfigured ? session.fuelOpts.bingo : 0;
     const fuelAfterRtb = fuelNow - fuelNeeded;
-    const ok = fuelAfterRtb >= bingo;
-    return { distanceNM: distNM, minutes, fuelNeeded, fuelNow, fuelAfterRtb, bingo, ok };
+    const ok = bingoConfigured ? (fuelAfterRtb >= bingo) : (fuelAfterRtb >= 0);
+    return {
+      distanceNM: distNM,
+      distanceNMviaPlan,
+      minutes,
+      fuelNeeded,
+      fuelNow,
+      fuelAfterRtb,
+      bingo,
+      bingoConfigured,
+      windAvailable,
+      headwindKt,
+      tas, gs,
+      ok,
+    };
   }
   function _greatCircleKM(lat1, lon1, lat2, lon2) {
     const R = 6371;
@@ -2012,8 +2083,34 @@ window.TSAgestor.livePlan = (function () {
     if (rtb && rtb.distanceNM > 0) {
       const li = document.createElement('li');
       li.className = 'live-eval-' + (rtb.ok ? 'ok' : 'bad');
-      li.textContent = `${rtb.ok ? '✓' : '⚠'} RTB: ${rtb.distanceNM.toFixed(0)} NM · ${Math.round(rtb.minutes)} min · necesita ${_fmtFuel(rtb.fuelNeeded)} (margen sobre BINGO: ${_fmtFuel(rtb.fuelAfterRtb - rtb.bingo)})`;
+      // Audit v3 BLOCKER#2: muestra GS real, headwind y aviso si
+      // viento NO disponible o BINGO no configurado. Antes la linea
+      // daba un sentido de seguridad falso (GS=IAS sin viento).
+      const wTxt = rtb.windAvailable
+        ? ` · ${rtb.headwindKt >= 0 ? 'HW' : 'TW'} ${Math.abs(rtb.headwindKt).toFixed(0)} kt`
+        : ' · sin viento (refresh)';
+      const marginTxt = rtb.bingoConfigured
+        ? `margen sobre BINGO: ${_fmtFuel(rtb.fuelAfterRtb - rtb.bingo)}`
+        : 'BINGO no configurado · combustible tras RTB: ' + _fmtFuel(rtb.fuelAfterRtb);
+      li.textContent = `${rtb.ok ? '✓' : '⚠'} RTB directo: ${rtb.distanceNM.toFixed(0)} NM · GS ${rtb.gs.toFixed(0)} kt${wTxt} · ${Math.round(rtb.minutes)} min · necesita ${_fmtFuel(rtb.fuelNeeded)} (${marginTxt})`;
       ul.appendChild(li);
+      // Aviso adicional si BINGO no esta configurado: decision RTB
+      // requiere el umbral para ser util. Sin BINGO solo validamos
+      // que tras RTB el fuel sea >= 0, lo cual NO es seguridad.
+      if (!rtb.bingoConfigured) {
+        const liB = document.createElement('li');
+        liB.className = 'live-eval-warn';
+        liB.textContent = '⚠ BINGO no configurado en el plan. La decision RTB se evalua solo contra fuel >= 0, sin reserva de seguridad. Configura BINGO en Plan -> Combustible.';
+        ul.appendChild(liB);
+      }
+      // Si no hay viento del refetched, recomendamos al operador
+      // pulsar Refresh para tener una decision RTB realista.
+      if (!rtb.windAvailable) {
+        const liW = document.createElement('li');
+        liW.className = 'live-eval-warn';
+        liW.textContent = '⚠ RTB calculado SIN viento. Pulsa "⟳ Refresh viento" para una decision realista (vientos adversos pueden duplicar el tiempo y combustible).';
+        ul.appendChild(liW);
+      }
     }
 
     if (destRow && destRow.delta != null) {
