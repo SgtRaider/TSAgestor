@@ -574,11 +574,19 @@ window.TSAgestor.livePlan = (function () {
       } else if (session.started) {
         const knownIdx = lastKnownLE(i);
         if (knownIdx != null) {
-          // Suma leg times de knownIdx+1 hasta i
+          // Suma leg times de knownIdx+1 hasta i.
+          // Test report: el HOLD AT WP knownIdx (donde estoy ahora)
+          // retrasa la salida HACIA el siguiente WP. Antes el bucle
+          // empezaba en k=knownIdx+1 y solo sumaba liveHolds[k>knownIdx],
+          // asi que un hold introducido en el WP actual no afectaba
+          // a las ETAs siguientes. Anyado liveHolds[knownIdx] una vez
+          // antes del bucle.
           let t = session.actualPassTimes[knownIdx];
+          const holdAtKnown = Number(session.liveHolds[knownIdx]) || 0;
+          if (holdAtKnown > 0) t += holdAtKnown * 60000;
           for (let k = knownIdx + 1; k <= i; k++) {
             t += _legTimeMinAt(k) * 60000;
-            // Holds vivos en k (excluyendo el knownIdx ya pasado)
+            // Holds vivos en k (retraso AT k antes de salir HACIA k+1)
             const hm = Number(session.liveHolds[k]) || 0;
             if (hm > 0) t += hm * 60000;
           }
@@ -668,14 +676,35 @@ window.TSAgestor.livePlan = (function () {
       if (overrides[k] != null) { baseIdx = k; break; }
     }
     let rest;
+    let baseFromOverride = false;
     if (baseIdx >= 0) {
       rest = Number(overrides[baseIdx]);
+      baseFromOverride = true;
     } else {
       // Empieza desde initialFuel en idx 0
       rest = session.fuelOpts.initialFuel || 0;
       baseIdx = 0;
     }
     const flowOv = session.overrides;
+    // Test report: si NO hay override explicito en el WP base,
+    // initialFuel es pre-flight (antes de cualquier hold). Un hold AT
+    // WP 0 (o el baseIdx) consume durante el hold y debe restarse de
+    // rest una sola vez. Si SI hay override, ese override es el fuel
+    // medido AHORA (post-hold), asi que NO sumamos el hold ahi.
+    if (!baseFromOverride) {
+      const holdAtBase = Number(session.liveHolds[baseIdx]) || 0;
+      if (holdAtBase > 0) {
+        // Flow durante el hold: override de flow si aplica, sino flow
+        // del leg arriving o el flow base del plan.
+        const lpBase = session.legPlan[baseIdx];
+        const ovAppliesHere = flowOv && Number.isFinite(flowOv.flow) &&
+                              flowOv.fromIdx != null && flowOv.fromIdx <= baseIdx + 1;
+        const holdFlow = ovAppliesHere
+          ? flowOv.flow
+          : (lpBase && lpBase.flow ? lpBase.flow : session.fuelOpts.fuelFlow);
+        rest -= (holdAtBase / 60) * holdFlow;
+      }
+    }
     for (let k = baseIdx + 1; k <= i; k++) {
       const lp = session.legPlan[k];
       let legFuel = lp ? lp.legFuel : 0;
