@@ -99,6 +99,9 @@ window.TSAgestor.livePlan = (function () {
     _startClock();
     _loadSession();
     _maybeShowContent();
+    // OLA2: cargar config TTS persistida + aplicar estado del boton.
+    _loadTtsConfig();
+    _applyTtsButtonState();
   }
 
   // ── Inicializacion de sesion a partir del plan calculado ───────────
@@ -228,6 +231,10 @@ window.TSAgestor.livePlan = (function () {
       overrides:         keep ? prev.overrides         : null,
       fuelOverrides:     keep ? Object.assign({}, prev.fuelOverrides || {}) : {},
       refetched:         keep ? prev.refetched         : null,
+      // OLA2: la calibracion OAT/QNH es una medicion del avion en el
+      // aire — conservarla si es la misma sesion (mismo planId).
+      // Si el plan cambia, se descarta (datos del vuelo anterior).
+      calibration:       keep ? (prev.calibration || null) : null,
     };
     // BUG#1 (audit v2): bumpear el epoch invalida cualquier
     // _refetchWinds en vuelo — su commit detectara el cambio y
@@ -937,6 +944,18 @@ window.TSAgestor.livePlan = (function () {
               typeof geom.densityAltitudeFt === 'function' &&
               typeof geom.kiasToTAS === 'function') {
             oatC = wB.temperatureC;
+            // OLA2 Calibracion: si el operador reporto OAT real por
+            // radio, la calibracion guarda el delta vs ISA. Lo
+            // aplicamos a ISA(FL del leg) para obtener la OAT efectiva
+            // a usar en este leg — mejor que el modelo Open-Meteo
+            // porque viene de una medicion real reciente. Asumimos
+            // delta constante vs ISA en los 30 min siguientes.
+            if (session.calibration &&
+                Number.isFinite(session.calibration.oatDeltaC) &&
+                typeof geom.isaTempC === 'function') {
+              const isaAtThisFl = geom.isaTempC(fl * 100);
+              oatC = isaAtThisFl + session.calibration.oatDeltaC;
+            }
             daFt = geom.densityAltitudeFt(fl * 100, oatC);
             const tasNew = geom.kiasToTAS(lp.ias, daFt);
             if (Number.isFinite(tasNew) && tasNew > 0) tasUsed = tasNew;
@@ -1168,6 +1187,8 @@ window.TSAgestor.livePlan = (function () {
       if (t.id === 'btn-live-hold')    { _addHold(); return; }
       if (t.id === 'btn-live-rtb')     { _showRtbInline(); return; }
       if (t.id === 'btn-live-reset')   { _resetSession(); return; }
+      if (t.id === 'btn-live-tts')     { _toggleTts(); return; }
+      if (t.id === 'btn-live-calibrate') { _calibrate(); return; }
       if (t.id === 'btn-live-apply-overrides') { _applyOverrides(); return; }
       if (t.id === 'btn-live-clear-overrides') { _clearOverrides(); return; }
       if (t.id === 'btn-live-refetch-winds') { _refetchWinds(); return; }
@@ -1338,6 +1359,10 @@ window.TSAgestor.livePlan = (function () {
     if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
       try { navigator.vibrate([200, 100, 200]); } catch (_) {}
     }
+    // OLA2 TTS: locucion del cue. Usa solo el nombre (no el FL ni la
+    // hora) para que sea corto y la voz no machaque el toast visual.
+    const safeName = (c.name || '').replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ0-9\s]/g, ' ').trim();
+    _speak('Ee te a en ' + (safeName || 'siguiente waypoint'));
     // F2.11: Notification API si tab oculto.
     _maybeNotifyBackground(
       `ETA alcanzada · WP #${idx + 1} ${c.name}`,
@@ -1363,6 +1388,193 @@ window.TSAgestor.livePlan = (function () {
       if (head) head.appendChild(badge);
     }
     badge.textContent = `⚠ ETA WP #${(idx | 0) + 1} alcanzada`;
+  }
+
+  // ── OLA2: TTS audio cues ──────────────────────────────────────────
+  // Web Speech API. Avisa por voz al operador en cabina ruidosa
+  // (toast in-page puede pasar desapercibido). Configurable via toggle
+  // en la barra de acciones + persistido en localStorage.
+  // Cues:
+  //   - WP-alert (ETA alcanzada): "ETA en waypoint X"
+  //   - Fuel cruza BINGO: "Combustible bajo bingo" (one-shot)
+  //   - Fuel cruza JOKER: "Combustible bajo joker" (one-shot)
+  //   - SIGMET nuevo cruzando ruta: "Aviso meteorologico en ruta"
+  //   - TSA activa nueva: "Cruzando area TSA"
+  const TTS_KEY = 'tsagestor_live_tts_enabled';
+  let _ttsEnabled = false;
+  // Estado one-shot: evita repetir el mismo cue en cada tick.
+  let _ttsLastBingoIdx = -1;
+  let _ttsLastJokerIdx = -1;
+  let _ttsLastSigmetIds = new Set();
+  let _ttsLastTSAIds = new Set();
+  function _loadTtsConfig() {
+    try { _ttsEnabled = localStorage.getItem(TTS_KEY) === '1'; }
+    catch (_) { _ttsEnabled = false; }
+  }
+  function _saveTtsConfig() {
+    try { localStorage.setItem(TTS_KEY, _ttsEnabled ? '1' : '0'); } catch (_) {}
+  }
+  function _speak(text, opts) {
+    if (!_ttsEnabled) return;
+    if (typeof window === 'undefined' || !('speechSynthesis' in window) ||
+        typeof SpeechSynthesisUtterance === 'undefined') return;
+    try {
+      // Cancela utterances previos para no acumular cola si llegan
+      // varios cues seguidos (BINGO + WP alcanzado a la vez).
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = (opts && opts.lang) || 'es-ES';
+      u.rate = (opts && opts.rate) || 1.0;
+      u.volume = (opts && opts.volume) || 1.0;
+      window.speechSynthesis.speak(u);
+    } catch (_) { /* best-effort */ }
+  }
+  function _toggleTts() {
+    _ttsEnabled = !_ttsEnabled;
+    _saveTtsConfig();
+    _applyTtsButtonState();
+    if (_ttsEnabled) {
+      // Confirmacion audible para que el operador sepa que se activo
+      // sin tener que esperar al primer cue. Tambien sirve como
+      // "primer gesto" para autorizar speechSynthesis en navegadores
+      // que requieren interaccion previa.
+      _speak('Avisos por voz activados');
+    } else {
+      try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (_) {}
+    }
+  }
+  function _applyTtsButtonState() {
+    const btn = document.getElementById('btn-live-tts');
+    if (!btn) return;
+    if (_ttsEnabled) {
+      btn.textContent = '🔊 TTS ON';
+      btn.classList.add('btn-warn-active');
+    } else {
+      btn.textContent = '🔊 TTS';
+      btn.classList.remove('btn-warn-active');
+    }
+  }
+  // Detector one-shot de cruce BINGO/JOKER: detecta la primera vez
+  // que el currentRow entra en bingo/joker (no avisa de nuevo hasta
+  // que vuelve por encima y baja otra vez). Llamado desde _refresh.
+  function _ttsCheckFuelThresholds(rows) {
+    if (!_ttsEnabled || !session) return;
+    const cur = rows && rows[session.currentIdx];
+    if (!cur) return;
+    if (cur.fuelStatus === 'bingo') {
+      if (_ttsLastBingoIdx !== session.currentIdx) {
+        _ttsLastBingoIdx = session.currentIdx;
+        _speak('Atencion, combustible bajo bingo');
+      }
+    } else if (cur.fuelStatus === 'joker') {
+      if (_ttsLastJokerIdx !== session.currentIdx) {
+        _ttsLastJokerIdx = session.currentIdx;
+        _speak('Combustible bajo joker');
+      }
+      _ttsLastBingoIdx = -1; // re-armar bingo
+    } else {
+      _ttsLastBingoIdx = -1;
+      _ttsLastJokerIdx = -1;
+    }
+  }
+  function _ttsCheckSigmets() {
+    if (!_ttsEnabled || !Array.isArray(_sigmetCrossings)) return;
+    const currentIds = new Set(_sigmetCrossings.map(c => c.id || c.icaoId || JSON.stringify(c).slice(0,32)));
+    let nuevos = 0;
+    currentIds.forEach(id => { if (!_ttsLastSigmetIds.has(id)) nuevos++; });
+    if (nuevos > 0) _speak('Aviso meteorologico en ruta');
+    _ttsLastSigmetIds = currentIds;
+  }
+  function _ttsCheckTSAs() {
+    if (!_ttsEnabled || !Array.isArray(_activeTSAcrossings)) return;
+    const currentIds = new Set(_activeTSAcrossings.map(c => (c.tsa && c.tsa.id) || c.id || JSON.stringify(c).slice(0,32)));
+    let nuevos = 0;
+    currentIds.forEach(id => { if (!_ttsLastTSAIds.has(id)) nuevos++; });
+    if (nuevos > 0) _speak('Atencion, cruzando area restringida activa');
+    _ttsLastTSAIds = currentIds;
+  }
+
+  // ── OLA2: Calibracion manual OAT vs ISA ───────────────────────────
+  // El operador escucha en radio la OAT real (-42 °C) y la QNH actual.
+  // Comparamos con la OAT ISA del FL actual y guardamos el DELTA como
+  // ajuste constante para todos los legs restantes: efectivamente
+  // "esta atmosfera esta N grados mas caliente/fria que ISA". El
+  // delta se aplica al calcular DA en _refetchWinds y por tanto a
+  // TAS via kiasToTAS — la GS y el consumo del log se ajustan a la
+  // realidad reportada por radio, no solo al modelo Open-Meteo.
+  //
+  // Guarda en session.calibration:
+  //   { oatDeltaC, oatActualC, qnhHpa, measuredAtFl, calibratedAt }
+  // Visible como chip en la card de Estado.
+  function _calibrate() {
+    if (!session || !session.started) {
+      alert('Inicia la ruta Live antes de calibrar.');
+      return;
+    }
+    const geom = window.TSAgestor && window.TSAgestor.geom;
+    if (!geom || typeof geom.isaTempC !== 'function') {
+      alert('Modulo geom no disponible.');
+      return;
+    }
+    const idx = session.currentIdx;
+    const fl = (session.coords[idx] && session.coords[idx].fl) || 100;
+    const isa = geom.isaTempC(fl * 100);
+    // Pre-rellena con la OAT del refetched si existe (asi el operador
+    // empieza desde el modelo y solo ajusta el delta).
+    let prefillOat = isa;
+    if (session.refetched && Array.isArray(session.refetched.legOat)) {
+      const rIdx = idx - session.refetched.startIdx;
+      if (rIdx >= 0 && Number.isFinite(session.refetched.legOat[rIdx])) {
+        prefillOat = session.refetched.legOat[rIdx];
+      }
+    }
+    const oatStr = prompt(
+      `Calibracion OAT — FL${String(fl).padStart(3, '0')}\n\n` +
+      `ISA del FL actual: ${isa.toFixed(1)} °C\n` +
+      `Modelo (refetched): ${prefillOat.toFixed(1)} °C\n\n` +
+      'Introduce OAT REAL reportada por radio (°C):',
+      String(Math.round(prefillOat))
+    );
+    if (oatStr == null) return;
+    const oatActual = parseFloat(oatStr);
+    if (!Number.isFinite(oatActual)) {
+      alert('Valor invalido. Cancelado.');
+      return;
+    }
+    const qnhStr = prompt(
+      'QNH actual (hPa) — opcional, deja vacio para omitir:',
+      '1013'
+    );
+    let qnhHpa = null;
+    if (qnhStr != null && qnhStr.trim() !== '') {
+      const q = parseFloat(qnhStr);
+      if (Number.isFinite(q) && q > 800 && q < 1100) qnhHpa = q;
+    }
+    session.calibration = {
+      oatDeltaC:     oatActual - isa,
+      oatActualC:    oatActual,
+      isaOatC:       isa,
+      qnhHpa,
+      measuredAtFl:  fl,
+      calibratedAt:  Date.now(),
+    };
+    _saveSession();
+    // Refetch fuerza recalculo de TAS/GS con la calibracion aplicada.
+    _refetchWinds();
+    _refresh();
+    _showToast({
+      id: 'calibration-applied', level: 'info',
+      title: '📡 Calibracion aplicada',
+      message: `OAT real ${oatActual} °C en FL${fl} · delta vs ISA ${session.calibration.oatDeltaC >= 0 ? '+' : ''}${session.calibration.oatDeltaC.toFixed(1)} °C. Aplicado a TAS y consumo de los legs restantes.`,
+      autoDismissMs: 8000,
+    });
+  }
+  function _clearCalibration() {
+    if (!session) return;
+    delete session.calibration;
+    _saveSession();
+    _refetchWinds();
+    _refresh();
   }
 
   // Beep corto via WebAudio. Frecuencia 880 Hz, duracion 180ms,
@@ -1502,6 +1714,11 @@ window.TSAgestor.livePlan = (function () {
     _maybeRefreshSigmets();
     // F2.6: cross-check TSAs activas en este instante.
     _recomputeActiveTSACrossings();
+    // OLA2 TTS: detectores one-shot DESPUES de tener los datos
+    // refrescados. Cada uno guarda el ultimo estado para no repetir.
+    _ttsCheckFuelThresholds(rows);
+    _ttsCheckSigmets();
+    _ttsCheckTSAs();
   }
 
   // F2.6: revisa TSAs cuyo schedule esta activo AHORA y verifica si la
@@ -2200,6 +2417,37 @@ window.TSAgestor.livePlan = (function () {
     }
     // Banner persistente en la card de Estado cuando RTB activo.
     _renderRtbBanner();
+    // OLA2: chip de calibracion OAT activa.
+    _renderCalibrationChip();
+  }
+
+  function _renderCalibrationChip() {
+    const statusCard = document.querySelector('.live-status-card');
+    if (!statusCard) return;
+    let chip = document.getElementById('live-calibration-chip');
+    if (!session || !session.calibration ||
+        !Number.isFinite(session.calibration.oatDeltaC)) {
+      if (chip) chip.remove();
+      return;
+    }
+    const cal = session.calibration;
+    if (!chip) {
+      chip = document.createElement('div');
+      chip.id = 'live-calibration-chip';
+      chip.className = 'live-calibration-chip';
+      chip.title = 'Click para borrar la calibracion';
+      chip.addEventListener('click', () => {
+        if (confirm('¿Borrar la calibracion OAT/QNH actual?')) _clearCalibration();
+      });
+      const head = statusCard.querySelector('.live-card-head');
+      if (head) head.appendChild(chip);
+    }
+    const ageMin = Math.floor((Date.now() - cal.calibratedAt) / 60000);
+    const sign = cal.oatDeltaC >= 0 ? '+' : '';
+    chip.innerHTML =
+      `📡 Cal. OAT ${sign}${cal.oatDeltaC.toFixed(1)}°C` +
+      (Number.isFinite(cal.qnhHpa) ? ` · QNH ${cal.qnhHpa}` : '') +
+      ` <span class="dim">(${ageMin}m)</span>`;
   }
 
   function _renderRtbBanner() {
