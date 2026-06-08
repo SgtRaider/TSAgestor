@@ -4401,6 +4401,41 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   letter-spacing: 0.5px;
 }
 .live-preview-table tr.live-row-sub { opacity: 0.7; font-style: italic; }
+
+/* Bug 7 (test report): UI de vuelos realizados (AAR) guardados */
+.live-flown-banner {
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.06), transparent);
+  border-color: rgba(34, 197, 94, 0.35);
+}
+.live-flown-banner h3 { color: #22c55e; }
+.live-flown-list {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: var(--sp-2);
+}
+.live-flown-list th,
+.live-flown-list td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.live-flown-list th {
+  font-weight: 700;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+.live-flown-actions {
+  white-space: nowrap;
+  text-align: right;
+}
+.live-flown-actions .btn-xs {
+  padding: 2px 8px;
+  font-size: 14px;
+}
 /* Log live (drawer) */
 .live-log-head {
   display: flex; align-items: baseline; justify-content: space-between;

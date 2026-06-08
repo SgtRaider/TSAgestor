@@ -189,14 +189,28 @@ window.TSAgestor.livePlan = (function () {
       plannedEtas,
       plannedFuelRest,
       legPlan,
-      fuelOpts: {
-        initialFuel:     Number(fuelOpts.initialFuel)     || 0,
-        fuelFlow:        Number(fuelOpts.fuelFlow)        || 0,
-        joker:           Number.isFinite(fuelOpts.joker)  ? fuelOpts.joker : null,
-        bingo:           Number.isFinite(fuelOpts.bingo)  ? fuelOpts.bingo : null,
-        unit:            fuelOpts.unit || 'lb',
-        defaultSpeedKt:  Number.isFinite(fuelOpts.defaultSpeedKt) ? fuelOpts.defaultSpeedKt : null,
-      },
+      fuelOpts: (function () {
+        // Bug 6 (test report): plan.fuelOpts almacena jokerFuel/bingoFuel
+        // como STRING desde el HTML input. Antes Number.isFinite(string)
+        // devolvia false -> joker/bingo eran SIEMPRE null en la sesion
+        // Live, asi que la card de evaluacion nunca alcanzaba estados
+        // bingo/joker. Acepto los dos nombres (jokerFuel/bingoFuel del
+        // form + joker/bingo de un consumer interno) y parseo a number.
+        const toNum = v => {
+          if (v == null || v === '') return null;
+          const n = Number(v);
+          return Number.isFinite(n) ? n : null;
+        };
+        return {
+          initialFuel:     toNum(fuelOpts.initialFuel) || 0,
+          fuelFlow:        toNum(fuelOpts.fuelFlow) || 0,
+          joker:           toNum(fuelOpts.jokerFuel != null ? fuelOpts.jokerFuel : fuelOpts.joker),
+          bingo:           toNum(fuelOpts.bingoFuel != null ? fuelOpts.bingoFuel : fuelOpts.bingo),
+          unit:            fuelOpts.unit || 'lb',
+          defaultSpeedKt:  toNum(fuelOpts.defaultSpeedKt != null ? fuelOpts.defaultSpeedKt : fuelOpts.speedKt),
+          flightLevel:     toNum(fuelOpts.flightLevel),
+        };
+      })(),
       totalDistNM,
       started:           keep ? prev.started           : false,
       proposedStartTime: keep ? prev.proposedStartTime : departureMs,
@@ -224,40 +238,50 @@ window.TSAgestor.livePlan = (function () {
   // distintas -> ETAs y consumo falsos. CRITICO.
   function _hashPlan(plan) {
     if (!plan || !plan.coords) return '0';
-    const subCount = plan.coords.filter(c => c.isClimbDescentSub).length;
+    // Bug 5.4 (test report): excluye holds del hash. _buildSessionFromPlan
+    // filtra holds (no entran en session.coords), asi que anyadir un
+    // hold no cambia la sesion Live — pero antes el hash SI cambiaba y
+    // disparaba un falso "Plan ha cambiado" + reset desde cero. Filtra
+    // primero y hashea sobre lo que realmente usa la sesion.
+    const coordsForHash = plan.coords.filter(c => !c.isHold);
+    const subCount = coordsForHash.filter(c => c.isClimbDescentSub).length;
     const fo = plan.fuelOpts || {};
     // Audit review: normaliza departureUTC a ISO string para que el
     // hash sea estable entre el plan vivo (Date) y el plan restaurado
-    // desde localStorage (string). Sin esto, F5 dispara "Plan ha
-    // cambiado" + reset de currentIdx incluso cuando el plan es el
-    // mismo. La revive de _restoreLastPlan ya lo cubre, pero esto es
-    // defensa adicional.
+    // desde localStorage (string).
     let depKey = '';
     if (plan.departureUTC) {
       depKey = (plan.departureUTC instanceof Date)
         ? plan.departureUTC.toISOString()
         : String(plan.departureUTC);
     }
+    // Bug 6 (test report): fuelOpts en plan.fuelOpts usa los nombres
+    // `jokerFuel` / `bingoFuel` (sufijo Fuel) y los almacena como
+    // STRING (vienen directamente del input HTML). Antes leiamos
+    // `fo.joker` / `fo.bingo` que siempre eran undefined -> el hash
+    // ignoraba los umbrales y cambiar BINGO en Plan no reseteaba Live.
+    // Normalizo con Number() y un fallback al nombre sin sufijo por si
+    // algun consumer interno los rebautiza.
+    const numOrEmpty = v => {
+      if (v == null || v === '') return '';
+      const n = Number(v);
+      return Number.isFinite(n) ? String(n) : '';
+    };
     const sigParts = [
-      'len=' + plan.coords.length,
+      'len=' + coordsForHash.length,
       'sub=' + subCount,
-      plan.coords.map(c => {
+      coordsForHash.map(c => {
         const lat = Number.isFinite(c.lat) ? c.lat.toFixed(4) : 'NaN';
         const lon = Number.isFinite(c.lon) ? c.lon.toFixed(4) : 'NaN';
         const fl  = Number.isFinite(c.fl) ? c.fl : '-';
         return `${c.name}@${fl}@${lat},${lon}`;
       }).join('|'),
       'dep=' + depKey,
-      'ias=' + (fo.defaultSpeedKt || ''),
-      'flow=' + (fo.fuelFlow || ''),
-      // BUG#6 (audit v2): incluye los campos de fuelOpts que la card
-      // de evaluacion usa como umbrales (initialFuel, joker, bingo) +
-      // la unidad. Antes un cambio de joker/bingo en Plan no
-      // disparaba rebuild y Live seguia evaluando contra umbrales
-      // antiguos sin avisar.
-      'init=' + (fo.initialFuel || ''),
-      'jok=' + (Number.isFinite(fo.joker) ? fo.joker : ''),
-      'bgo=' + (Number.isFinite(fo.bingo) ? fo.bingo : ''),
+      'ias=' + numOrEmpty(fo.defaultSpeedKt || fo.speedKt),
+      'flow=' + numOrEmpty(fo.fuelFlow),
+      'init=' + numOrEmpty(fo.initialFuel),
+      'jok=' + numOrEmpty(fo.jokerFuel != null ? fo.jokerFuel : fo.joker),
+      'bgo=' + numOrEmpty(fo.bingoFuel != null ? fo.bingoFuel : fo.bingo),
       'u=' + (fo.unit || ''),
     ];
     const sig = sigParts.join('#');
@@ -662,7 +686,7 @@ window.TSAgestor.livePlan = (function () {
       const P = coords[k - 1], Q = coords[k];
       distKMviaPlan += _greatCircleKM(P.lat, P.lon, Q.lat, Q.lon);
     }
-    const distNMviaPlan = distKMviaPlan / 1.852;
+    const distanceNMviaPlan = distKMviaPlan / 1.852;
 
     const ov = session.overrides;
     const iasUsed = (ov && Number.isFinite(ov.ias)) ? ov.ias : (_planIasFromPlan() || 120);
@@ -1053,6 +1077,13 @@ window.TSAgestor.livePlan = (function () {
       if (t.id === 'btn-live-table-toggle')  { _toggleTableDetail(); return; }
       if (t.id === 'btn-live-save-flown')    { _saveFlown(); return; }
       if (t.id === 'btn-live-pdf-aar')       { _exportFlownPdf(); return; }
+      // Bug 7 (test report): listar / re-exportar / borrar vuelos
+      // realizados (AAR) guardados con savedPlans.saveFlown.
+      if (t.id === 'btn-live-show-flown')    { _showFlownList(); return; }
+      if (t.dataset && t.dataset.flownAct) {
+        _onFlownAction(t.dataset.flownName, t.dataset.flownAct);
+        return;
+      }
     });
     // F3.1: atajos teclado A/B/H/R
     document.addEventListener('keydown', _onKeydown);
@@ -1498,6 +1529,10 @@ window.TSAgestor.livePlan = (function () {
     if (!session) return;
     const host = document.getElementById('live-preflight');
     if (!host) return;
+    // Bug 7 (test report): boton "Vuelos realizados" en el preflight
+    // si hay alguno guardado. Antes _saveFlown escribia en localStorage
+    // pero no habia UI para verlos / borrarlos / re-exportarlos.
+    _renderFlownBanner(host);
     let prev = document.getElementById('live-preflight-preview');
     if (!prev) {
       prev = document.createElement('div');
@@ -1827,6 +1862,128 @@ window.TSAgestor.livePlan = (function () {
     }
   }
 
+  // Bug 7 (test report): renderiza un banner en el preflight con un
+  // contador de vuelos realizados guardados; click abre un toast
+  // centrado con la lista. Si no hay vuelos, el banner no aparece —
+  // el operador no necesita ver un boton vacio en cabina.
+  function _renderFlownBanner(host) {
+    if (!host) return;
+    let banner = document.getElementById('live-flown-banner');
+    const sp = window.TSAgestor && window.TSAgestor.savedPlans;
+    const list = (sp && typeof sp.listFlown === 'function') ? sp.listFlown() : [];
+    if (!list || !list.length) {
+      if (banner) banner.remove();
+      return;
+    }
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'live-flown-banner';
+      banner.className = 'live-card live-flown-banner';
+      // Insertar al PRINCIPIO del preflight para que sea lo primero
+      // que vea el operador.
+      if (host.firstChild) host.insertBefore(banner, host.firstChild);
+      else host.appendChild(banner);
+    }
+    banner.innerHTML =
+      `<div class="live-card-head"><h3>📂 Vuelos realizados</h3>` +
+      `<span class="dim">${list.length} guardados</span></div>` +
+      `<button id="btn-live-show-flown" type="button" class="btn btn-ghost btn-sm" ` +
+      `title="Lista de vuelos AAR guardados — ver detalles, re-exportar PDF o borrar">` +
+      `Ver lista (${list.length})</button>`;
+  }
+
+  function _showFlownList() {
+    const sp = window.TSAgestor && window.TSAgestor.savedPlans;
+    if (!sp || typeof sp.listFlown !== 'function') {
+      _showToast({ id: 'flown-list', level: 'warn',
+        title: 'savedPlans no disponible', message: '', autoDismissMs: 4000 });
+      return;
+    }
+    const list = sp.listFlown();
+    if (!list.length) {
+      _showToast({ id: 'flown-list', level: 'info',
+        title: 'Sin vuelos realizados',
+        message: 'Aun no has guardado ningun vuelo. Termina una sesion Live y pulsa "Guardar como vuelo realizado".',
+        autoDismissMs: 6000 });
+      return;
+    }
+    // Nota: savedPlans.saveFlown desestructura el snapshot en el
+    // top-level (no en .data), asi que f tiene { name, saved, meta,
+    // coords, rows, events, session } al mismo nivel. Ordeno por
+    // meta.savedAt (ms) que es lo mas preciso; fallback a saved (ISO).
+    list.sort((a, b) => {
+      const aT = (a.meta && a.meta.savedAt) || Date.parse(a.saved || '') || 0;
+      const bT = (b.meta && b.meta.savedAt) || Date.parse(b.saved || '') || 0;
+      return bT - aT;
+    });
+    const rows = list.map(f => {
+      const m = f.meta || {};
+      const dur = (Number.isFinite(m.startMs) && Number.isFinite(m.endMs))
+        ? _fmtDuration(m.endMs - m.startMs) : '—';
+      const fuelTxt = (Number.isFinite(m.fuelConsumed))
+        ? Math.round(m.fuelConsumed) + ' ' + (m.fuelUnit || '') : '—';
+      const savMs = m.savedAt || Date.parse(f.saved || '') || null;
+      const sav = savMs ? new Date(savMs).toISOString().slice(0, 16).replace('T', ' ') + 'Z' : '—';
+      const name = String(f.name || '').replace(/"/g, '&quot;');
+      return '<tr>' +
+        `<td><b>${name}</b><br><span class="dim">${m.origin || '?'} → ${m.destination || '?'} · ${sav}</span></td>` +
+        `<td>${dur}</td>` +
+        `<td>${fuelTxt}</td>` +
+        `<td class="live-flown-actions">` +
+          `<button class="btn btn-ghost btn-xs" type="button" data-flown-act="pdf" data-flown-name="${name}" title="Re-exportar PDF AAR">📄</button> ` +
+          `<button class="btn btn-ghost btn-xs" type="button" data-flown-act="del" data-flown-name="${name}" title="Borrar este vuelo">🗑</button>` +
+        `</td>` +
+        '</tr>';
+    }).join('');
+    const bodyHTML =
+      '<table class="live-flown-list">' +
+        '<thead><tr><th>Vuelo</th><th>Duración</th><th>Fuel</th><th></th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>';
+    _showToast({
+      id: 'flown-list', level: 'info',
+      title: `📂 ${list.length} vuelos realizados guardados`,
+      message: 'Click en 📄 para re-exportar PDF AAR · 🗑 para borrar.',
+      bodyHTML,
+      centered: true, backdrop: true,
+      closeable: true,
+    });
+  }
+
+  function _onFlownAction(name, action) {
+    const sp = window.TSAgestor && window.TSAgestor.savedPlans;
+    if (!sp) return;
+    if (action === 'del') {
+      if (!confirm(`Borrar el vuelo realizado "${name}"? No se puede deshacer.`)) return;
+      sp.removeFlown(name);
+      _dismissToast('flown-list');
+      _showFlownList();
+      // Re-render del banner para actualizar contador.
+      const host = document.getElementById('live-preflight');
+      if (host) _renderFlownBanner(host);
+      return;
+    }
+    if (action === 'pdf') {
+      const flown = sp.getFlown(name);
+      if (!flown) {
+        _showToast({ id: 'flown-pdf-err', level: 'warn', title: 'No encontrado', message: name, autoDismissMs: 4000 });
+        return;
+      }
+      const pdf = window.TSAgestor && window.TSAgestor.pdfExport;
+      if (!pdf || typeof pdf.exportLiveDelta !== 'function') return;
+      // listFlown devuelve { name, savedAt, data: snapshot }; getFlown
+      // devuelve el snapshot completo.
+      pdf.exportLiveDelta(flown).then(fname => {
+        _showToast({ id: 'flown-pdf', level: 'success',
+          title: '✓ PDF AAR re-exportado', message: fname, autoDismissMs: 6000 });
+      }).catch(e => {
+        _showToast({ id: 'flown-pdf-err', level: 'danger',
+          title: 'Error PDF', message: e && e.message, autoDismissMs: 6000 });
+      });
+    }
+  }
+
+
   // Formato corto Xh Ym o Y min
   function _fmtDuration(ms) {
     if (!Number.isFinite(ms) || ms < 0) return '—';
@@ -1990,12 +2147,27 @@ window.TSAgestor.livePlan = (function () {
       }
     } catch (_) { /* algunos navegadores fallan selectionStart en number inputs */ }
     tbody.innerHTML = '';
+    // Bug 3 (test report): numeracion alineada con el mapa. Antes la
+    // tabla usaba r.i+1 (indice en session.coords incluyendo sub-legs);
+    // el mapa pinta etiquetas solo en los WPs reales, asi que un plan
+    // con sub-legs tenia "WP 3 mapa = WP 5 tabla" -> imposible cross-
+    // check con instrumentos. Ahora contamos solo WPs reales para el
+    // numero; los sub-legs muestran "├" para indicar que son
+    // intermedios del leg anterior.
+    let realCount = 0;
     rows.forEach((r) => {
       const tr = document.createElement('tr');
       tr.className = (r.isCurrent ? 'live-row-current'
                    : r.isPast    ? 'live-row-past'
                                  : 'live-row-future') +
                    (r.isSub ? ' live-row-sub' : '');
+      let displayN;
+      if (!r.isSub) {
+        realCount++;
+        displayN = String(realCount);
+      } else {
+        displayN = '<span class="dim" title="Sub-leg intermedio (cambio de FL)">├</span>';
+      }
       const deltaClass = (r.delta == null) ? ''
                       : (r.delta > 60000)   ? 'live-delta-late'
                       : (r.delta < -60000)  ? 'live-delta-early' : 'live-delta-on';
@@ -2010,11 +2182,9 @@ window.TSAgestor.livePlan = (function () {
       const subBadge = r.isSub ? '<span class="dim"> · sub</span>' : '';
       const fuelInputCls = 'live-fuel-input' + (r.fuelRestOverridden ? ' live-fuel-overridden' : '') +
                           (fuelClass ? ' ' + fuelClass : '');
-      // F3.2: input claramente reconocible como editable — placeholder
-      // "edit" y title con accion explicita. Visual reforzado en CSS.
       const fuelCell = `<td><input type="number" class="${fuelInputCls}" data-idx="${r.i}" value="${Number.isFinite(r.fuelRest) ? Math.round(r.fuelRest) : ''}" step="10" placeholder="edit" title="Combustible restante en este WP — click para editar (valor real medido)"></td>`;
       tr.innerHTML =
-        `<td>${r.i + 1}</td>` +
+        `<td>${displayN}</td>` +
         `<td><b>${r.name}</b>${subBadge}${holdTxt}</td>` +
         `<td>${flTxt}</td>` +
         `<td>${iasTxt}</td>` +
@@ -2033,19 +2203,26 @@ window.TSAgestor.livePlan = (function () {
       const reals = session.coords.filter(c => !c.isSub).length;
       info.textContent = `WP ${curr + 1} / ${session.coords.length} (${reals} reales) · ${session.totalDistNM.toFixed(0)} NM total`;
     }
-    // BUG#8: restaura focus + valor parcial + posicion del cursor en
-    // el mismo input (mismo data-idx). Asi el operador puede teclear
-    // sin que un refresh async le robe la mitad del numero.
+    // BUG#8 + Bug 5.5 (test report): restaura focus + valor parcial +
+    // posicion del cursor en el mismo input (mismo data-idx). El value
+    // se restauraba bien pero el focus se perdia — sintoma reportado
+    // "el focus cambia pero se queda el valor". Causa: el browser no
+    // mantiene focus durante una sustitucion sincrona innerHTML; hay
+    // que diferir focus() al siguiente frame para que el DOM se asiente.
     if (focusInfo && focusInfo.idx != null) {
       const reborn = tbody.querySelector('.live-fuel-input[data-idx="' + focusInfo.idx + '"]');
       if (reborn) {
         reborn.value = focusInfo.value;
-        try { reborn.focus({ preventScroll: true }); } catch (_) { reborn.focus(); }
-        try {
-          if (focusInfo.selStart != null && focusInfo.selEnd != null) {
-            reborn.setSelectionRange(focusInfo.selStart, focusInfo.selEnd);
-          }
-        } catch (_) {}
+        const doFocus = () => {
+          try { reborn.focus({ preventScroll: true }); } catch (_) { reborn.focus(); }
+          try {
+            if (focusInfo.selStart != null && focusInfo.selEnd != null) {
+              reborn.setSelectionRange(focusInfo.selStart, focusInfo.selEnd);
+            }
+          } catch (_) {}
+        };
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(doFocus);
+        else doFocus();
       }
     }
   }
