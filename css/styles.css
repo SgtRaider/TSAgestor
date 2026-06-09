@@ -3926,6 +3926,10 @@ body.b1 > #app { display: none; }   /* El layout legacy vive dentro de #app */
   display: flex;
   gap: 6px;
   flex: 0 0 auto;
+  /* Centra verticalmente los chips de estado (Online / Sync, ~20px)
+     con los botones icono (36px). Sin esto los chips quedaban en el
+     top del flex container — visualmente descuadrados. */
+  align-items: center;
 }
 .b1-icon-btn {
   width: 36px;
