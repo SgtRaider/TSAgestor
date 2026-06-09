@@ -1036,7 +1036,10 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<!-- html2canvas eliminado (audit M4): cargado pero nunca invocado. La
+     captura del corte transversal usa XMLSerializer + canvas nativo
+     (crossSection.toPNGDataURL), no html2canvas. ~200KB de waste. -->
+
 
 <!-- Módulos TSAgestor -->
 <script src="js/geom.js"></script>

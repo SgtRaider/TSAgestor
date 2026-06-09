@@ -12,6 +12,132 @@ window.TSAgestor.pdfExport = (function () {
   const filters = window.TSAgestor.filters;
   const crossSection = window.TSAgestor.crossSection;
 
+  // Audit B1 (blocker): doc.save() en Safari iOS/iPadOS NO descarga
+  // — abre el blob inline como Untitled, sin opcion de guardar. iPad
+  // EFB es plataforma target del producto (apple-mobile-web-app-capable,
+  // manifest icon, etc.). Helper que prefiere Web Share API (la unica
+  // forma fiable de "guardar archivo" en iOS), fallback a
+  // URL.createObjectURL + a[download] (funciona en Safari Mac, Chrome,
+  // Firefox, etc.), y solo como ultimo recurso doc.save() nativo.
+  // Tambien resuelve el mismo problema en KML/JSON downloads — el
+  // helper esta exportado.
+  async function saveDocCompat(doc, filename) {
+    if (!doc || typeof doc.output !== 'function') {
+      // Fallback inseguro: usar API nativa
+      if (doc && typeof doc.save === 'function') doc.save(filename);
+      return;
+    }
+    let blob = null;
+    try {
+      blob = doc.output('blob');
+    } catch (_) {
+      try { doc.save(filename); } catch (_) {}
+      return;
+    }
+    // Camino 1: Web Share API con File (iOS Safari 14+, iPadOS, Chrome).
+    // Permite guardar en Files / iCloud Drive / share-sheet.
+    try {
+      if (typeof File === 'function' && typeof navigator !== 'undefined' &&
+          typeof navigator.canShare === 'function' && typeof navigator.share === 'function') {
+        const file = new File([blob], filename, { type: 'application/pdf' });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: filename });
+          return;
+        }
+      }
+    } catch (e) {
+      // Si el usuario cancela el share-sheet o falla, caemos al fallback.
+      if (e && e.name === 'AbortError') return;
+    }
+    // Camino 2: URL.createObjectURL + a[download]. Funciona en Chrome,
+    // Edge, Firefox, Safari Mac. Falla silenciosamente en Safari iOS
+    // (abre inline) pero no rompe.
+    try {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Revoke al minuto — algunos browsers necesitan el URL alive
+      // mientras la descarga progresa.
+      setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
+      return;
+    } catch (_) {}
+    // Camino 3 (ultimo recurso): doc.save nativo.
+    try { doc.save(filename); } catch (_) {}
+  }
+
+  // Audit B1 secundario: helper para descargas de texto/blob no-PDF
+  // (KML, JSON backup, GRAMET PNG, etc.). Misma estrategia que
+  // saveDocCompat pero sin doc.output — recibe el blob/string directo.
+  async function downloadAsFile(content, filename, mime) {
+    mime = mime || 'application/octet-stream';
+    const blob = (content instanceof Blob)
+      ? content
+      : new Blob([content], { type: mime });
+    try {
+      if (typeof File === 'function' && typeof navigator !== 'undefined' &&
+          typeof navigator.canShare === 'function' && typeof navigator.share === 'function') {
+        const file = new File([blob], filename, { type: mime });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: filename });
+          return;
+        }
+      }
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+    }
+    try {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
+    } catch (_) {}
+  }
+
+  // Audit M1 (major): probe que el plugin autoTable se cargo. Si
+  // cdnjs esta bloqueado (CSP, corporate proxy, primer load offline
+  // antes del cache), jsPDF carga pero el plugin no, y el primer
+  // doc.autoTable() crashea con TypeError cryptico. Mejor un error
+  // claro upfront que el operador puede actuar (re-conectar, refresh).
+  function _assertAutoTable(doc) {
+    if (typeof doc.autoTable !== 'function') {
+      throw new Error('Plugin autoTable no disponible — verifique conectividad al CDN o cache offline. Recargue la pagina con Ctrl+Shift+R.');
+    }
+  }
+
+  // Audit M2 + M3 (majors): centraliza el patron disable-button +
+  // async-call + restore-button + toast. Antes _exportFlownPdf y
+  // exportFlownPdfByName no tenian guard de reentrancia — doble click
+  // arrancaba dos exports paralelos con el mismo filename y CPU spike.
+  // Uso: await withExportLock(btn, async () => { ... await ... });
+  async function withExportLock(btn, asyncFn) {
+    if (!asyncFn) return;
+    let originalText = null;
+    if (btn) {
+      if (btn.disabled) return; // reentrancia bloqueada
+      btn.disabled = true;
+      originalText = btn.textContent;
+      btn.textContent = 'Generando…';
+    }
+    try {
+      return await asyncFn();
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        if (originalText != null) btn.textContent = originalText;
+      }
+    }
+  }
+
   function iso(d) { return d.toISOString().replace('T', ' ').slice(0, 16) + 'Z'; }
   function ymdhm(d) {
     const p = n => String(n).padStart(2, '0');
@@ -39,31 +165,56 @@ window.TSAgestor.pdfExport = (function () {
   }
 
   // Carga el logo EA y lo cachea como dataURL para reutilizar entre exports.
-  let _logoCache = null;
+  // Audit M5/m5 + m13: cache en sessionStorage para sobrevivir hard
+  // reload (Ctrl+Shift+R) sin re-fetch del SW. Cachear la Promise (no
+  // el valor) evita race entre dos exports concurrentes que
+  // arrancarian dos Image loaders. m2: quitar crossOrigin innecesario
+  // en same-origin — en Firefox file:// puede romper el load.
+  const LOGO_CACHE_KEY = 'tsagestor_pdf_logo_dataurl_v1';
+  let _logoPromise = null;
   async function loadLogoDataURL() {
-    if (_logoCache) return _logoCache;
-    return new Promise((resolve) => {
+    if (_logoPromise) return _logoPromise;
+    // Cache de sessionStorage si existe (sobrevive hard reload).
+    try {
+      const raw = sessionStorage.getItem(LOGO_CACHE_KEY);
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (cached && cached.dataUrl) {
+          _logoPromise = Promise.resolve(cached);
+          return _logoPromise;
+        }
+      }
+    } catch (_) {}
+    _logoPromise = new Promise((resolve) => {
       const img = new Image();
-      img.crossOrigin = 'anonymous';
+      // Sin crossOrigin: el logo es same-origin (assets/...) y el
+      // atributo puede romper carga en Firefox file:// o en CDNs sin
+      // CORS headers.
       img.onload = () => {
         try {
           const c = document.createElement('canvas');
           c.width = img.naturalWidth;
           c.height = img.naturalHeight;
           c.getContext('2d').drawImage(img, 0, 0);
-          _logoCache = {
+          const result = {
             dataUrl: c.toDataURL('image/png'),
             w: img.naturalWidth,
             h: img.naturalHeight,
           };
-          resolve(_logoCache);
+          try { sessionStorage.setItem(LOGO_CACHE_KEY, JSON.stringify(result)); } catch (_) {}
+          resolve(result);
         } catch (e) {
+          console.warn('[pdfExport] Logo EA fallo al renderizar a canvas:', e && e.message);
           resolve(null);
         }
       };
-      img.onerror = () => resolve(null);
+      img.onerror = () => {
+        console.warn('[pdfExport] Logo EA no se pudo cargar — el PDF sale sin escudo institucional');
+        resolve(null);
+      };
       img.src = 'assets/logo-ea-azul.png';
     });
+    return _logoPromise;
   }
   function formatUTC(d) {
     if (!d) return '—';
@@ -504,6 +655,48 @@ window.TSAgestor.pdfExport = (function () {
     return doc.lastAutoTable.finalY + 8;
   }
 
+  // ── GRAMET (audit B2) ─────────────────────────────────────────────
+  // El briefing incluye la GRAMET cuando el operador la ha solicitado
+  // previamente (state.lastGramet en app.js). Sin esto la GRAMET solo
+  // se veia en pantalla pero nunca en el PDF — feature documentada
+  // que el usuario percibia rota.
+  function renderGrametSection(doc, gramet, margin, pageW, y) {
+    if (!gramet || !gramet.dataUrl) return y;
+    y = sectionHeader(doc, 'GRAMET — perfil meteorologico de ruta', y, margin);
+    const imgW = pageW - margin * 2;
+    // GRAMET de autorouter.aero suele ser ~1100x500 (aspect ~0.45).
+    // Calculamos altura desde el PNG real via Image probe en el
+    // momento del addImage — jsPDF acepta dataURL con dimensiones
+    // implicitas, pero para fit-to-page necesitamos saberlas. Usamos
+    // aspect tipico como fallback.
+    const aspect = 0.45;
+    const imgH = imgW * aspect;
+    if (y + imgH > doc.internal.pageSize.getHeight() - margin) {
+      doc.addPage();
+      y = margin;
+    }
+    try {
+      doc.addImage(gramet.dataUrl, 'PNG', margin, y, imgW, imgH, undefined, 'FAST');
+      y += imgH + 4;
+      if (gramet.strategy) {
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(9);
+        doc.setTextColor(80);
+        doc.text(safe('Estrategia GRAMET: ' + gramet.strategy), margin, y);
+        doc.setTextColor(0);
+        y += 6;
+      }
+    } catch (err) {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(9);
+      doc.setTextColor(200, 50, 50);
+      doc.text('No se pudo insertar la GRAMET: ' + (err && err.message ? err.message : err), margin, y);
+      doc.setTextColor(0);
+      y += 8;
+    }
+    return y;
+  }
+
   // ── Corte transversal ─────────────────────────────────────────────
 
   async function renderCrossSection(doc, svgEl, margin, pageW, y) {
@@ -544,7 +737,14 @@ window.TSAgestor.pdfExport = (function () {
     const plan = opts.plan || null;
 
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    // Audit m12 (minor): compress=true reduce el tamano del PDF
+    // 30-40% (importante en Safari iOS — files >5MB pueden no
+    // descargar bien). jsPDF 2.5.x soporta deflate por defecto pero
+    // hay que activarlo explicitamente.
+    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
+    // Audit M1: probe del plugin autoTable inmediatamente tras crear el
+    // doc. Mejor error claro upfront que TypeError cryptico mas tarde.
+    _assertAutoTable(doc);
     const margin = 14;
     const pageW = doc.internal.pageSize.getWidth();
     let y = margin;
@@ -561,7 +761,10 @@ window.TSAgestor.pdfExport = (function () {
     ];
     function safe(s) {
       if (s == null || typeof s !== 'string') return s;
-      let out = s;
+      // Audit m1 (minor): normalizar a NFC para que macOS Safari
+      // entrege acentos compuestos correctamente — WinAnsi NFD parte
+      // los caracteres como letra + diacritic separados.
+      let out = (typeof s.normalize === 'function') ? s.normalize('NFC') : s;
       for (const [re, rep] of SAFE_MAP) out = out.replace(re, rep);
       return out;
     }
@@ -641,6 +844,11 @@ window.TSAgestor.pdfExport = (function () {
     if (opts.wxLimits) {
       y = renderWxLimitsSection(doc, opts.wxLimits, margin, pageW, y);
     }
+    // Audit B2: GRAMET (si el operador la cargo en el panel correspondiente
+    // y corresponde al plan actual; el caller en app.js valida match).
+    if (opts.gramet && opts.gramet.dataUrl) {
+      y = renderGrametSection(doc, opts.gramet, margin, pageW, y);
+    }
 
     // TSAs (si hay)
     if (tsas.length > 0) {
@@ -656,7 +864,10 @@ window.TSAgestor.pdfExport = (function () {
     const fname = plan
       ? `tsagestor-plan-${plan.origin}-${plan.destination}-${stamp}.pdf`
       : `tsagestor-${stamp}.pdf`;
-    doc.save(fname);
+    // Audit B1: saveDocCompat con Web Share API para iOS + fallback
+    // a[download] para Chrome/Edge/Firefox/Safari Mac. await para
+    // capturar AbortError si el operador cancela el share-sheet.
+    await saveDocCompat(doc, fname);
     return fname;
   }
 
@@ -669,7 +880,8 @@ window.TSAgestor.pdfExport = (function () {
     if (!snapshot) throw new Error('snapshot vacío');
 
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
+    _assertAutoTable(doc);
     const margin = 14;
     const pageW = doc.internal.pageSize.getWidth();
     let y = margin;
@@ -682,7 +894,10 @@ window.TSAgestor.pdfExport = (function () {
     ];
     function safe(s) {
       if (s == null || typeof s !== 'string') return s;
-      let out = s;
+      // Audit m1 (minor): normalizar a NFC para que macOS Safari
+      // entrege acentos compuestos correctamente — WinAnsi NFD parte
+      // los caracteres como letra + diacritic separados.
+      let out = (typeof s.normalize === 'function') ? s.normalize('NFC') : s;
       for (const [re, rep] of SAFE_MAP) out = out.replace(re, rep);
       return out;
     }
@@ -876,9 +1091,12 @@ window.TSAgestor.pdfExport = (function () {
 
     const stamp = ymdhm(new Date());
     const fname = `tsagestor-aar-${m.origin || 'XX'}-${m.destination || 'XX'}-${stamp}.pdf`;
-    doc.save(fname);
+    await saveDocCompat(doc, fname);
     return fname;
   }
 
-  return { exportReport, exportLiveDelta };
+  // Audit B1 secundario: exporta saveDocCompat + downloadAsFile para
+  // que callers de KML/JSON/GRAMET PNG puedan usar la misma logica
+  // de Web Share API + fallback en lugar de a[download] crudo.
+  return { exportReport, exportLiveDelta, saveDocCompat, downloadAsFile, withExportLock };
 })();

@@ -1777,6 +1777,17 @@
     try {
       const result = await meteoApi.fetchGramet(state.lastPlan, 'png');
       const blob = result.blob;
+      // Audit B2: cachea el blob para que exportPDF/exportBriefing
+      // puedan incluir la imagen GRAMET en el PDF. Antes la GRAMET
+      // se mostraba en pantalla pero NUNCA se incluia en el PDF
+      // generado — feature percibida como rota.
+      state.lastGramet = {
+        blob,
+        origin:      state.lastPlan.origin,
+        destination: state.lastPlan.destination,
+        strategy:    result.strategy,
+        fetchedAt:   Date.now(),
+      };
       const url = URL.createObjectURL(blob);
       const wrap = c.querySelector('.gramet-img-wrap');
       const strategyLabel = {
@@ -2349,18 +2360,31 @@
     else if (btn.dataset.action === 'del')         deletePlanByName(name);
     // Bug 7 v2 (test report): acciones sobre vuelos realizados (AAR)
     // listados en la misma seccion. PDF reusa pdfExport.exportLiveDelta.
-    else if (btn.dataset.action === 'pdf-flown')   exportFlownPdfByName(name);
+    else if (btn.dataset.action === 'pdf-flown')   exportFlownPdfByName(name, btn);
     else if (btn.dataset.action === 'del-flown')   deleteFlownByName(name);
   }
-  function exportFlownPdfByName(name) {
+  async function exportFlownPdfByName(name, btn) {
     if (!savedPlans || typeof savedPlans.getFlown !== 'function') return;
     const flown = savedPlans.getFlown(name);
     if (!flown) return;
     const pdf = window.TSAgestor && window.TSAgestor.pdfExport;
     if (!pdf || typeof pdf.exportLiveDelta !== 'function') return;
-    pdf.exportLiveDelta(flown).catch(err => {
-      alert('Error generando PDF AAR: ' + (err && err.message ? err.message : err));
-    });
+    // Audit M3 (major): reentry guard + feedback de exito (antes solo
+    // catch del error, sin toast/alert al exito). withExportLock
+    // deshabilita el boton durante el async.
+    const runner = async () => {
+      try {
+        const fname = await pdf.exportLiveDelta(flown);
+        console.log('[TSAgestor] AAR PDF generado:', fname);
+      } catch (err) {
+        alert('Error generando PDF AAR: ' + (err && err.message ? err.message : err));
+      }
+    };
+    if (typeof pdf.withExportLock === 'function') {
+      await pdf.withExportLock(btn, runner);
+    } else {
+      await runner();
+    }
   }
   function deleteFlownByName(name) {
     if (!savedPlans || typeof savedPlans.removeFlown !== 'function') return;
@@ -3396,6 +3420,29 @@
       : 'Pulsa Generar PDF para descargar el informe completo.';
   }
 
+  // Audit B2: convierte el blob GRAMET cacheado a dataURL para que
+  // jsPDF.addImage lo acepte. Si no hay GRAMET cacheada, devuelve null.
+  async function _grametDataUrlForExport() {
+    if (!state.lastGramet || !state.lastGramet.blob) return null;
+    // Verifica que la GRAMET corresponda al plan actual (origen/dest).
+    // Si el operador recalculo plan distinto sin recargar GRAMET, no
+    // la incluimos para evitar mezclar info del vuelo anterior.
+    if (state.lastPlan && (
+        state.lastGramet.origin      !== state.lastPlan.origin ||
+        state.lastGramet.destination !== state.lastPlan.destination)) {
+      return null;
+    }
+    return await new Promise((resolve) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve({
+        dataUrl: fr.result,
+        strategy: state.lastGramet.strategy,
+      });
+      fr.onerror = () => resolve(null);
+      fr.readAsDataURL(state.lastGramet.blob);
+    });
+  }
+
   async function exportPDF() {
     const svg = $('#cross-svg');
     const btn = $('#btn-export-pdf');
@@ -3415,11 +3462,14 @@
           clouds: state.crossClouds || null,
         });
       }
+      // Audit B2: GRAMET dataURL (null si no cacheada o si plan cambio).
+      const gramet = await _grametDataUrlForExport();
       const fname = await pdfExport.exportReport({
         tsas: visible,
         filterState: state.filter,
         svgEl: hasContent ? svg : null,
         plan: state.lastPlan,
+        gramet,
       });
       console.log('[TSAgestor] PDF generado:', fname);
     } catch (err) {
@@ -3471,6 +3521,8 @@
       }
       // Minimos meteorologicos del operador
       const wxLimits = settings ? settings.get('wxLimits', null) : null;
+      // Audit B2: GRAMET en briefing tambien.
+      const gramet = await _grametDataUrlForExport();
       const fname = await pdfExport.exportReport({
         tsas: visible,
         filterState: state.filter,
@@ -3478,6 +3530,7 @@
         plan: state.lastPlan,
         sigmets,
         wxLimits,
+        gramet,
       });
       console.log('[TSAgestor] briefing PDF:', fname);
     } catch (err) {

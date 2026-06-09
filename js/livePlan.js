@@ -2411,19 +2411,30 @@ window.TSAgestor.livePlan = (function () {
         title: 'pdfExport no disponible', message: '', autoDismissMs: 5000 });
       return;
     }
-    try {
-      const fname = await pdf.exportLiveDelta(snap);
-      _showToast({
-        id: 'aar-result', level: 'success',
-        title: '✓ PDF AAR generado',
-        message: `Descargado: ${fname}`,
-        autoDismissMs: 8000,
-      });
-    } catch (e) {
-      _showToast({ id: 'aar-result', level: 'danger',
-        title: 'Error generando PDF AAR',
-        message: (e && e.message) ? e.message : 'Error desconocido',
-        autoDismissMs: 8000 });
+    // Audit M2 (major): reentry guard. Doble-tap en touchscreen (caso
+    // realista post-vuelo) arrancaba dos exports paralelos con mismo
+    // filename. withExportLock deshabilita el boton mientras corre.
+    const btn = document.getElementById('btn-live-pdf-aar');
+    const runner = async () => {
+      try {
+        const fname = await pdf.exportLiveDelta(snap);
+        _showToast({
+          id: 'aar-result', level: 'success',
+          title: '✓ PDF AAR generado',
+          message: `Descargado: ${fname}`,
+          autoDismissMs: 8000,
+        });
+      } catch (e) {
+        _showToast({ id: 'aar-result', level: 'danger',
+          title: 'Error generando PDF AAR',
+          message: (e && e.message) ? e.message : 'Error desconocido',
+          autoDismissMs: 8000 });
+      }
+    };
+    if (typeof pdf.withExportLock === 'function') {
+      await pdf.withExportLock(btn, runner);
+    } else {
+      await runner();
     }
   }
 
