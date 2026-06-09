@@ -97,19 +97,30 @@ window.TSAgestor.crossSection = (function () {
   }
 
   function buildRects(tsas, A, B) {
-    return tsas.map((tsa, idx) => {
-      const range = geom.polygonAlongTrackRange(tsa.polygon, A.centroid, B.centroid);
-      const centreKm = geom.alongTrackDistance(A.centroid, B.centroid, tsa.centroid);
-      return {
-        idx,
-        tsa,
-        xMin: Math.min(range.minKm, range.maxKm),
-        xMax: Math.max(range.minKm, range.maxKm),
-        centreKm,
-        yMin: tsa.vertical.lowerFt,
-        yMax: Math.max(tsa.vertical.lowerFt + 100, tsa.vertical.upperFt),
-      };
-    });
+    // Test report: TSAs sin tsa.vertical (KML importado o parser
+    // parcial) hacian crashear el render del corte con TypeError —
+    // mismo patron que el blocker #1 que se fixó en flightPlan.js
+    // findConflicts. Skip defensivamente las TSAs sin vertical o sin
+    // polygon valido. Sin esto, el corte transversal no se generaba
+    // tras calcular la ruta si una sola TSA visible faltaba el campo.
+    return tsas
+      .filter(tsa => tsa && tsa.vertical &&
+                     Number.isFinite(tsa.vertical.lowerFt) &&
+                     Number.isFinite(tsa.vertical.upperFt) &&
+                     Array.isArray(tsa.polygon) && tsa.polygon.length >= 3)
+      .map((tsa, idx) => {
+        const range = geom.polygonAlongTrackRange(tsa.polygon, A.centroid, B.centroid);
+        const centreKm = geom.alongTrackDistance(A.centroid, B.centroid, tsa.centroid);
+        return {
+          idx,
+          tsa,
+          xMin: Math.min(range.minKm, range.maxKm),
+          xMax: Math.max(range.minKm, range.maxKm),
+          centreKm,
+          yMin: tsa.vertical.lowerFt,
+          yMax: Math.max(tsa.vertical.lowerFt + 100, tsa.vertical.upperFt),
+        };
+      });
   }
 
   // Cuando el eje es la ruta del plan, mostramos un rect por cada CRUCE de
@@ -121,6 +132,12 @@ window.TSAgestor.crossSection = (function () {
     const result = [];
     let nextIdx = 0;
     for (const tsa of tsas) {
+      // Test report: misma fix defensivo que buildRects. Skip TSAs sin
+      // vertical valido o polygon valido (KML parcial, parser fail).
+      if (!tsa || !tsa.vertical ||
+          !Number.isFinite(tsa.vertical.lowerFt) ||
+          !Number.isFinite(tsa.vertical.upperFt) ||
+          !Array.isArray(tsa.polygon) || tsa.polygon.length < 3) continue;
       const ranges = routeInsideTSARanges(tsa.polygon, planCoords);
       for (const r of ranges) {
         result.push({
