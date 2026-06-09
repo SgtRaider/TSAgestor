@@ -403,6 +403,11 @@ window.TSAgestor.liveSync = (function () {
     if (!isOnline()) {
       _kind = 'offline'; _emit({ type: 'fail', reason: 'offline' }); return null;
     }
+    // Test report: reason==='start' (operador pulso "Iniciar ruta") o
+    // 'rtb' (engage/cancel) son transiciones que arrancan operativa
+    // nueva — resetean _finalized para no silenciar pushes de la
+    // session siguiente si la previa cerro con AAR.
+    if (reason === 'start' || reason === 'rtb') _finalized = false;
     if (_finalized) return null; // FIX-9
     const snap = _getSnapshot();
     if (!snap) return null;
@@ -559,8 +564,18 @@ window.TSAgestor.liveSync = (function () {
   async function getById(deviceId) {
     return _doFetch('GET', '/api/live/sessions/' + encodeURIComponent(deviceId));
   }
-  function forcePush() { return pushNow({ reason: 'force' }); }
-  function retry() { _backoffSec = 0; _failCount = 0; return pushNow({ reason: 'retry' }); }
+  function forcePush() {
+    // El operador pulso el chip manualmente: reset de finalized si
+    // procedia. Asi un click siempre da feedback util.
+    _finalized = false;
+    return pushNow({ reason: 'force' });
+  }
+  function retry() {
+    _backoffSec = 0;
+    _failCount = 0;
+    _finalized = false;
+    return pushNow({ reason: 'retry' });
+  }
   function resetSessionId() {
     // Llamado desde livePlan cuando el plan cambia para que el
     // siguiente push genere nuevo sessionId.

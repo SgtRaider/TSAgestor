@@ -170,6 +170,24 @@ window.TSAgestor.b1Layout = (function () {
         '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;',
       }[c]));
     }
+    // Test report: hay un caso donde el chip de sync NO refrescaba ni
+    // visualmente ni la session — cuando no habia session Live activa
+    // (livePlan.getSessionSnapshot devuelve null o snap.started=false),
+    // liveSync._push retorna early SIN emitir evento. El subscribe no
+    // disparaba render() y el chip quedaba igual. Anyado:
+    //   - feedback visual inmediato al click (flash "Pushing...")
+    //   - estado especial "Sin sesion" cuando configurado pero no hay
+    //     session Live arrancada
+    //   - render() tras el click (con o sin push real) para reflejar
+    //     el estado actual aunque _push retorne null silenciosamente
+    function _hasLiveSession() {
+      try {
+        const lp = window.TSAgestor && window.TSAgestor.livePlan;
+        if (!lp || typeof lp.getSessionSnapshot !== 'function') return false;
+        const snap = lp.getSessionSnapshot();
+        return !!(snap && snap.started);
+      } catch (_) { return false; }
+    }
     function render() {
       const st = ls.getStatus();
       if (!st.configured) { el.classList.add('hidden'); return; }
@@ -177,42 +195,85 @@ window.TSAgestor.b1Layout = (function () {
       const ageSec = st.lastPushTs ? Math.floor((Date.now() - st.lastPushTs) / 1000) : null;
       let kind = st.kind;
       if (!st.online) kind = 'offline';
-      let txt, cls;
+      // Si configured pero no hay session Live, el chip muestra el
+      // estado distintivo "Sin sesion" — asi el operador entiende
+      // que el click no hace nada porque no hay nada que pushear.
+      // Pero si lastPushTs es reciente (<5min), prefiere mostrar 'ok'
+      // (push reciente, session finalizada por AAR).
+      if (kind === 'idle' && !_hasLiveSession()) {
+        kind = 'no-session';
+      }
+      let txt, cls, helpTxt;
       switch (kind) {
         case 'ok':
           txt = '🛰 Sync ' + (ageSec != null ? ageSec + 's' : 'OK');
-          cls = 'b1-sync-ok'; break;
+          cls = 'b1-sync-ok';
+          helpTxt = 'Ultimo push hace ' + (ageSec != null ? ageSec + 's' : '?') + '. Click para forzar push.';
+          break;
         case 'pushing':
-          txt = '🛰 Pushing...'; cls = 'b1-sync-pushing'; break;
+          txt = '🛰 Pushing...'; cls = 'b1-sync-pushing';
+          helpTxt = 'Push en curso al backend...';
+          break;
         case 'fail':
           txt = '⚠ Sync fail (' + (st.failCount | 0) + ')';
-          cls = 'b1-sync-fail'; break;
+          cls = 'b1-sync-fail';
+          helpTxt = 'Push fallo. Click para reintentar.';
+          break;
         case 'auth-fail':
-          txt = '🔒 Auth fail'; cls = 'b1-sync-fail'; break;
+          txt = '🔒 Auth fail'; cls = 'b1-sync-fail';
+          helpTxt = 'Token rechazado por el backend. Reconfigura en Ajustes > Sync con servidor.';
+          break;
         case 'offline':
-          txt = '🚫 Sin red'; cls = 'b1-sync-offline'; break;
+          txt = '🚫 Sin red'; cls = 'b1-sync-offline';
+          helpTxt = 'Sin conexion. El push se reanudara al volver online.';
+          break;
+        case 'no-session':
+          txt = '🛰 Sin sesion'; cls = 'b1-sync-off';
+          helpTxt = 'Sync configurado pero no hay sesion Live activa. Pulsa "Iniciar ruta" en Live para empezar a pushear.';
+          break;
         case 'idle':
-          txt = '🛰 Sync...'; cls = 'b1-sync-pushing'; break;
+          txt = '🛰 Sync...'; cls = 'b1-sync-pushing';
+          helpTxt = 'Esperando primer push...';
+          break;
         default:
           txt = '💤 Sync off'; cls = 'b1-sync-off';
+          helpTxt = 'Sync desactivado. Activa en Ajustes > Sync con servidor.';
       }
       el.className = 'b1-sync-status ' + cls;
       el.textContent = txt;
-      const stub = st.stub ? ' (stub)' : '';
+      const stub = st.stub ? ' (stub local)' : '';
       el.setAttribute('title',
-        'Sync: ' + escapeHTML(kind) + stub +
-        (st.lastError ? '\nUltimo error: ' + escapeHTML(st.lastError) : '') +
-        '\nClick para reintentar'
+        'Sync con backend' + stub + '\n\n' +
+        helpTxt +
+        (st.lastError ? '\n\nUltimo error: ' + escapeHTML(st.lastError) : '')
       );
     }
     ls.subscribe(() => { try { render(); } catch (_) {} });
-    el.addEventListener('click', () => {
+    el.addEventListener('click', async () => {
       const st = ls.getStatus();
-      if (st.kind === 'fail' || st.kind === 'auth-fail') {
-        try { ls.retry(); } catch (_) {}
-      } else {
-        try { ls.forcePush(); } catch (_) {}
-      }
+      // Feedback visual inmediato — flash "Pushing..." sin importar si
+      // el push real va a ocurrir. Asi el operador VE que su click
+      // registro, aunque _push retorne null por no haber session.
+      const prevClassName = el.className;
+      const prevText = el.textContent;
+      el.className = 'b1-sync-status b1-sync-pushing';
+      el.textContent = '🛰 Pushing...';
+      try {
+        if (st.kind === 'fail' || st.kind === 'auth-fail') {
+          await ls.retry();
+        } else {
+          await ls.forcePush();
+        }
+      } catch (_) {}
+      // Tras el push (real o no-op), refresca el chip con el estado
+      // actual. Si _push emitio un evento, subscribe() ya disparo
+      // render(); este render manual cubre el caso silencioso.
+      setTimeout(() => {
+        try { render(); } catch (_) {
+          el.className = prevClassName;
+          el.textContent = prevText;
+        }
+      }, 300);
     });
     // Refresca cada 5s solo si visible (no hidden) y tab activo.
     setInterval(() => {
