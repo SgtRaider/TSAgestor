@@ -381,21 +381,36 @@ window.TSAgestor.pdfExport = (function () {
     }
 
     // Tabla de waypoints
+    // Test report: numeracion alineada con el mapa y el log Live —
+    // sub-legs de climb/descent (isClimbDescentSub) muestran "↳"
+    // continuacion en vez de un numero. Antes cada sub-leg ocupaba
+    // un "WP X" propio, descuadrando la numeracion respecto al mapa.
+    let _planRealIdx = 0;
     y = ensureSpace(doc, y, 20, margin);
     doc.autoTable({
       startY: y,
       head: [['#', 'Waypoint', 'FL', 'Aerovía', 'Latitud', 'Longitud', 'Tramo NM', 'Acum NM', 'ETA UTC']],
-      body: plan.coords.map((c, i) => [
-        i + 1,
-        c.name,
-        c.fl != null ? 'FL' + c.fl : '—',
-        c.airway,
-        formatLat(c.lat),
-        formatLon(c.lon),
-        i === 0 ? '—' : (c.legDistKm / 1.852).toFixed(1),
-        c.cumDistNM.toFixed(1),
-        formatUTC(c.etaUTC),
-      ]),
+      body: plan.coords.map((c, i) => {
+        const isSub = !!c.isClimbDescentSub;
+        let displayN;
+        if (!isSub) {
+          _planRealIdx++;
+          displayN = String(_planRealIdx);
+        } else {
+          displayN = '↳';
+        }
+        return [
+          displayN,
+          c.name,
+          c.fl != null ? 'FL' + c.fl : '—',
+          c.airway,
+          formatLat(c.lat),
+          formatLon(c.lon),
+          i === 0 ? '—' : (c.legDistKm / 1.852).toFixed(1),
+          c.cumDistNM.toFixed(1),
+          formatUTC(c.etaUTC),
+        ];
+      }),
       styles: { fontSize: 8, cellPadding: 1.5 },
       headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [241, 245, 249] },
@@ -417,7 +432,7 @@ window.TSAgestor.pdfExport = (function () {
 
   // ── Log de combustible ─────────────────────────────────────────────
 
-  function renderFuelSection(doc, fuel, margin, pageW, y) {
+  function renderFuelSection(doc, fuel, coords, margin, pageW, y) {
     y = sectionHeader(doc, 'Log de vuelo y combustible', y, margin);
     const u = fuel.unit || '';
 
@@ -428,11 +443,21 @@ window.TSAgestor.pdfExport = (function () {
       `Inicial: ${fmtNum(fuel.initialFuel)} ${u}        Consumo base: ${fmtNum(fuel.fuelFlow)} ${u}/h        IAS base: ${fuel.defaultSpeedKt} kt`,
       `Total consumido: ${fmtNum(fuel.totalFuelUsed)} ${u}        Restante en destino: ${fmtNum(fuel.finalRemaining)} ${u}        Tiempo total: ${formatDuration(fuel.totalTimeMin)}`,
     ];
+    // Test report: convierte raw idx a real-WP num (saltando sub-legs)
+    // para que "wpt #N" coincida con la numeracion del mapa/log/tabla.
+    function _rawToRealIdx(rawIdx) {
+      if (!Array.isArray(coords) || rawIdx == null) return rawIdx != null ? rawIdx + 1 : null;
+      let count = 0;
+      for (let i = 0; i <= rawIdx && i < coords.length; i++) {
+        if (!coords[i].isClimbDescentSub) count++;
+      }
+      return count;
+    }
     if (fuel.jokerFuel != null) {
-      lines.push(`JOKER: ${fmtNum(fuel.jokerFuel)} ${u}` + (fuel.firstJokerIdx != null ? `  (alcanzado en wpt #${fuel.firstJokerIdx + 1})` : '  (no alcanzado)'));
+      lines.push(`JOKER: ${fmtNum(fuel.jokerFuel)} ${u}` + (fuel.firstJokerIdx != null ? `  (alcanzado en wpt #${_rawToRealIdx(fuel.firstJokerIdx)})` : '  (no alcanzado)'));
     }
     if (fuel.bingoFuel != null) {
-      lines.push(`BINGO: ${fmtNum(fuel.bingoFuel)} ${u}` + (fuel.firstBingoIdx != null ? `  (alcanzado en wpt #${fuel.firstBingoIdx + 1})` : '  (no alcanzado)'));
+      lines.push(`BINGO: ${fmtNum(fuel.bingoFuel)} ${u}` + (fuel.firstBingoIdx != null ? `  (alcanzado en wpt #${_rawToRealIdx(fuel.firstBingoIdx)})` : '  (no alcanzado)'));
     }
     if (fuel.hasWinds && fuel.windLevel) {
       lines.push(`Vientos en altura: nivel ${fuel.windLevel.hPa} hPa (≈ FL${Math.round(fuel.windLevel.ft / 100)}) — pronóstico Open-Meteo, look-up por ETA real de cada waypoint`);
@@ -469,11 +494,26 @@ window.TSAgestor.pdfExport = (function () {
                   'T tramo', 'T total', `Cons ${u}/h`, `Comb tramo ${u}`,
                   `Restante ${u}`, 'Estado'];
     const statusColIdx = head.length - 1;
+    // Test report: misma logica de numeracion que renderPlanSection —
+    // sub-legs muestran "↳" en lugar de un numero secuencial. coords[r.index]
+    // permite detectar isClimbDescentSub. Si coords no se paso (caller
+    // legacy), fallback a "r.index + 1" sin cambio.
+    let _fuelRealIdx = 0;
     doc.autoTable({
       startY: y,
       head: [head],
-      body: fuel.rows.map(r => [
-        r.index + 1,
+      body: fuel.rows.map(r => {
+        const c = (Array.isArray(coords) && coords[r.index]) || null;
+        const isSub = !!(c && c.isClimbDescentSub);
+        let displayN;
+        if (!isSub) {
+          _fuelRealIdx++;
+          displayN = String(_fuelRealIdx);
+        } else {
+          displayN = '↳';
+        }
+        return [
+        displayN,
         r.name,
         (r.index === 0 || r.isHold) ? '—' : r.legDistNM.toFixed(1),
         (r.index === 0 || r.isHold) ? '—' : (Number.isFinite(r.legIAS) ? Math.round(r.legIAS) : '—'),
@@ -831,7 +871,7 @@ window.TSAgestor.pdfExport = (function () {
     if (plan) {
       y = renderPlanSection(doc, plan, margin, pageW, y);
       if (plan.fuel) {
-        y = renderFuelSection(doc, plan.fuel, margin, pageW, y);
+        y = renderFuelSection(doc, plan.fuel, plan.coords, margin, pageW, y);
       }
       if (plan.meteo && plan.meteo.length) {
         y = renderMeteoSection(doc, plan.meteo, margin, pageW, y);
@@ -993,9 +1033,14 @@ window.TSAgestor.pdfExport = (function () {
     y = doc.lastAutoTable.finalY + 6;
 
     // ── Tabla delta WP por WP ──
+    // Test report: misma logica de numeracion que las tablas del plan
+    // — los rows con isSub=true (sub-legs de climb/descent) muestran
+    // "↳" en la columna # en lugar de un numero secuencial. Antes
+    // el AAR marcaba cada sub-leg como un WP propio.
     y = sectionHeader(doc, 'Delta por waypoint (plan vs real)', y, margin);
     const rows = Array.isArray(snapshot.rows) ? snapshot.rows : [];
     const head = [['#', 'Waypoint', 'FL', 'ETA plan', 'ETA real', 'D min', 'Fuel plan', 'Fuel real', 'D fuel', 'Hold']];
+    let _aarRealIdx = 0;
     const body = rows.map((r, i) => {
       const fl = Number.isFinite(r.fl) ? `FL${String(r.fl).padStart(3, '0')}` : '—';
       const etaP = Number.isFinite(r.planEta) ? formatUTC(new Date(r.planEta)).slice(11, 16) : '—';
@@ -1007,8 +1052,15 @@ window.TSAgestor.pdfExport = (function () {
       const dF = (Number.isFinite(r.planFuelRest) && Number.isFinite(r.fuelRest))
         ? Math.round(r.fuelRest - r.planFuelRest) : null;
       const hold = Number.isFinite(r.liveHoldMin) && r.liveHoldMin > 0 ? `${r.liveHoldMin}m` : '';
+      let displayN;
+      if (!r.isSub) {
+        _aarRealIdx++;
+        displayN = String(_aarRealIdx);
+      } else {
+        displayN = '↳';
+      }
       return [
-        String(i + 1),
+        displayN,
         r.name || '—',
         fl,
         etaP,
