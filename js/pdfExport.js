@@ -527,7 +527,8 @@ window.TSAgestor.pdfExport = (function () {
         r.index === 0 ? '—' : fmtNum(r.legFuel),
         fmtNum(r.remaining),
         r.status === 'bingo' ? 'BINGO' : (r.status === 'joker' ? 'JOKER' : '—'),
-      ]),
+      ];
+      }),
       styles: { fontSize: 8, cellPadding: 1.5 },
       headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [241, 245, 249] },
