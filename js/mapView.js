@@ -1738,10 +1738,20 @@ window.TSAgestor.mapView = (function () {
 
     if (plan.conflicts && plan.conflicts.length) {
       for (const cf of plan.conflicts) {
+        // Test report: el overlay rojo dashed de conflicto se dibujaba
+        // en routePane (z 460) sobre la TSA original (overlayPane z
+        // 400) Y era interactive por defecto -> capturaba los clicks.
+        // Resultado: tras dibujar la ruta el operador no podia abrir
+        // el popup de la TSA tocada para ver altitudes / schedule /
+        // datos. interactive:false permite que el click atraviese a la
+        // TSA original. El tooltip se reemplaza con la nota "CONFLICTO"
+        // dentro del popup de la TSA si fuera necesario (la TSA ya se
+        // identifica visualmente por el dashed rojo).
         L.polygon(cf.tsa.polygon, {
           color: '#dc2626', weight: 3, fillOpacity: 0, dashArray: '6 4',
           pane: 'routePane',
-        }).bindTooltip('CONFLICTO: ' + cf.tsa.name, { sticky: true }).addTo(grp);
+          interactive: false,
+        }).addTo(grp);
       }
     }
 
