@@ -318,7 +318,7 @@ window.TSAgestor.crossSection = (function () {
   }
 
   // ── Render de un panel ───────────────────────────────────────────────
-  function renderPanel(svg, panel, panelIndex, nPanels, topPx, maxY, defsAdded, planPts, clouds) {
+  function renderPanel(svg, panel, panelIndex, nPanels, topPx, maxY, defsAdded, planPts, clouds, livePts) {
     const pad = { left: 80, right: 40, top: 100, bottom: 40 };
     const plotW = WIDTH - pad.left - pad.right;
     const plotH = PANEL_H - pad.top - pad.bottom;
@@ -784,7 +784,7 @@ window.TSAgestor.crossSection = (function () {
     const defsAdded = { hatch: false };
     panels.forEach((panel, idx) => {
       const topPx = HEADER_H + idx * (PANEL_H + PANEL_GAP);
-      renderPanel(svgEl, panel, idx, panels.length, topPx, maxY, defsAdded, planPts, clouds);
+      renderPanel(svgEl, panel, idx, panels.length, topPx, maxY, defsAdded, planPts, clouds, livePts);
     });
 
     // Lista global de solapes (para resumen textual al pie)
