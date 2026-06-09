@@ -249,18 +249,38 @@ window.TSAgestor.fleet = (function () {
         const wpLabel = wpN > 0
           ? ('WP ' + wpN + (s.currentWpName ? ' · ' + escapeHTML(s.currentWpName) : ''))
           : '—';
+        // F1.5 Dispatch metrics: anyade fuel actual (con unidad si
+        // viene), ETA proximo WP y ETA a destino. Si la sesion era
+        // pusheada con un cliente viejo sin meta.etaNextWp, los
+        // campos caen a "—" graciosamente.
+        const fuelStr = Number.isFinite(s.fuelRest)
+          ? (Math.round(s.fuelRest) + (s.fuelUnit ? (' ' + escapeHTML(s.fuelUnit)) : ''))
+          : '—';
+        const fuelCls = s.fuelStatus === 'bingo' ? ' class="b1-fleet-fuel-bingo"'
+                      : (s.fuelStatus === 'joker' ? ' class="b1-fleet-fuel-joker"' : '');
+        const etaNextStr = Number.isFinite(s.etaNextWp)
+          ? (_fmtTime(s.etaNextWp) + (s.nextWpName ? ' · ' + escapeHTML(s.nextWpName) : ''))
+          : '—';
+        const etaDestStr = Number.isFinite(s.etaDestination)
+          ? _fmtTime(s.etaDestination)
+          : '—';
         return '<tr class="b1-fleet-row-' + st + ' b1-fleet-row-clickable" data-device-id="' + escapeHTML(did) + '" title="Click para monitorizar en el mapa">' +
           '<td><span class="b1-fleet-chip b1-fleet-chip-' + st + '">' + escapeHTML(_statusLabel[st]) + '</span></td>' +
           '<td><b>' + escapeHTML(s.callsign || '—') + '</b></td>' +
           '<td>' + escapeHTML(s.origin || '?') + ' → ' + escapeHTML(s.destination || '?') + '</td>' +
           '<td>' + wpLabel + '</td>' +
-          '<td>' + (Number.isFinite(s.fuelRest) ? Math.round(s.fuelRest) : '—') + '</td>' +
+          '<td' + fuelCls + '>' + fuelStr + '</td>' +
+          '<td>' + etaNextStr + '</td>' +
+          '<td>' + etaDestStr + '</td>' +
           '<td>' + _fmtAge(s.tsPushed) + '</td>' +
         '</tr>';
       }).join('');
       body.innerHTML =
         '<table class="b1-fleet-table">' +
-          '<thead><tr><th>Estado</th><th>Indicativo</th><th>Ruta</th><th>WP actual</th><th>Fuel</th><th>Último push</th></tr></thead>' +
+          '<thead><tr>' +
+            '<th>Estado</th><th>Indicativo</th><th>Ruta</th><th>WP actual</th>' +
+            '<th>Fuel</th><th>ETA próx. WP</th><th>ETA destino</th><th>Último push</th>' +
+          '</tr></thead>' +
           '<tbody>' + rows + '</tbody>' +
         '</table>';
       // F1.4 Live monitoring: delegacion de click en filas.
@@ -351,6 +371,11 @@ window.TSAgestor.fleet = (function () {
       const origin   = meta.origin   || (session.coords && session.coords[0] && session.coords[0].name) || '?';
       const destination = meta.destination || (session.coords && session.coords[session.coords.length - 1] && session.coords[session.coords.length - 1].name) || '?';
       const fuelRest = Number.isFinite(meta.fuelRest) ? meta.fuelRest : (Number.isFinite(r.fuelRest) ? r.fuelRest : null);
+      const fuelUnit = meta.fuelUnit || r.fuelUnit || '';
+      const fuelStatus = meta.fuelStatus || r.fuelStatus || null;
+      const etaNextWp     = Number.isFinite(meta.etaNextWp)     ? meta.etaNextWp     : (Number.isFinite(r.etaNextWp)     ? r.etaNextWp     : null);
+      const nextWpName    = meta.nextWpName || r.nextWpName || null;
+      const etaDestination = Number.isFinite(meta.etaDestination) ? meta.etaDestination : (Number.isFinite(r.etaDestination) ? r.etaDestination : null);
       const tsPushed = meta.tsPushed || r.tsPushed || null;
       // _rawIdx (raw array index incl. sub-legs) si presente en meta,
       // si no fallback a session.currentIdx (que puede ya ser raw en
@@ -365,6 +390,17 @@ window.TSAgestor.fleet = (function () {
       });
       const statsEl = body.querySelector('#fleet-detail-stats');
       if (statsEl) {
+        const fuelDisplay = Number.isFinite(fuelRest)
+          ? (Math.round(fuelRest) + (fuelUnit ? (' ' + escapeHTML(fuelUnit)) : ''))
+          : '—';
+        const fuelCls = fuelStatus === 'bingo' ? ' b1-fleet-stat-bingo'
+                      : (fuelStatus === 'joker' ? ' b1-fleet-stat-joker' : '');
+        const etaNextDisplay = Number.isFinite(etaNextWp)
+          ? (_fmtTime(etaNextWp) + (nextWpName ? '<br><span class="dim">→ ' + escapeHTML(nextWpName) + '</span>' : ''))
+          : '—';
+        const etaDestDisplay = Number.isFinite(etaDestination)
+          ? (_fmtTime(etaDestination) + '<br><span class="dim">→ ' + escapeHTML(destination) + '</span>')
+          : '—';
         statsEl.innerHTML =
           '<div class="b1-fleet-detail-row1">' +
             '<span class="b1-fleet-chip b1-fleet-chip-' + st + '">' + escapeHTML(_statusLabel[st]) + '</span>' +
@@ -372,10 +408,11 @@ window.TSAgestor.fleet = (function () {
             '<span class="b1-fleet-detail-route">' + escapeHTML(origin) + ' → ' + escapeHTML(destination) + '</span>' +
           '</div>' +
           '<div class="b1-fleet-detail-row2">' +
-            _statBox('WP', realIdx != null && realIdx > 0 ? ('#' + realIdx + ' · ' + escapeHTML(wpName)) : '—') +
-            _statBox('Fuel', Number.isFinite(fuelRest) ? Math.round(fuelRest) : '—') +
+            _statBox('WP actual', realIdx != null && realIdx > 0 ? ('#' + realIdx + ' · ' + escapeHTML(wpName)) : '—') +
+            '<div class="b1-fleet-stat' + fuelCls + '"><span class="dim">Fuel actual</span><b>' + fuelDisplay + '</b></div>' +
+            _statBox('ETA prox. WP', etaNextDisplay) +
+            _statBox('ETA destino', etaDestDisplay) +
             _statBox('Ultimo push', _fmtAge(tsPushed)) +
-            _statBox('Started', !!meta.started ? 'SI' : 'No') +
             _statBox('RTB', !!meta.rtbEngaged ? 'SI' : 'No') +
           '</div>';
       }

@@ -393,6 +393,17 @@ window.TSAgestor.liveSync = (function () {
       const curCoord = session.coords[ci];
       if (curCoord && curCoord.name) currentWpName = curCoord.name;
     }
+    // F1.5 Dispatch metrics: llama a livePlan.getLiveMetrics si esta
+    // disponible para que dispatch vea fuel actual + ETA proximo WP +
+    // ETA destino. Antes meta.fuelRest era null hardcoded y dispatch
+    // no podia mostrar nada util mas alla del callsign + ruta.
+    let liveMetrics = null;
+    try {
+      const lp = window.TSAgestor && window.TSAgestor.livePlan;
+      if (lp && typeof lp.getLiveMetrics === 'function') {
+        liveMetrics = lp.getLiveMetrics();
+      }
+    } catch (_) {}
     const meta = {
       origin:      session.coords && session.coords[0] && session.coords[0].name,
       destination: session.coords && session.coords[last] && session.coords[last].name,
@@ -404,7 +415,12 @@ window.TSAgestor.liveSync = (function () {
       // El array index raw queda en _rawIdx por si algun consumer lo
       // necesita (debug, futuras features).
       _rawIdx:     session.currentIdx | 0,
-      fuelRest:    null, // se rellena si livePlan lo expone; opt
+      fuelRest:        liveMetrics ? liveMetrics.fuelRest : null,
+      fuelUnit:        liveMetrics ? liveMetrics.fuelUnit : null,
+      fuelStatus:      liveMetrics ? liveMetrics.fuelStatus : null,
+      etaNextWp:       liveMetrics ? liveMetrics.etaNextWp : null,
+      nextWpName:      liveMetrics ? liveMetrics.nextWpName : null,
+      etaDestination:  liveMetrics ? liveMetrics.etaDestination : null,
       started:     !!session.started,
       rtbEngaged:  !!session.rtbEngaged,
     };

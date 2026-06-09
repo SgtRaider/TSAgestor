@@ -3598,6 +3598,50 @@ window.TSAgestor.livePlan = (function () {
         return null;
       }
     },
+    // F1.5 Dispatch metrics: aggregado para que liveSync._buildBody
+    // pueda enviar en meta los valores que el operador en cabina ve
+    // ahora mismo — fuel restante, ETA al proximo WP, ETA a destino
+    // (RTB). Reutiliza _recalc() para evitar duplicar logica de
+    // legtime + fuel propagation.
+    getLiveMetrics: () => {
+      if (!session) return null;
+      try {
+        const rows = _recalc();
+        if (!Array.isArray(rows) || !rows.length) return null;
+        const ci = session.currentIdx | 0;
+        // Fuel restante = fuelRest del row currentIdx (ya incluye
+        // overrides + propagation).
+        const fuelRest = (rows[ci] && Number.isFinite(rows[ci].fuelRest))
+          ? rows[ci].fuelRest
+          : null;
+        // Proximo WP real (salta sub-legs).
+        let nextIdx = null;
+        for (let i = ci + 1; i < rows.length; i++) {
+          if (!rows[i].isSub) { nextIdx = i; break; }
+        }
+        const etaNextWp = (nextIdx != null && Number.isFinite(rows[nextIdx].liveEta))
+          ? rows[nextIdx].liveEta
+          : null;
+        const nextWpName = (nextIdx != null) ? rows[nextIdx].name : null;
+        // ETA destino = liveEta del ultimo WP.
+        const lastIdx = rows.length - 1;
+        const etaDestination = (Number.isFinite(rows[lastIdx].liveEta))
+          ? rows[lastIdx].liveEta
+          : null;
+        return {
+          fuelRest,
+          fuelStatus:    rows[ci] && rows[ci].fuelStatus,
+          fuelUnit:      session.fuelOpts && session.fuelOpts.unit,
+          etaNextWp,
+          nextWpName,
+          etaDestination,
+          destination:   rows[lastIdx].name,
+        };
+      } catch (e) {
+        console.warn('[livePlan] getLiveMetrics fallo:', e && e.message);
+        return null;
+      }
+    },
     // Audit OLA1 BUG#8: clearPlan() de app.js llama a esto para que
     // la sesion Live no quede HUERFANA en localStorage. Sin esto,
     // tsagestor_live_session_v2 sobrevivia y si el operador

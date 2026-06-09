@@ -5097,6 +5097,26 @@ body.b1-fleet .b1-fleet-shell {
   animation: b1FleetMarkerPulse 1.8s ease-in-out infinite;
 }
 
+/* F1.5 Dispatch metrics: highlights de fuel status — joker amarillo
+   (alerta moderada, considerar diversion), bingo rojo (alerta seria,
+   diversion inminente). El dispatcher debe ver de un vistazo que aviones
+   estan bajos de combustible. */
+.b1-fleet-fuel-joker, .b1-fleet-stat-joker {
+  background: rgba(251, 191, 36, 0.18) !important;
+  color: #fde68a !important;
+  font-weight: 700;
+}
+.b1-fleet-fuel-bingo, .b1-fleet-stat-bingo {
+  background: rgba(239, 68, 68, 0.25) !important;
+  color: #fecaca !important;
+  font-weight: 700;
+  animation: b1FleetFuelPulse 1.5s ease-in-out infinite;
+}
+@keyframes b1FleetFuelPulse {
+  0%, 100% { background: rgba(239, 68, 68, 0.25) !important; }
+  50%      { background: rgba(239, 68, 68, 0.42) !important; }
+}
+
 /* OLA4: card Settings de sync con layout flexible (URL + token + callsign + intervalo) */
 #settings-card-livesync .settings-row {
   display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 10px;
