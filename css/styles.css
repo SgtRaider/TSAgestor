@@ -5026,6 +5026,77 @@ body.b1-fleet .b1-fleet-shell {
   border-radius: 4px; margin-bottom: 16px; font-size: 13px;
 }
 
+/* F1.4 Live monitoring: filas clickeables + vista detalle.
+   La fila highlight al hover indica que es interactiva — el operador
+   en cabina debe entender a primera vista que puede pulsar un vuelo
+   para monitorizarlo. */
+.b1-fleet-row-clickable { cursor: pointer; transition: background 120ms; }
+.b1-fleet-row-clickable:hover { background: rgba(96, 165, 250, 0.10); }
+.b1-fleet-row-clickable:active { background: rgba(96, 165, 250, 0.20); }
+
+.b1-fleet-back { margin-right: 8px; }
+.b1-fleet-back.hidden { display: none; }
+
+/* Detail view: stats card en la parte de arriba y mapa Leaflet
+   ocupando el resto del espacio. Layout vertical con flex para que
+   el mapa se estire al alto disponible y se mantenga responsive. */
+.b1-fleet-detail {
+  display: flex; flex-direction: column;
+  gap: 12px;
+  height: calc(100vh - 160px);
+  min-height: 400px;
+}
+.b1-fleet-detail-stats {
+  background: var(--bg-panel, #1e293b);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 16px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.b1-fleet-detail-row1 {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+}
+.b1-fleet-detail-row1 h2 {
+  margin: 0; font-size: 20px; color: var(--ea-azul-palido);
+}
+.b1-fleet-detail-route {
+  font-size: 15px; color: var(--text);
+  padding: 2px 10px; background: rgba(96,165,250,0.10);
+  border-radius: 4px; font-weight: 600;
+}
+.b1-fleet-detail-row2 {
+  display: flex; gap: 18px; flex-wrap: wrap;
+}
+.b1-fleet-stat {
+  display: flex; flex-direction: column;
+  min-width: 90px;
+  font-size: 12px;
+}
+.b1-fleet-stat .dim {
+  font-size: 11px; color: var(--text-mute);
+  letter-spacing: 0.4px; text-transform: uppercase;
+}
+.b1-fleet-stat b {
+  font-size: 16px; color: var(--text);
+  margin-top: 2px;
+}
+.b1-fleet-detail-map {
+  flex: 1; min-height: 300px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+/* Animacion pulsante del halo del marcador "soy aqui" — atrae la
+   atencion al WP actual sin estridencia. */
+@keyframes b1FleetMarkerPulse {
+  0%   { stroke-opacity: 0.6; stroke-width: 1; }
+  50%  { stroke-opacity: 0.2; stroke-width: 4; }
+  100% { stroke-opacity: 0.6; stroke-width: 1; }
+}
+.b1-fleet-marker-halo {
+  animation: b1FleetMarkerPulse 1.8s ease-in-out infinite;
+}
+
 /* OLA4: card Settings de sync con layout flexible (URL + token + callsign + intervalo) */
 #settings-card-livesync .settings-row {
   display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 10px;
