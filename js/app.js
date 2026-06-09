@@ -3915,6 +3915,34 @@
         });
       }
     } catch (_) {}
+    // Restaura los campos liveSync.* y dispatch.unitId a los defaults
+    // pre-configurados (sin tocar opacity, plan, wxLimits, etc.). Util
+    // para el operador que olvido los valores o limpio su token por
+    // error.
+    try {
+      const btn = document.getElementById('btn-livesync-defaults');
+      if (btn && settings && settings.DEFAULTS) {
+        btn.addEventListener('click', () => {
+          if (!confirm('¿Cargar valores por defecto de Sync con servidor?\n\nEsto sobreescribe URL, token, indicativo y unidad. No toca el resto de ajustes.')) return;
+          const D = settings.DEFAULTS;
+          ['liveSync.enabled', 'liveSync.baseUrl', 'liveSync.token', 'liveSync.callsign',
+           'liveSync.intervalSec', 'liveSync.retryMaxSec', 'dispatch.unitId',
+           'dispatch.autoRefreshSec', 'dispatch.showLanded'].forEach(p => {
+            const parts = p.split('.');
+            let v = D;
+            for (const k of parts) { if (v == null) break; v = v[k]; }
+            if (v !== undefined) settings.set(p, v);
+          });
+          // Re-sync de los inputs del DOM con los nuevos valores.
+          initSettingsTab();
+          const out = document.getElementById('livesync-test-result');
+          if (out) {
+            out.textContent = '✓ Defaults cargados';
+            out.style.color = '#22c55e';
+          }
+        });
+      }
+    } catch (_) {}
     console.log('[TSAgestor] listo.');
   });
 })();

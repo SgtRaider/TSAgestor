@@ -52,23 +52,42 @@ window.TSAgestor.settings = (function () {
       windHardKt:         30,
       windMarginalKt:     20,
     },
-    // OLA4: sync con servidor (multi-dispositivo via OCI). Opt-in.
-    // enabled=false por defecto -> backwards-compat absoluta para
-    // instalaciones existentes. Si el operador no lo activa, NINGUN
-    // push se hace y el modulo liveSync queda en stand-by.
+    // OLA4: sync con servidor (multi-dispositivo via OCI). Pre-configurado.
+    //
+    // Estos defaults se aplican cuando:
+    //   (a) instalacion limpia (localStorage vacio), o
+    //   (b) tras importar un backup donde liveSync.token fue scrubbed
+    //       (audit B2/FIX-5: el token se borra del JSON exportado).
+    //
+    // El operador puede sobreescribir cualquier campo desde
+    // Ajustes -> "Sync con servidor". Esos cambios persisten en
+    // tsagestor_settings_v1 y tienen prioridad sobre estos defaults.
+    //
+    // SEGURIDAD del token:
+    // - Es un token de UNIDAD compartido (no personal). Rotacion via
+    //   backend (revoca el viejo, distribuye uno nuevo).
+    // - El token va embebido en este JS source -> visible a cualquiera
+    //   que descargue la PWA. Aceptable porque:
+    //   1. La PWA esta detras de Cloudflare Pages con restricciones
+    //      de origin a la unidad.
+    //   2. El backend rate-limita por unitToken (200 PUTs/min).
+    //   3. exportFullState scrubea el token del backup JSON; el operador
+    //      no comparte el token explicitamente cuando reparte backups.
+    // - Para emergencia (token comprometido) -> rotar en backend y
+    //   bumpear este valor.
     liveSync: {
-      enabled:      false,
-      baseUrl:      '',     // ej 'https://oci.example.com/api' o 'stub' para mock local
-      token:        '',     // unitToken bearer; vacio si stub
-      callsign:     '',     // texto libre max 16 chars; sanitizado al push
+      enabled:      true,
+      baseUrl:      'https://notamhub.duckdns.org',
+      token:        'k6HiZzLRVp80mGuxUGJSCDFHl8tcwm6tgeQAYVKQptrjsrM9',
+      callsign:     'REAPER 21',   // operador puede sobreescribir
       intervalSec:  30,
-      retryMaxSec:  300,    // cap del backoff exponencial
+      retryMaxSec:  300,            // cap del backoff exponencial
     },
     // OLA4: dashboard de flota (?fleet=1). unitId es el identificador
     // que se manda en GET /api/live/sessions?unit=... para filtrar
     // solo los aviones de tu unidad.
     dispatch: {
-      unitId:         '',
+      unitId:         'Ala23',
       autoRefreshSec: 15,
       showLanded:     false,
     },
