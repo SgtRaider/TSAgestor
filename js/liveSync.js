@@ -440,7 +440,14 @@ window.TSAgestor.liveSync = (function () {
     if (!snap) return null;
     if (!snap.started) return null;
     const digest = _sessionDigest(snap);
-    if (digest === _lastBodyDigest && reason !== 'force' && reason !== 'rtb' && reason !== 'start') {
+    // Test report: anyado 'heartbeat' al bypass — el push de heartbeat
+    // SIEMPRE va aunque el digest no cambie. La razon: el dispatcher
+    // usa tsPushed como "senyal de vida". Si la sesion esta volando
+    // sin cambios (cruise estable, sin advances en X minutos), igual
+    // necesitamos refrescar tsPushed para no marcarse como lost.
+    // El body es identico pero el server actualiza tsPushed al
+    // procesar la PUT.
+    if (digest === _lastBodyDigest && reason !== 'force' && reason !== 'rtb' && reason !== 'start' && reason !== 'heartbeat') {
       return null; // nada cambio
     }
     const body = _buildBody(snap);
@@ -504,12 +511,20 @@ window.TSAgestor.liveSync = (function () {
     // El operador debe reconfigurar el token (que dispara configure() y
     // resetea estado) o llamar retry() explicitamente desde el chip.
     if (_kind === 'auth-fail') { _scheduleNext(); return; }
-    // Solo pusha si _dirty O en heartbeat sin cambios cada 5 min.
-    const now = Date.now();
-    const sinceLast = now - _lastPushTs;
-    const heartbeat = sinceLast >= (5 * 60 * 1000);
-    if (_dirty || heartbeat || _failCount > 0) {
-      await _push(_failCount > 0 ? 'retry' : (heartbeat ? 'heartbeat' : 'dirty'));
+    // Test report: antes solo se pusheaba cuando _dirty=true o tras 5
+    // min de heartbeat. Resultado: sesion activa SIN cambios -> el
+    // dispatcher veia tsPushed sin actualizar y marcaba al avion como
+    // stale (60s+) o lost (10min+) aunque siguiera volando bien.
+    //
+    // Ahora: si hay session activa (snap.started), push cada
+    // intervalSec REGARDLESS para mantener tsPushed fresco. Esa es
+    // la "senyal de vida" que dispatch necesita.
+    // Si no hay session activa (no started) no se pushea — no waste.
+    const snap = _getSnapshot();
+    const hasActiveSession = !!(snap && snap.started);
+    if (_dirty || hasActiveSession || _failCount > 0) {
+      const reason = _failCount > 0 ? 'retry' : (_dirty ? 'dirty' : 'heartbeat');
+      await _push(reason);
     }
     _scheduleNext();
   }
