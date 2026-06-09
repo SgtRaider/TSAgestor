@@ -2558,16 +2558,29 @@
 
   function finishDrawing(points) {
     hideDrawBanner();
-    // Guardamos los puntos enriquecidos para que flightPlan reciba la
-    // posición exacta y el nombre original (TSA o waypoint), aunque el
-    // campo de texto sólo muestre etiquetas legibles.
-    state.drawnVia = points.map(p => ({
-      name: p.name || (p.lat.toFixed(4) + ',' + p.lon.toFixed(4)),
-      lat: p.lat,
-      lon: p.lon,
-    }));
+    // Test report: la regex previa /^[A-Z]/ matcheaba cualquier nombre
+    // empezando por mayuscula — incluyendo TSAs ("ZARAGOZA TSA 1A",
+    // "BARDENAS REALES", "PINAREJO") cuando el operador clicaba sobre
+    // un poligono al dibujar la ruta. Resultado: el campo via y el
+    // nombre del waypoint en la tabla mostraban el nombre de la TSA en
+    // vez de las coordenadas, contaminando la narrativa del plan.
+    //
+    // Regex tight ahora: solo matchea identificadores tipo aerovia /
+    // ICAO — 3-5 caracteres uppercase alfanumericos puros, SIN espacios
+    // ni guiones. Captura WIDOS, PEPOL, PPN, TLD, LEMD, LEZG y similares.
+    // TSAs y cualquier nombre con espacio/dígito-mixto cae a coordenadas.
+    const isAirwayWp = (s) => /^[A-Z][A-Z0-9]{2,4}$/.test(s || '');
+    state.drawnVia = points.map(p => {
+      const coordStr = p.lat.toFixed(4) + ',' + p.lon.toFixed(4);
+      const useName = isAirwayWp(p.name);
+      return {
+        name: useName ? p.name : coordStr,
+        lat: p.lat,
+        lon: p.lon,
+      };
+    });
     const display = state.drawnVia.map(p =>
-      /^[A-Z]/.test(p.name) ? p.name : (p.lat.toFixed(4) + ',' + p.lon.toFixed(4))
+      isAirwayWp(p.name) ? p.name : (p.lat.toFixed(4) + ',' + p.lon.toFixed(4))
     );
     $('#plan-via').value = display.join(' ');
     switchTab('plan');
