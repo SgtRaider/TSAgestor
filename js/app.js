@@ -57,6 +57,76 @@
   // Schema versionado (_v=1) por si cambiamos el formato en el futuro.
   const LAST_PLAN_KEY = 'tsagestor_last_plan_v1';
 
+  // Workflow f5-live-tsa-partial-diagnose (5/5 hipotesis confirmadas):
+  // Causa raiz del sintoma "TSAs desaparecen parcialmente tras F5 con
+  // Live activo" — state.tsas y state.selected NO persistian entre
+  // F5. La whitelist de _persistLastPlan los excluye intencionalmente
+  // (un plan no es el dataset). El boot IIFE reinicializa state.tsas=
+  // [] y state.selected=Set() -> getVisible() retorna [] ->
+  // mapView.render no se llama -> SOLO se ven los rojo-dashed de
+  // plan.conflicts dibujados por renderFlightPlan (sin relleno).
+  // Resultado: las TSAs reales desaparecen visualmente, solo persisten
+  // los contornos de conflictos del plan cacheado.
+  //
+  // Fix: snapshot LIGERO en clave separada. Persiste tras cualquier
+  // mutacion de state.tsas / selected / filter / drawnVia (debounced).
+  // Rehidrata en DOMContentLoaded ANTES del _restoreLastPlan para que
+  // renderAll() pueda dibujar las TSAs reales sobre layerGroup.
+  const TSA_DATASET_KEY = 'tsagestor_tsa_dataset_v1';
+  let _tsaPersistTimer = null;
+  function _schedulePersistTsaDataset() {
+    if (_tsaPersistTimer) clearTimeout(_tsaPersistTimer);
+    _tsaPersistTimer = setTimeout(_persistTsaDataset, 400);
+  }
+  function _persistTsaDataset() {
+    try {
+      if (!state.tsas || !state.tsas.length) {
+        localStorage.removeItem(TSA_DATASET_KEY);
+        return;
+      }
+      // Snapshot ligero: solo campos necesarios para reconstruir la
+      // experiencia. Excluye overflownTSAs (derivable) y caches.
+      const snap = {
+        _v: 1,
+        source:       state.tsaSource || 'unknown',
+        atIso:        state.notamHubAt || null,
+        atToIso:      state.notamHubAtTo || null,
+        selectedIds:  Array.from(state.selected || []),
+        filter:       state.filter ? Object.assign({}, state.filter) : null,
+        drawnVia:     state.drawnVia || null,
+        tsas:         state.tsas.map(t => ({
+          id:        t.id,
+          name:      t.name,
+          polygon:   t.polygon,
+          vertical:  t.vertical,
+          schedules: t.schedules,
+          kind:      t.kind,
+          country:   t.country,
+        })),
+      };
+      localStorage.setItem(TSA_DATASET_KEY, JSON.stringify(snap));
+    } catch (e) {
+      // Quota excedida (135 TSAs con polygons grandes pueden pasar
+      // 1MB) o storage no disponible. Borra el viejo para evitar
+      // restaurar dataset stale + warn al desarrollador.
+      try { localStorage.removeItem(TSA_DATASET_KEY); } catch (_) {}
+      console.warn('[app] _persistTsaDataset fallo:', e && e.message);
+    }
+  }
+  function _restoreTsaDataset() {
+    try {
+      const raw = localStorage.getItem(TSA_DATASET_KEY);
+      if (!raw) return null;
+      const snap = JSON.parse(raw);
+      if (!snap || !Array.isArray(snap.tsas) || !snap.tsas.length) return null;
+      if (snap._v !== 1) return null;
+      return snap;
+    } catch (e) {
+      console.warn('[app] _restoreTsaDataset fallo:', e && e.message);
+      return null;
+    }
+  }
+
   // Whitelist defensiva: no volcamos windsHourly (puede ser MB) ni
   // windLevels (re-derivables). El livePlan refetched los recompone
   // si los necesita.
@@ -707,6 +777,7 @@
       sortTSAsByOriginProximity();
       state.selected = new Set(tsas.map(t => t.id)); // por defecto todas
       state.filter = readFilter();
+      state.tsaSource = 'parser';
       if (tsas.length === 0) {
         setStatus('No se han encontrado TSAs en el documento.', 'error');
       } else {
@@ -715,6 +786,7 @@
       $('#filter-bar').classList.remove('hidden');
       ensureMap();
       renderAll();
+      _schedulePersistTsaDataset();
     } catch (err) {
       console.error(err);
       setStatus('Error al procesar el archivo: ' + err.message, 'error');
@@ -775,9 +847,13 @@
       sortTSAsByOriginProximity();
       state.selected = new Set(state.tsas.map(t => t.id));
       state.filter = readFilter();
+      state.tsaSource = 'notamhub';
+      state.notamHubAt = atIso;
+      state.notamHubAtTo = atToIso;
       $('#filter-bar').classList.remove('hidden');
       ensureMap();
       renderAll();
+      _schedulePersistTsaDataset();
       if (!tsas.length) {
         const sample = apiList[0];
         setNotamHubStatus(
@@ -848,9 +924,11 @@
     if (addedTotal > 0) {
       sortTSAsByOriginProximity();
       state.filter = readFilter();
+      state.tsaSource = state.tsaSource || 'kml';
       $('#filter-bar').classList.remove('hidden');
       ensureMap();
       renderAll();
+      _schedulePersistTsaDataset();
       setKmlStatus(`✓ ${addedTotal} TSAs KML añadidas (${importedTotal} placemarks leídos). Edita altitud y validez con el botón ✎ en la tabla.`, 'ok');
       setStatus(`+${addedTotal} TSAs KML.`, 'ok');
     } else if (importedTotal > 0) {
@@ -1190,6 +1268,7 @@
       refreshSelectionUI();
       refreshQuickSelectChips();
       renderViews();
+      _schedulePersistTsaDataset();
     });
 
     // Boton expand/collapse de un grupo: muestra u oculta sus miembros.
@@ -1237,6 +1316,7 @@
     renderTable();
     renderViews();
     refreshQuickSelectChips();
+    _schedulePersistTsaDataset();
   }
 
   function selectNone() {
@@ -1244,6 +1324,7 @@
     renderTable();
     renderViews();
     refreshQuickSelectChips();
+    _schedulePersistTsaDataset();
   }
 
   // ── Quick-select por grupo (FIR/tipo/banda) ──────────────────────
@@ -1335,6 +1416,7 @@
     renderViews();
     refreshQuickSelectChips();
     if (state.mapReady && mapView.render) mapView.render(getVisible());
+    _schedulePersistTsaDataset();
   }
 
   function wireQuickSelect() {
@@ -1390,9 +1472,14 @@
     state.tsas = [];
     state.selected = new Set();
     state.filter = readFilter();
+    state.tsaSource = null;
+    state.notamHubAt = null;
+    state.notamHubAtTo = null;
     $('#filter-bar').classList.add('hidden');
     setStatus('', 'info');
     renderAll();
+    // _persistTsaDataset detecta tsas vacios y hace removeItem.
+    _schedulePersistTsaDataset();
   }
 
   // Actualiza los contadores de cada chip de TSA segun state.tsas.
@@ -3641,6 +3728,47 @@
           }
         }
       });
+    }
+    // Workflow f5-live-tsa-partial-diagnose: rehidratar TSA dataset
+    // ANTES de _restoreLastPlan. Sin esto state.tsas=[] tras F5 ->
+    // mapView.render(getVisible()) no se llama -> las TSAs reales
+    // (con relleno color) desaparecen del mapa y solo quedan los
+    // rojo-dashed sin relleno de plan.conflicts.
+    try {
+      const tsaSnap = _restoreTsaDataset();
+      if (tsaSnap) {
+        state.tsas = reviveTsasFromJSON(tsaSnap.tsas);
+        sortTSAsByOriginProximity();
+        // Si selectedIds esta vacio o sin matches, defensivo: TODAS
+        // las TSAs seleccionadas (comportamiento original tras
+        // notamHub load). Asi no quedan rellenos invisibles por
+        // seleccion vacia.
+        const validIds = Array.isArray(tsaSnap.selectedIds)
+          ? tsaSnap.selectedIds.filter(id => state.tsas.some(t => t.id === id))
+          : [];
+        state.selected = new Set(validIds.length
+          ? validIds
+          : state.tsas.map(t => t.id));
+        if (tsaSnap.filter) {
+          state.filter = Object.assign(
+            { dateFrom: '', dateTo: '', timeFrom: '', timeTo: '' },
+            tsaSnap.filter
+          );
+          try { applyFilterToForm(state.filter); } catch (_) {}
+        }
+        if (tsaSnap.drawnVia) state.drawnVia = tsaSnap.drawnVia;
+        state.tsaSource    = tsaSnap.source;
+        state.notamHubAt   = tsaSnap.atIso;
+        state.notamHubAtTo = tsaSnap.atToIso;
+        const filterBar = document.getElementById('filter-bar');
+        if (filterBar) filterBar.classList.remove('hidden');
+        ensureMap();
+        renderAll();
+        console.log('[TSAgestor] ' + state.tsas.length + ' TSAs restauradas desde dataset cache (source=' + (tsaSnap.source || 'unknown') + ')');
+      }
+    } catch (err) {
+      console.warn('[app] rehidratacion TSA fallo:', err && err.message);
+      try { localStorage.removeItem(TSA_DATASET_KEY); } catch (_) {}
     }
     // Restaurar state.lastPlan ANTES de wire/init que dependa de el
     // (livePlan.init via initLiveTab, mapView.renderFlightPlan en
