@@ -194,12 +194,18 @@ window.TSAgestor.liveSync = (function () {
     const ov = s.overrides ? JSON.stringify(s.overrides).slice(0, 64) : '';
     const elLen = Array.isArray(s.eventLog) ? s.eventLog.length : 0;
     const cal = s.calibration ? (s.calibration.calibratedAt || 0) : 0;
+    // Workflow fleet-tsa-integration: TSA ids en el digest -> activacion
+    // mid-flight (NOTAM Hub refresh anyade una TSA nueva) dispara push
+    // inmediato sin esperar al heartbeat de 30s.
+    const tsaIds = Array.isArray(s.crossingTSAs)
+      ? s.crossingTSAs.map(t => t && t.id).filter(Boolean).sort().join(',').slice(0, 256)
+      : '';
     return _hashStr([
       s.planId || '',
       s.currentIdx | 0,
       s.started ? '1' : '0',
       s.rtbEngaged ? 'R' : '-',
-      holdKeys, fovrKeys, ov, elLen, cal,
+      holdKeys, fovrKeys, ov, elLen, cal, tsaIds,
     ].join('|'));
   }
 
@@ -404,6 +410,26 @@ window.TSAgestor.liveSync = (function () {
         liveMetrics = lp.getLiveMetrics();
       }
     } catch (_) {}
+    // Workflow fleet-tsa-integration: anyadir TSA ids slim + hash al
+    // meta. session.crossingTSAs viaja verbatim en el payload pero
+    // meta.*Ids permite al dispatcher saber QUE TSAs son las del avion
+    // incluso si session.crossingTSAs fue stripeada por size-gate.
+    let conflictTsaIds = [];
+    let overflownTsaIds = [];
+    let tsaSourceHash = '00000000';
+    try {
+      if (Array.isArray(session.crossingTSAs) && session.crossingTSAs.length) {
+        overflownTsaIds = session.crossingTSAs.map(t => t && t.id).filter(Boolean);
+        const fp = window.TSAgestor && window.TSAgestor.flightPlan;
+        if (fp && typeof fp._hashTsaSet === 'function') {
+          tsaSourceHash = fp._hashTsaSet(session.crossingTSAs);
+        }
+      }
+      // conflictTsaIds idealmente vendria de plan.conflicts. Como ya
+      // no tenemos acceso directo aqui, dispatcher recomputa contra
+      // su state.tsas — los Ids del piloto son aditivos no obligatorios.
+    } catch (_) {}
+
     const meta = {
       origin:      session.coords && session.coords[0] && session.coords[0].name,
       destination: session.coords && session.coords[last] && session.coords[last].name,
@@ -421,6 +447,9 @@ window.TSAgestor.liveSync = (function () {
       etaNextWp:       liveMetrics ? liveMetrics.etaNextWp : null,
       nextWpName:      liveMetrics ? liveMetrics.nextWpName : null,
       etaDestination:  liveMetrics ? liveMetrics.etaDestination : null,
+      conflictTsaIds,
+      overflownTsaIds,
+      tsaSourceHash,
       started:     !!session.started,
       rtbEngaged:  !!session.rtbEngaged,
     };

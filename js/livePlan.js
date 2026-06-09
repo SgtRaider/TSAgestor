@@ -240,6 +240,50 @@ window.TSAgestor.livePlan = (function () {
       // del orden y momento exacto de cada decision durante el vuelo.
       eventLog:          keep ? (Array.isArray(prev.eventLog) ? prev.eventLog.slice() : []) : [],
     };
+    // Workflow fleet-tsa-integration: inyecta crossingTSAs en la
+    // session para que el dispatcher remoto pueda ver las TSAs del
+    // vuelo en su mapa. Prefer plan.overflownTSAs (incluye lateral +
+    // por encima/debajo, mas informativo). Si no esta presente
+    // (post-F5 sin el persist whitelist actualizado), deriva del
+    // plan.conflicts dedupado.
+    try {
+      const slim = (t) => t && t.id && t.polygon && t.vertical ? {
+        id:        t.id,
+        name:      t.name,
+        polygon:   t.polygon,
+        vertical:  t.vertical,
+        schedules: Array.isArray(t.schedules) ? t.schedules.map(s => s ? {
+          startUTC: s.startUTC instanceof Date ? s.startUTC.toISOString() : s.startUTC,
+          endUTC:   s.endUTC   instanceof Date ? s.endUTC.toISOString()   : s.endUTC,
+          raw:      s.raw,
+        } : null).filter(Boolean) : [],
+        kind:      t.kind || null,
+        country:   t.country || null,
+      } : null;
+      let source = null;
+      if (Array.isArray(plan.overflownTSAs) && plan.overflownTSAs.length) {
+        source = plan.overflownTSAs;
+      } else if (Array.isArray(plan.conflicts) && plan.conflicts.length) {
+        const seen = new Set();
+        source = [];
+        plan.conflicts.forEach(c => {
+          if (c && c.tsa && c.tsa.id && !seen.has(c.tsa.id)) {
+            seen.add(c.tsa.id);
+            source.push(c.tsa);
+          }
+        });
+      }
+      if (source && source.length) {
+        session.crossingTSAs = source.map(slim).filter(Boolean);
+        session._tsaSchema = 1;
+      } else {
+        session.crossingTSAs = [];
+        session._tsaSchema = 1;
+      }
+    } catch (e) {
+      console.warn('[livePlan] crossingTSAs inject fallo:', e && e.message);
+      session.crossingTSAs = [];
+    }
     // BUG#1 (audit v2): bumpear el epoch invalida cualquier
     // _refetchWinds en vuelo — su commit detectara el cambio y
     // descartara el resultado en lugar de aplicarlo a la session nueva.
@@ -323,6 +367,23 @@ window.TSAgestor.livePlan = (function () {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         session = JSON.parse(raw);
+        // Workflow fleet-tsa-integration: revive schedules de
+        // crossingTSAs (los ISO strings tras JSON.parse no son Date
+        // objects). Tolerante a sesiones viejas sin crossingTSAs.
+        if (session && Array.isArray(session.crossingTSAs)) {
+          session.crossingTSAs.forEach(t => {
+            if (t && Array.isArray(t.schedules)) {
+              t.schedules = t.schedules.map(s => {
+                if (!s) return null;
+                const su = (typeof s.startUTC === 'string') ? new Date(s.startUTC) : s.startUTC;
+                const eu = (typeof s.endUTC   === 'string') ? new Date(s.endUTC)   : s.endUTC;
+                if (!(su instanceof Date) || isNaN(su.getTime())) return null;
+                if (!(eu instanceof Date) || isNaN(eu.getTime())) return null;
+                return { startUTC: su, endUTC: eu, raw: s.raw };
+              }).filter(Boolean);
+            }
+          });
+        }
         _invalidateRecalc();
         // F3.3: si reaparece una sesion ya iniciada (recarga del tab),
         // avisamos al operador con un toast info para que sepa que
@@ -385,7 +446,21 @@ window.TSAgestor.livePlan = (function () {
     // del recalc queda obsoleto.
     _invalidateRecalc();
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+      // Workflow fleet-tsa-integration size-gate: si el JSON supera
+      // 200KB (TSAs con polygons grandes), persiste copia ligera sin
+      // crossingTSAs y con _tsaStripped:true. El dispatcher
+      // recomputara contra su state.tsas local usando meta.*Ids.
+      let toStore = session;
+      try {
+        const tentative = JSON.stringify(session);
+        if (tentative.length > 200 * 1024) {
+          toStore = Object.assign({}, session, {
+            crossingTSAs: null,
+            _tsaStripped: true,
+          });
+        }
+      } catch (_) {}
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toStore));
       // OLA4 FIX-15: hook a liveSync DENTRO del try pero DESPUES del
       // setItem OK, en su propio try/catch para que cualquier fallo de
       // liveSync NUNCA dispare el toast "Sesión NO persistida".

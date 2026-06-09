@@ -151,6 +151,18 @@
         route:        plan.route,
         narrative:    plan.narrative,
         conflicts:    plan.conflicts,
+        // Workflow fleet-tsa-integration: overflownTSAs incluido bajo
+        // cap de 100KB para mejorar fidelidad post-F5 de
+        // session.crossingTSAs. Si el JSON supera 100KB lo omitimos
+        // (livePlan caera al fallback de conflicts.map(c=>c.tsa)).
+        overflownTSAs: (function () {
+          try {
+            const ofl = plan.overflownTSAs;
+            if (!Array.isArray(ofl) || !ofl.length) return null;
+            const ser = JSON.stringify(ofl);
+            return ser.length < 100 * 1024 ? ofl : null;
+          } catch (_) { return null; }
+        })(),
         fuelOpts:     plan.fuelOpts ? Object.assign({}, plan.fuelOpts, {
           windsHourly: null,
           windLevels:  null,

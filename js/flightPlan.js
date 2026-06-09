@@ -1298,5 +1298,33 @@ window.TSAgestor.flightPlan = (function () {
     return { windSpeedKt: speed, windDir: dir };
   }
 
-  return { plan, listWaypoints, buildFuelLog, invalidateGraphCache };
+  // Workflow fleet-tsa-integration: dispatcher necesita estos
+  // helpers para recomputar conflicts/overflownTSAs contra su propio
+  // state.tsas con Date.now() vivo, no contra el snapshot del piloto.
+  // _hashTsaSet devuelve digest 8-char para que liveSync detecte
+  // divergencia de datasets entre piloto y dispatcher.
+  function _hashTsaSet(tsas) {
+    if (!Array.isArray(tsas) || !tsas.length) return '00000000';
+    const parts = tsas.slice().sort((a, b) => {
+      const ai = a && a.id ? String(a.id) : '';
+      const bi = b && b.id ? String(b.id) : '';
+      return ai < bi ? -1 : (ai > bi ? 1 : 0);
+    }).map(t => {
+      if (!t) return '';
+      const lo = t.vertical && Number.isFinite(t.vertical.lowerFt) ? t.vertical.lowerFt : '';
+      const up = t.vertical && Number.isFinite(t.vertical.upperFt) ? t.vertical.upperFt : '';
+      const sch = Array.isArray(t.schedules) ? t.schedules.length : 0;
+      const pl = Array.isArray(t.polygon) ? t.polygon.length : 0;
+      return (t.id || t.name || '') + '|' + lo + '|' + up + '|' + sch + '|' + pl;
+    });
+    const s = parts.join(';');
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) {
+      h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+    }
+    const hex = (h >>> 0).toString(16).padStart(8, '0');
+    return hex.slice(0, 8);
+  }
+
+  return { plan, listWaypoints, buildFuelLog, invalidateGraphCache, findConflicts, findOverflownTSAs, _hashTsaSet };
 })();
