@@ -373,10 +373,37 @@ window.TSAgestor.liveSync = (function () {
     // F5 conserve la version monotonica.
     _persistState();
     const last = session.coords ? session.coords.length - 1 : 0;
+    // Test report: el meta.currentIdx debe coincidir con el numero
+    // del WP que muestra el mapa y el log Live, no con el indice
+    // raw en session.coords (que incluye sub-legs de climb/descent).
+    // Computa el real-WP-index 1-based saltando coords.isSub —
+    // mismo criterio que mapView.renderFlightPlan y livePlan._renderTable.
+    // Tambien el nombre del WP actual para que el dispatch tenga
+    // contexto adicional aunque el backend no lo retorne en la lista.
+    let currentRealIdx = 0;
+    let currentWpName = '';
+    if (Array.isArray(session.coords)) {
+      const ci = session.currentIdx | 0;
+      let count = 0;
+      for (let i = 0; i <= ci && i < session.coords.length; i++) {
+        const c = session.coords[i];
+        if (c && !c.isSub) count++;
+      }
+      currentRealIdx = count;
+      const curCoord = session.coords[ci];
+      if (curCoord && curCoord.name) currentWpName = curCoord.name;
+    }
     const meta = {
       origin:      session.coords && session.coords[0] && session.coords[0].name,
       destination: session.coords && session.coords[last] && session.coords[last].name,
-      currentIdx:  session.currentIdx | 0,
+      // currentIdx ahora lleva el real-WP-index (1-based), no el array
+      // index. El backend lo almacena tal cual y fleet lo muestra
+      // coincidiendo con la numeracion del mapa.
+      currentIdx:  currentRealIdx,
+      currentWpName,
+      // El array index raw queda en _rawIdx por si algun consumer lo
+      // necesita (debug, futuras features).
+      _rawIdx:     session.currentIdx | 0,
       fuelRest:    null, // se rellena si livePlan lo expone; opt
       started:     !!session.started,
       rtbEngaged:  !!session.rtbEngaged,

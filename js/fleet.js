@@ -210,11 +210,25 @@ window.TSAgestor.fleet = (function () {
       filtered.sort((a, b) => (order[_statusOf(a)] - order[_statusOf(b)]));
       const rows = filtered.map(s => {
         const st = _statusOf(s);
+        // Test report: WP del fleet ahora coincide con la numeracion
+        // del mapa y del log Live. liveSync._buildBody envia ya el
+        // real-WP-index (1-based saltando sub-legs) en s.currentIdx
+        // (semantica cambiada con el commit de la sesion fix).
+        // Backwards: si s.currentIdx llegara como raw-index todavia
+        // (cliente viejo o backend antiguo), no hay forma de saberlo
+        // sin el coords array; mostramos el valor tal cual + 0 (no +1)
+        // si ya es 1-based. Para el caso transicional usamos s.currentIdx
+        // directo asumiendo que ya viene 1-based. Si llegan ceros
+        // (operador no inicio ruta), mostramos "—".
+        const wpN = s.currentIdx | 0;
+        const wpLabel = wpN > 0
+          ? ('WP ' + wpN + (s.currentWpName ? ' · ' + escapeHTML(s.currentWpName) : ''))
+          : '—';
         return '<tr class="b1-fleet-row-' + st + '">' +
           '<td><span class="b1-fleet-chip b1-fleet-chip-' + st + '">' + escapeHTML(_statusLabel[st]) + '</span></td>' +
           '<td><b>' + escapeHTML(s.callsign || '—') + '</b></td>' +
           '<td>' + escapeHTML(s.origin || '?') + ' → ' + escapeHTML(s.destination || '?') + '</td>' +
-          '<td>WP ' + ((s.currentIdx | 0) + 1) + '</td>' +
+          '<td>' + wpLabel + '</td>' +
           '<td>' + (Number.isFinite(s.fuelRest) ? Math.round(s.fuelRest) : '—') + '</td>' +
           '<td>' + _fmtAge(s.tsPushed) + '</td>' +
         '</tr>';
