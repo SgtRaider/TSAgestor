@@ -122,19 +122,42 @@
         if (r && r.etaUTC) r.etaUTC = _toDate(r.etaUTC);
       });
     }
+    // Test report: helper reusable para revivir schedules de cualquier
+    // TSA en el plan (conflicts.tsa, coords[i].tsa, segment.from/to.tsa).
+    // Sin esto, paths que iteran tsa.schedules[].startUTC.getTime() tras
+    // F5 crashean porque el JSON.parse deja las fechas como string.
+    function _reviveTsaSchedules(tsa) {
+      if (!tsa || !Array.isArray(tsa.schedules)) return;
+      tsa.schedules = tsa.schedules.map(s => s ? {
+        startUTC: _toDate(s.startUTC),
+        endUTC:   _toDate(s.endUTC),
+        raw:      s.raw,
+      } : s).filter(s => s && s.startUTC && s.endUTC);
+    }
     if (Array.isArray(plan.conflicts)) {
       plan.conflicts.forEach(c => {
         if (!c) return;
         if (c.tStart) c.tStart = _toDate(c.tStart);
         if (c.tEnd)   c.tEnd   = _toDate(c.tEnd);
-        if (c.tsa && Array.isArray(c.tsa.schedules)) {
-          c.tsa.schedules = c.tsa.schedules.map(s => s ? {
-            startUTC: _toDate(s.startUTC),
-            endUTC:   _toDate(s.endUTC),
-            raw:      s.raw,
-          } : s).filter(s => s && s.startUTC && s.endUTC);
+        _reviveTsaSchedules(c.tsa);
+        // c.segment.from/to puede llevar tsa anidado (si el WP era
+        // sobre una TSA al dibujar la ruta).
+        if (c.segment) {
+          if (c.segment.from) _reviveTsaSchedules(c.segment.from.tsa);
+          if (c.segment.to)   _reviveTsaSchedules(c.segment.to.tsa);
         }
       });
+    }
+    // plan.coords[i].tsa para WPs clicados sobre TSAs al dibujar.
+    if (Array.isArray(plan.coords)) {
+      plan.coords.forEach(c => {
+        if (c) _reviveTsaSchedules(c.tsa);
+      });
+    }
+    // plan.overflownTSAs lista TSAs sobrevoladas; tambien tienen
+    // schedules.
+    if (Array.isArray(plan.overflownTSAs)) {
+      plan.overflownTSAs.forEach(t => _reviveTsaSchedules(t));
     }
     return plan;
   }

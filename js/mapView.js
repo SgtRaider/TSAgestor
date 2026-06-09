@@ -1500,7 +1500,18 @@ window.TSAgestor.mapView = (function () {
       for (const pt of tsa.polygon) allLatLngs.push(pt);
     }
     if (allLatLngs.length) {
-      map.fitBounds(L.latLngBounds(allLatLngs), _safeBoundsPadding(30));
+      // Test report: si hay una ruta del plan dibujada (routeLayer con
+      // contenido), NO saltamos a fitear las TSAs porque secuestraria
+      // el foco operativo del operador. Antes refrescar la pagina con
+      // un plan restaurado hacia que la camara saltara primero al plan
+      // (renderFlightPlan) y luego a TODAS las TSAs (render aqui)
+      // cuando state.tsas se cargaba — el usuario percibia "TSAs a
+      // medio cargar" por la pérdida visual del contexto del plan.
+      const hasRoute = routeLayer && typeof routeLayer.getLayers === 'function' &&
+                       routeLayer.getLayers().length > 0;
+      if (!hasRoute) {
+        map.fitBounds(L.latLngBounds(allLatLngs), _safeBoundsPadding(30));
+      }
     }
   }
 
