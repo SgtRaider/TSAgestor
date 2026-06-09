@@ -240,12 +240,21 @@ window.TSAgestor.livePlan = (function () {
       // del orden y momento exacto de cada decision durante el vuelo.
       eventLog:          keep ? (Array.isArray(prev.eventLog) ? prev.eventLog.slice() : []) : [],
     };
-    // Workflow fleet-tsa-integration: inyecta crossingTSAs en la
-    // session para que el dispatcher remoto pueda ver las TSAs del
-    // vuelo en su mapa. Prefer plan.overflownTSAs (incluye lateral +
-    // por encima/debajo, mas informativo). Si no esta presente
-    // (post-F5 sin el persist whitelist actualizado), deriva del
-    // plan.conflicts dedupado.
+    // Workflow fleet-tsa-integration v2: el operador solo quiere las
+    // TSAs por las que la ruta coincide en POSICION + ALTURA. Antes
+    // se inyectaba plan.overflownTSAs (lateral-only, incluia TSAs por
+    // encima/debajo del FL crucero — clutter en dispatch). Ahora se
+    // usa plan.conflicts (cruce lateral + FL match en banda vertical)
+    // sin filtrar por schedule, deduplicado.
+    //
+    // El uso de plan.conflicts es la fuente canonica de "TSAs que la
+    // ruta REALMENTE cruza" segun la doctrina operativa:
+    //   - segCrossesPolygon entre los 2 endpoints del segmento
+    //   - max(seg.from.fl, seg.to.fl) dentro de tsa.vertical
+    //   - schedule activo en la ventana [tStart, tEnd] del segmento
+    //
+    // Para el dispatcher mantenemos los DOS primeros criterios; el
+    // schedule lo decide cliente con Date.now() vivo en fleet.
     try {
       const slim = (t) => t && t.id && t.polygon && t.vertical ? {
         id:        t.id,
@@ -260,26 +269,83 @@ window.TSAgestor.livePlan = (function () {
         kind:      t.kind || null,
         country:   t.country || null,
       } : null;
-      let source = null;
+      // Construye el set: para cada TSA en plan.overflownTSAs, verifica
+      // si AL MENOS UN segmento la cruza CON FL match. Asi se reproduce
+      // el criterio de findConflicts sin filtrar por schedule (dispatch
+      // necesita ver las TSAs aunque su horario no este activo en el
+      // momento de la decision de calcular el plan).
+      const segCross = window.TSAgestor && window.TSAgestor.flightPlan;
+      const fp = window.TSAgestor.flightPlan;
+      const positionAltitudeMatch = [];
+      const seen = new Set();
       if (Array.isArray(plan.overflownTSAs) && plan.overflownTSAs.length) {
-        source = plan.overflownTSAs;
-      } else if (Array.isArray(plan.conflicts) && plan.conflicts.length) {
-        const seen = new Set();
-        source = [];
-        plan.conflicts.forEach(c => {
-          if (c && c.tsa && c.tsa.id && !seen.has(c.tsa.id)) {
-            seen.add(c.tsa.id);
-            source.push(c.tsa);
+        // Replica del criterio findConflicts pero sin schedule check.
+        // Usamos plan.coords (ya incluye sub-legs con su FL) y la
+        // detection de cruce lateral por segmento.
+        const coords = Array.isArray(plan.coords) ? plan.coords : [];
+        function pointInPolyLocal(pt, poly) {
+          let inside = false;
+          const x = pt[1], y = pt[0];
+          for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+            const xi = poly[i][1], yi = poly[i][0];
+            const xj = poly[j][1], yj = poly[j][0];
+            const cond = ((yi > y) !== (yj > y)) &&
+              (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+            if (cond) inside = !inside;
+          }
+          return inside;
+        }
+        function segIntersectLocal(p1, p2, p3, p4) {
+          const ccw = (A, B, C) =>
+            (C[0] - A[0]) * (B[1] - A[1]) > (B[0] - A[0]) * (C[1] - A[1]);
+          return ccw(p1, p3, p4) !== ccw(p2, p3, p4) &&
+                 ccw(p1, p2, p3) !== ccw(p1, p2, p4);
+        }
+        function segCrossesPolyLocal(a, b, poly) {
+          if (pointInPolyLocal(a, poly) || pointInPolyLocal(b, poly)) return true;
+          for (let i = 0; i < poly.length; i++) {
+            if (segIntersectLocal(a, b, poly[i], poly[(i + 1) % poly.length])) return true;
+          }
+          return false;
+        }
+        plan.overflownTSAs.forEach(t => {
+          if (!t || !t.id || seen.has(t.id)) return;
+          if (!t.vertical || !Number.isFinite(t.vertical.lowerFt) || !Number.isFinite(t.vertical.upperFt)) return;
+          if (!Array.isArray(t.polygon) || t.polygon.length < 3) return;
+          const lo = t.vertical.lowerFt;
+          const up = t.vertical.upperFt;
+          // Iterar segmentos de la ruta hasta encontrar uno que cruce
+          // este TSA CON FL match (max(fl extremos) dentro de banda).
+          for (let i = 0; i < coords.length - 1; i++) {
+            const a = coords[i], b = coords[i + 1];
+            if (!a || !b) continue;
+            const flA = Number.isFinite(a.fl) ? a.fl * 100 : null;
+            const flB = Number.isFinite(b.fl) ? b.fl * 100 : null;
+            const flMax = (flA != null && flB != null) ? Math.max(flA, flB)
+                        : (flA != null ? flA : flB);
+            if (flMax == null) continue;
+            if (flMax < lo || flMax > up) continue;
+            if (segCrossesPolyLocal([a.lat, a.lon], [b.lat, b.lon], t.polygon)) {
+              seen.add(t.id);
+              positionAltitudeMatch.push(t);
+              break;
+            }
           }
         });
       }
-      if (source && source.length) {
-        session.crossingTSAs = source.map(slim).filter(Boolean);
-        session._tsaSchema = 1;
-      } else {
-        session.crossingTSAs = [];
-        session._tsaSchema = 1;
+      // Si no hay overflownTSAs persistidos (post-F5 con sesion vieja),
+      // fallback al subset de plan.conflicts.map(c=>c.tsa) deduplicado.
+      // Estos YA cumplen position+altitude (los conflicts los garantizan).
+      if (!positionAltitudeMatch.length && Array.isArray(plan.conflicts) && plan.conflicts.length) {
+        plan.conflicts.forEach(c => {
+          if (c && c.tsa && c.tsa.id && !seen.has(c.tsa.id)) {
+            seen.add(c.tsa.id);
+            positionAltitudeMatch.push(c.tsa);
+          }
+        });
       }
+      session.crossingTSAs = positionAltitudeMatch.map(slim).filter(Boolean);
+      session._tsaSchema = 1;
     } catch (e) {
       console.warn('[livePlan] crossingTSAs inject fallo:', e && e.message);
       session.crossingTSAs = [];

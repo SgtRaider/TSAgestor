@@ -530,39 +530,24 @@ window.TSAgestor.fleet = (function () {
     }, 100);
   }
 
-  // ── Workflow fleet-tsa-integration ───────────────────────────────
-  // _computeTsaOverlays: dado un session.crossingTSAs (del payload del
-  // avion), particiona en 3 categorias segun el estado AHORA:
-  //   active    = schedule cubre Date.now() Y FL match (rojo solido)
-  //   scheduled = conflict pero schedule no activo ahora (rojo dashed)
-  //   lateral   = sobrevuelo sin conflict (ambar dashed informativo)
-  // Cap a 8 polygons por categoria (los mas cercanos al WP actual).
+  // ── Workflow fleet-tsa-integration v2 ────────────────────────────
+  // _computeTsaOverlays: el operador quiere ver SOLO las TSAs que la
+  // ruta cruza en POSICION + ALTURA (livePlan ya filtra en la fuente).
+  // El cliente fleet particiona el set en dos buckets segun el estado
+  // HORARIO ACTUAL:
+  //   active    = schedule cubre Date.now() (rojo solido + pulse)
+  //   scheduled = schedule no activo ahora (rojo dashed)
+  // Sin cap — el operador necesita ver TODAS las TSAs operativamente
+  // relevantes en su pantalla. Si hay >50 algo va muy mal y el ranking
+  // por proximidad ayuda al despliegue visual.
   function _computeTsaOverlays(session, validIdx) {
     const tsas = Array.isArray(session && session.crossingTSAs)
       ? session.crossingTSAs : null;
-    if (!tsas) return { unavailable: 'legacy', active: [], scheduled: [], lateral: [] };
-    if (!tsas.length)        return { unavailable: null,     active: [], scheduled: [], lateral: [] };
+    if (!tsas) return { unavailable: 'legacy', active: [], scheduled: [] };
+    if (!tsas.length)        return { unavailable: null,     active: [], scheduled: [] };
 
     const now = Date.now();
-    const coords = Array.isArray(session.coords) ? session.coords : [];
-    const cur = coords[validIdx] || coords[0] || null;
-    const curLat = cur ? cur.lat : null;
-    const curLon = cur ? cur.lon : null;
 
-    function tsaCentroid(t) {
-      if (!Array.isArray(t.polygon) || !t.polygon.length) return null;
-      let slat = 0, slon = 0, n = 0;
-      for (const p of t.polygon) {
-        if (Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])) {
-          slat += p[0]; slon += p[1]; n++;
-        }
-      }
-      return n ? [slat / n, slon / n] : null;
-    }
-    function distSq(a, b) {
-      const dy = a[0] - b[0], dx = a[1] - b[1];
-      return dy * dy + dx * dx;
-    }
     function isActiveNow(t) {
       if (!Array.isArray(t.schedules) || !t.schedules.length) return true; // sin horario -> siempre
       return t.schedules.some(s => {
@@ -572,43 +557,18 @@ window.TSAgestor.fleet = (function () {
         return Number.isFinite(su) && Number.isFinite(eu) && su <= now && now < eu;
       });
     }
-    function flMatch(t) {
-      // Cualquier WP del plan dentro de la banda vertical -> conflict FL.
-      if (!t.vertical || !Number.isFinite(t.vertical.lowerFt) || !Number.isFinite(t.vertical.upperFt)) return false;
-      const lo = t.vertical.lowerFt;
-      const up = t.vertical.upperFt;
-      return coords.some(c => {
-        const flFt = Number.isFinite(c.fl) ? c.fl * 100 : null;
-        return Number.isFinite(flFt) && flFt >= lo && flFt <= up;
-      });
-    }
 
-    const active = [], scheduled = [], lateral = [];
+    const active = [], scheduled = [];
     tsas.forEach(t => {
       if (!t || !Array.isArray(t.polygon) || t.polygon.length < 3) return;
-      const fl = flMatch(t);
-      const live = isActiveNow(t);
-      if (fl && live)      active.push(t);
-      else if (fl)         scheduled.push(t);
-      else                 lateral.push(t);
+      if (isActiveNow(t)) active.push(t);
+      else                scheduled.push(t);
     });
-    function rankByCur(list) {
-      if (!cur) return list.slice(0, 8);
-      return list
-        .map(t => ({ t, d: (function () {
-          const c = tsaCentroid(t);
-          return c ? distSq(c, [curLat, curLon]) : Infinity;
-        })() }))
-        .sort((a, b) => a.d - b.d)
-        .slice(0, 8)
-        .map(o => o.t);
-    }
     return {
       unavailable: null,
-      active:    rankByCur(active),
-      scheduled: rankByCur(scheduled),
-      lateral:   rankByCur(lateral),
-      totals: { active: active.length, scheduled: scheduled.length, lateral: lateral.length },
+      active,
+      scheduled,
+      totals: { active: active.length, scheduled: scheduled.length },
     };
   }
 
@@ -616,7 +576,7 @@ window.TSAgestor.fleet = (function () {
     if (!overlays) return '';
     if (overlays.unavailable) return 'unavail:' + overlays.unavailable;
     const idsOf = arr => arr.map(t => t.id || t.name || '').sort().join(',');
-    return idsOf(overlays.active) + '|' + idsOf(overlays.scheduled) + '|' + idsOf(overlays.lateral);
+    return idsOf(overlays.active) + '|' + idsOf(overlays.scheduled);
   }
 
   function _renderTsaOverlays(session, validIdx) {
@@ -643,7 +603,6 @@ window.TSAgestor.fleet = (function () {
     const STYLE = {
       active:    { color:'#dc2626', fillColor:'#dc2626', fillOpacity:0.18, weight:3, dashArray:'6 4',  pane:'fleetTsaPane' },
       scheduled: { color:'#dc2626', fillColor:'#dc2626', fillOpacity:0.10, weight:2, dashArray:'6 6',  pane:'fleetTsaPane' },
-      lateral:   { color:'#fbbf24', fillColor:'#fbbf24', fillOpacity:0.06, weight:2, dashArray:'4 8',  pane:'fleetTsaPane' },
     };
     function buildLayer(list, style, state) {
       if (!list.length) return null;
@@ -660,7 +619,6 @@ window.TSAgestor.fleet = (function () {
     }
     _detailLayers.tsaActive    = buildLayer(overlays.active,    STYLE.active,    'active');
     _detailLayers.tsaScheduled = buildLayer(overlays.scheduled, STYLE.scheduled, 'scheduled');
-    _detailLayers.tsaLateral   = buildLayer(overlays.lateral,   STYLE.lateral,   'lateral');
     _renderTsaLegend(overlays);
   }
 
@@ -730,16 +688,13 @@ window.TSAgestor.fleet = (function () {
     if (overlays.unavailable === 'legacy') {
       chips.push('<span class="b1-fleet-tsa-chip b1-fleet-tsa-chip-dim" title="El cliente piloto no envia TSAs (version anterior)">TSAs no disponibles</span>');
     } else {
-      const a = overlays.active || [], s = overlays.scheduled || [], l = overlays.lateral || [];
-      const totals = overlays.totals || {};
-      function chip(cls, count, total, label) {
-        const ext = (total > count) ? (' (+' + (total - count) + ')') : '';
-        return '<span class="b1-fleet-tsa-chip ' + cls + '">' + count + ext + ' ' + label + '</span>';
+      const a = overlays.active || [], s = overlays.scheduled || [];
+      function chip(cls, count, label) {
+        return '<span class="b1-fleet-tsa-chip ' + cls + '">' + count + ' ' + label + '</span>';
       }
-      if (a.length) chips.push(chip('b1-fleet-tsa-chip-active',    a.length, totals.active || a.length,    'conflictos activos'));
-      if (s.length) chips.push(chip('b1-fleet-tsa-chip-scheduled', s.length, totals.scheduled || s.length, 'conflictos programados'));
-      if (l.length) chips.push(chip('b1-fleet-tsa-chip-lateral',   l.length, totals.lateral || l.length,   'cruces laterales'));
-      if (!a.length && !s.length && !l.length) {
+      if (a.length) chips.push(chip('b1-fleet-tsa-chip-active',    a.length, 'TSAs activas en ruta'));
+      if (s.length) chips.push(chip('b1-fleet-tsa-chip-scheduled', s.length, 'TSAs programadas en ruta'));
+      if (!a.length && !s.length) {
         chips.push('<span class="b1-fleet-tsa-chip b1-fleet-tsa-chip-empty">Sin TSAs en ruta</span>');
       }
     }
