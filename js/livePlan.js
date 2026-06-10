@@ -3298,6 +3298,47 @@ window.TSAgestor.livePlan = (function () {
     let next = session.currentIdx + 1;
     while (next < session.coords.length && session.coords[next].isSub) next++;
     if (next >= session.coords.length) return;
+    // Test report: si hay un toast wp-alert abierto para este target,
+    // leer y aplicar los inputs (IAS / flow / FL / fuel) ANTES de
+    // dismissar. Antes el operador editaba la IAS en el toast pero al
+    // pulsar "Estoy en proximo WP" (en lugar del boton Confirmar del
+    // toast) los inputs se perdian y se aplicaba el IAS del plan.
+    // Ambos botones (advance externo + Confirmar interno) ahora
+    // tienen el mismo comportamiento si el toast esta abierto.
+    try {
+      const openToast = document.querySelector('.live-toast[data-toast-id="wp-alert"]');
+      if (openToast) {
+        const toastIdx = parseInt(openToast.dataset.targetIdx, 10);
+        if (Number.isFinite(toastIdx) && toastIdx === next) {
+          const iasEl  = document.getElementById('live-alert-ias');
+          const flowEl = document.getElementById('live-alert-flow');
+          const flEl   = document.getElementById('live-alert-fl');
+          const fuelEl = document.getElementById('live-alert-fuel');
+          const ias  = iasEl  ? parseFloat(iasEl.value)  : NaN;
+          const flow = flowEl ? parseFloat(flowEl.value) : NaN;
+          const fl   = flEl   ? parseFloat(flEl.value)   : NaN;
+          const fuel = fuelEl ? parseFloat(fuelEl.value) : NaN;
+          const hasOv = Number.isFinite(ias) || Number.isFinite(flow) || Number.isFinite(fl);
+          if (hasOv) {
+            const prev = session.overrides || { fromIdx: null, ias: null, flow: null, fl: null };
+            const newIas  = (Number.isFinite(ias)  && ias  > 0)  ? ias  : prev.ias;
+            const newFlow = (Number.isFinite(flow) && flow >= 0) ? flow : prev.flow;
+            const newFl   = (Number.isFinite(fl)   && fl   > 0)  ? fl   : prev.fl;
+            const changed = (Number.isFinite(ias)  && ias  > 0  && ias  !== prev.ias) ||
+                            (Number.isFinite(flow) && flow >= 0 && flow !== prev.flow) ||
+                            (Number.isFinite(fl)   && fl   > 0  && fl   !== prev.fl);
+            const fromIdx = changed
+              ? Math.min(next + 1, session.coords.length - 1)
+              : (prev.fromIdx != null ? prev.fromIdx
+                                      : Math.min(next + 1, session.coords.length - 1));
+            session.overrides = { fromIdx, ias: newIas, flow: newFlow, fl: newFl };
+          }
+          if (Number.isFinite(fuel)) {
+            session.fuelOverrides[next] = Math.max(0, fuel);
+          }
+        }
+      }
+    } catch (_) {}
     const now = Date.now();
     // Registra el paso por idx y, para mantener continuidad de ETAs,
     // tambien por los sub-legs intermedios saltados.
