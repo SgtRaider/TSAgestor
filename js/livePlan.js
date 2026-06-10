@@ -1974,10 +1974,16 @@ window.TSAgestor.livePlan = (function () {
       const changed = (Number.isFinite(ias)  && ias  > 0  && ias  !== prev.ias) ||
                       (Number.isFinite(flow) && flow >= 0 && flow !== prev.flow) ||
                       (Number.isFinite(fl)   && fl   > 0  && fl   !== prev.fl);
+      // Test report: fromIdx = idx (no idx+1). Antes el override solo
+      // aplicaba a partir del SIGUIENTE leg — row del WP actual seguia
+      // mostrando el IAS viejo. Con fromIdx=idx el row del WP al que
+      // el operador acaba de moverse tambien refleja el nuevo IAS,
+      // consistente con la realidad operativa: el operador esta
+      // volando a esa velocidad AHORA, en este WP.
       const fromIdx = changed
-        ? Math.min(idx + 1, session.coords.length - 1)
+        ? Math.min(idx, session.coords.length - 1)
         : (prev.fromIdx != null ? prev.fromIdx
-                                : Math.min(idx + 1, session.coords.length - 1));
+                                : Math.min(idx, session.coords.length - 1));
       session.overrides = { fromIdx, ias: newIas, flow: newFlow, fl: newFl };
     }
     if (Number.isFinite(fuel)) {
@@ -3327,10 +3333,14 @@ window.TSAgestor.livePlan = (function () {
             const changed = (Number.isFinite(ias)  && ias  > 0  && ias  !== prev.ias) ||
                             (Number.isFinite(flow) && flow >= 0 && flow !== prev.flow) ||
                             (Number.isFinite(fl)   && fl   > 0  && fl   !== prev.fl);
+            // Test report: fromIdx = next (no next+1). El override
+            // aplica al row del WP al que se acaba de mover, no al
+            // siguiente. Coincide con la realidad operativa: el
+            // operador esta AHORA en ese WP con el nuevo IAS.
             const fromIdx = changed
-              ? Math.min(next + 1, session.coords.length - 1)
+              ? Math.min(next, session.coords.length - 1)
               : (prev.fromIdx != null ? prev.fromIdx
-                                      : Math.min(next + 1, session.coords.length - 1));
+                                      : Math.min(next, session.coords.length - 1));
             session.overrides = { fromIdx, ias: newIas, flow: newFlow, fl: newFl };
           }
           if (Number.isFinite(fuel)) {
