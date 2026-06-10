@@ -719,7 +719,14 @@ window.TSAgestor.flightPlan = (function () {
       eta,
       route,
       narrative: buildNarrative(route, fl),
-      coords: expandClimbDescentLegs(buildCoords(route, depUTC, speedKt), opts.tsas || []),
+      // Workflow wind-heading-gs-audit Fase B: cadena de expansion.
+      // 1. buildCoords: WPs base con etaUTC + cumDistKm
+      // 2. expandClimbDescentLegs: sub-legs cada 25 FL para climb/descent
+      // 3. expandWindSamplingLegs: sub-WPs equidistantes para sampling
+      //    de viento en legs largos (>=60 NM, hasta 5 sub-WPs)
+      coords: expandWindSamplingLegs(
+        expandClimbDescentLegs(buildCoords(route, depUTC, speedKt), opts.tsas || [])
+      ),
       distanceKM: route.totalDistKm,
       distanceNM: distNM,
       timeMinutes,
@@ -810,6 +817,95 @@ window.TSAgestor.flightPlan = (function () {
       out[i].legDistKm = d;
       out[i].cumDistKm = out[i - 1].cumDistKm + d;
       out[i].cumDistNM = out[i].cumDistKm / NM_KM;
+    }
+    return out;
+  }
+
+  // Workflow wind-heading-gs-audit (Fase B): puntos equidistantes
+  // intermedios para refinar el sampling de viento. Cada leg largo
+  // se subdivide en N sub-WPs sobre la geodesica con flag
+  // isWindSamplingSub:true. El resto del codigo los trata como
+  // sub-legs (igual que isClimbDescentSub) — saltados al advance,
+  // saltados en numeracion visible, etc.
+  //
+  // Densidad bucket-based (~75 NM/sub-WP, alineado con resolucion
+  // espacial Open-Meteo ~50-60 km):
+  //   legNM < 60       -> 0 sub-WPs
+  //   60  <= NM < 120  -> 1 sub-WP  (50%)
+  //   120 <= NM < 200  -> 2 sub-WPs (33%, 66%)
+  //   200 <= NM < 300  -> 3 sub-WPs (25%, 50%, 75%)
+  //   NM  >= 300       -> 5 sub-WPs cap
+  //
+  // No subdivide:
+  //   - sub-legs de climb/descent (ya tienen su propio sampling FL)
+  //   - legs con FL cambiando (mismo motivo)
+  //   - legs entre holds o sintéticos
+  function expandWindSamplingLegs(coords) {
+    if (!coords || coords.length < 2) return coords;
+    function bucketSubsNM(legNM) {
+      if (legNM < 60)  return 0;
+      if (legNM < 120) return 1;
+      if (legNM < 200) return 2;
+      if (legNM < 300) return 3;
+      return 5;
+    }
+    const out = [coords[0]];
+    for (let i = 1; i < coords.length; i++) {
+      const prev = coords[i - 1], cur = coords[i];
+      // Saltamos si alguno es sub-leg de climb/descent: no queremos
+      // anidar sub-WPs dentro de sub-WPs y la subdivision de FL ya
+      // muestrea suficientemente.
+      const isSubBoundary = !!(prev.isClimbDescentSub || cur.isClimbDescentSub);
+      // Distancia del leg en KM (puede no estar en out aun — la
+      // recalculamos sobre la marcha con geom.greatCircleDistance).
+      const legKm = geom.greatCircleDistance([prev.lat, prev.lon], [cur.lat, cur.lon]);
+      const legNM = legKm / NM_KM;
+      const nSubs = isSubBoundary ? 0 : bucketSubsNM(legNM);
+      if (nSubs > 0) {
+        const bearingFwd = geom.bearing([prev.lat, prev.lon], [cur.lat, cur.lon]);
+        // ETA interpolada linear entre prev y cur si Date validos.
+        const etaA = prev.etaUTC instanceof Date ? prev.etaUTC.getTime() : null;
+        const etaB = cur.etaUTC  instanceof Date ? cur.etaUTC.getTime()  : null;
+        // FL interpolado linear (sin clamp TSA — los sub-WPs de
+        // wind sampling solo refinan viento, no buscan TSA collision).
+        const flA = Number.isFinite(prev.fl) ? prev.fl : null;
+        const flB = Number.isFinite(cur.fl)  ? cur.fl  : null;
+        for (let s = 1; s <= nSubs; s++) {
+          const t = s / (nSubs + 1);
+          const [lat, lon] = geom.destinationPoint([prev.lat, prev.lon], bearingFwd, legKm * t);
+          const fl = (flA != null && flB != null) ? Math.round(flA + (flB - flA) * t) : (flA != null ? flA : flB);
+          const eta = (etaA != null && etaB != null) ? new Date(etaA + (etaB - etaA) * t) : null;
+          out.push({
+            // Prefijo ·N/M distingue de ↑/↓ (climb/descent) y de
+            // los WPs originales.
+            name: '·' + (cur.name || ('WP' + i)) + ' ' + s + '/' + nSubs,
+            lat, lon, fl,
+            airway: cur.airway || '-',
+            tsa: null,
+            isClimbDescentSub: true,   // reutilizamos el flag para
+                                        // que el resto del codigo
+                                        // (advance/back/UI numbering)
+                                        // los trate como sub-legs.
+            isWindSamplingSub: true,   // marca adicional para
+                                        // identificarlos especificamente
+                                        // si hace falta filtrarlos
+                                        // (ej. excluir de PDF detalle).
+            parentLegEnd: cur.name || null,
+            etaUTC: eta,
+          });
+        }
+      }
+      out.push(cur);
+    }
+    // Recompute cumDistKm/legDistKm sobre la lista expandida.
+    out[0].cumDistKm = 0;
+    out[0].cumDistNM = 0;
+    out[0].legDistKm = 0;
+    for (let k = 1; k < out.length; k++) {
+      const d = geom.greatCircleDistance([out[k - 1].lat, out[k - 1].lon], [out[k].lat, out[k].lon]);
+      out[k].legDistKm = d;
+      out[k].cumDistKm = out[k - 1].cumDistKm + d;
+      out[k].cumDistNM = out[k].cumDistKm / NM_KM;
     }
     return out;
   }

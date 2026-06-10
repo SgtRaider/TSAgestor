@@ -811,7 +811,11 @@ window.TSAgestor.livePlan = (function () {
             }
           }
           if (Number.isFinite(newTAS) && newTAS > 0) {
-            newGS = Math.max(30, newTAS - hw);
+            // Workflow wind-heading-gs-audit: bug de signo confirmado.
+            // hw = -wSpd*cos((wDir-bearing)*π/180) es el TW component
+            // signed (negativo=cara, positivo=cola). GS = TAS + hw
+            // (no TAS - hw — invertiria el efecto del viento).
+            newGS = Math.max(30, newTAS + hw);
           }
         }
       }
@@ -996,7 +1000,8 @@ window.TSAgestor.livePlan = (function () {
               }
             }
             if (Number.isFinite(tasToUse) && tasToUse > 0) {
-              gsToUse = Math.max(30, tasToUse - hw);
+              // Workflow wind-heading-gs-audit: GS = TAS + hw (TW signed).
+              gsToUse = Math.max(30, tasToUse + hw);
             }
         }
       }
@@ -1159,12 +1164,16 @@ window.TSAgestor.livePlan = (function () {
       const wSpd = session.refetched.legWindSpeed[rIdx];
       if (Number.isFinite(wDir) && Number.isFinite(wSpd)) {
         const bearing = _bearingDeg(A, O);
-        // Viento meteorologico (FROM): headwind positivo = cara.
+        // Workflow wind-heading-gs-audit: viento meteorologico (FROM).
+        // headwindKt es el TW component SIGNED (negativo=cara,
+        // positivo=cola). GS = TAS + headwindKt. Antes era TAS -
+        // headwindKt y RTB sobrestimaba GS con headwind -> menor
+        // fuelNeeded -> safety hazard (RTB OK cuando deberia NO-GO).
         headwindKt = -wSpd * Math.cos((wDir - bearing) * Math.PI / 180);
         windAvailable = true;
       }
     }
-    const gs = Math.max(30, tas - headwindKt);
+    const gs = Math.max(30, tas + headwindKt);
 
     const hours = distNM / gs;
     const minutes = hours * 60;
@@ -1187,7 +1196,11 @@ window.TSAgestor.livePlan = (function () {
       bingo,
       bingoConfigured,
       windAvailable,
-      headwindKt,
+      // Workflow wind-heading-gs-audit: invertir signo al exportar
+      // para que la UI (linea 3188) siga interpretando >=0 como HW.
+      // headwindKt interno es TW-signed (negativo=cara), pero la UI
+      // muestra etiqueta semantica HW/TW al operador.
+      headwindKt: -headwindKt,
       tas, gs,
       ok,
     };
@@ -1467,9 +1480,19 @@ window.TSAgestor.livePlan = (function () {
   }
 
   function _bearingDeg(A, B) {
+    // Workflow wind-heading-gs-audit: delega a TSAgestor.geom.bearing
+    // (canonica) para evitar divergencia futura. Fallback inline si
+    // geom no esta cargado todavia (caso edge en boot).
+    const geom = window.TSAgestor && window.TSAgestor.geom;
+    if (geom && typeof geom.bearing === 'function') {
+      return geom.bearing([A.lat, A.lon], [B.lat, B.lon]);
+    }
     const toRad = d => d * Math.PI / 180;
     const toDeg = r => r * 180 / Math.PI;
-    const dLon = toRad(B.lon - A.lon);
+    let dLonDeg = B.lon - A.lon;
+    if (dLonDeg > 180)  dLonDeg -= 360;
+    if (dLonDeg < -180) dLonDeg += 360;
+    const dLon = toRad(dLonDeg);
     const y = Math.sin(dLon) * Math.cos(toRad(B.lat));
     const x = Math.cos(toRad(A.lat)) * Math.sin(toRad(B.lat)) -
               Math.sin(toRad(A.lat)) * Math.cos(toRad(B.lat)) * Math.cos(dLon);
