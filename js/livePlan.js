@@ -229,6 +229,15 @@ window.TSAgestor.livePlan = (function () {
       actualPassTimes:   keep ? Object.assign({}, prev.actualPassTimes) : {},
       liveHolds:         keep ? Object.assign({}, prev.liveHolds)       : {},
       overrides:         keep ? prev.overrides         : null,
+      // Test report: per-WP override maps. session.overrides (single
+      // range) perdia el valor del WP anterior al encoger fromIdx.
+      // Per-WP storage permite que cada WP recuerde QUE IAS/flow/FL
+      // tenia cuando el operador paso por ahi. Estructura: { idx: val }.
+      // _effOverride(i, 'ias') escanea la map y devuelve el valor del
+      // mayor idx <= i — la ultima entrada antes (o exactamente en) el WP.
+      iasOverrides:      keep ? Object.assign({}, prev.iasOverrides  || {}) : {},
+      flowOverrides:     keep ? Object.assign({}, prev.flowOverrides || {}) : {},
+      flOverrides:       keep ? Object.assign({}, prev.flOverrides   || {}) : {},
       fuelOverrides:     keep ? Object.assign({}, prev.fuelOverrides || {}) : {},
       refetched:         keep ? prev.refetched         : null,
       // OLA2: la calibracion OAT/QNH es una medicion del avion en el
@@ -727,6 +736,39 @@ window.TSAgestor.livePlan = (function () {
   // Si hay viento refetched para el rango actual, lo usa para
   // recomputar GS y por tanto el tiempo del leg. Si no, devuelve el
   // legTimeMin cacheado del plan.
+  // Test report: helper para per-WP override maps.
+  // _effOverride(i, 'ias') devuelve el IAS efectivo en el row i
+  // mirando la map session.iasOverrides — busca el mayor key <= i
+  // (ultimo override seteado antes o en el WP actual). Fallback a
+  // session.overrides legacy si la map esta vacia. Devuelve null si
+  // no hay override aplicable.
+  function _effOverride(idx, key) {
+    if (!session) return null;
+    const mapKey = key + 'Overrides';
+    const map = session[mapKey];
+    if (map) {
+      let bestKey = -1, bestVal = null;
+      for (const k in map) {
+        const ki = parseInt(k, 10);
+        if (Number.isFinite(ki) && ki <= idx && ki > bestKey) {
+          bestKey = ki;
+          bestVal = map[k];
+        }
+      }
+      if (bestVal != null && Number.isFinite(bestVal) &&
+          (key === 'flow' ? bestVal >= 0 : bestVal > 0)) {
+        return bestVal;
+      }
+    }
+    // Legacy fallback (sesiones pre-refactor con session.overrides
+    // single-range).
+    const lov = session.overrides;
+    if (lov && Number.isFinite(lov[key]) && Number.isFinite(lov.fromIdx) && lov.fromIdx <= idx) {
+      if (key === 'flow' ? lov[key] >= 0 : lov[key] > 0) return lov[key];
+    }
+    return null;
+  }
+
   function _legTimeMinAt(idx) {
     if (!session) return 0;
     if (idx <= 0) return 0;
@@ -747,8 +789,8 @@ window.TSAgestor.livePlan = (function () {
     // componente HW NO cambia al cambiar IAS. Si tenemos refetched
     // TAS+wind reales, recalculamos GS correctamente y derivamos el
     // tiempo. Si no, caemos al escalado lineal (mejor que nada).
-    const ov = session.overrides;
-    if (ov && Number.isFinite(ov.ias) && ov.ias > 0 && ov.fromIdx != null && ov.fromIdx <= idx) {
+    const effIas = _effOverride(idx, 'ias');
+    if (effIas != null) {
       const geom = window.TSAgestor && window.TSAgestor.geom;
       let newGS = null;
       if (session.refetched && Number.isFinite(lp.legNM) && lp.legNM > 0 &&
@@ -758,8 +800,7 @@ window.TSAgestor.livePlan = (function () {
           ? session.refetched.legDa[rIdx]
           : (Number.isFinite(session.coords[idx].fl) ? session.coords[idx].fl * 100 : null);
         if (Number.isFinite(daFt)) {
-          const newTAS = geom.kiasToTAS(ov.ias, daFt);
-          // Headwind real del refetched (signo: + es cara).
+          const newTAS = geom.kiasToTAS(effIas, daFt);
           let hw = 0;
           if (session.refetched.legWindDir && session.refetched.legWindSpeed) {
             const wDir = session.refetched.legWindDir[rIdx];
@@ -777,9 +818,8 @@ window.TSAgestor.livePlan = (function () {
       if (Number.isFinite(newGS) && newGS > 0) {
         timeMin = (lp.legNM / newGS) * 60;
       } else {
-        // Fallback lineal cuando no hay datos refetched.
         const planIas = lp.ias || _planIasFromPlan() || 120;
-        timeMin = timeMin * (planIas / ov.ias);
+        timeMin = timeMin * (planIas / effIas);
       }
     }
     return timeMin;
@@ -903,48 +943,43 @@ window.TSAgestor.livePlan = (function () {
       // mostrando los valores del plan. Ademas ov.fl no se leia en
       // NINGUN sitio. Ahora aplicamos el override aqui para que sea
       // visible Y consistente con el calculo downstream.
-      const ovRow = session.overrides;
-      const ovApplies = ovRow && Number.isFinite(ovRow.fromIdx) && ovRow.fromIdx <= i;
+      // Per-WP override map lookup (test report: cada WP recuerda
+      // su propio IAS/flow/FL — si el operador cambia en N+1, el
+      // WP N mantiene el suyo).
+      const effFl  = _effOverride(i, 'fl');
+      const effIas = _effOverride(i, 'ias');
       let overriddenIas = false, overriddenFl = false;
-      if (ovApplies) {
-        const geomRow = window.TSAgestor && window.TSAgestor.geom;
-        if (Number.isFinite(ovRow.fl) && ovRow.fl > 0) {
-          flToUse = ovRow.fl;
-          overriddenFl = true;
-        }
-        if (Number.isFinite(ovRow.ias) && ovRow.ias > 0) {
-          iasToUse = ovRow.ias;
-          overriddenIas = true;
-          // Recompone TAS via kiasToTAS con la DA del FL efectivo.
-          // La calibracion (oatDeltaC) ya se aplica en _refetchWinds
-          // a session.refetched.legDa[]; si no hay refetched, usamos
-          // ISA del FL efectivo + delta (si hay calibracion).
-          if (geomRow && typeof geomRow.kiasToTAS === 'function') {
-            let daFt = null;
-            if (session.refetched && Array.isArray(session.refetched.legDa) &&
-                i >= session.refetched.startIdx) {
-              const rIdx = i - session.refetched.startIdx;
-              const refDa = session.refetched.legDa[rIdx];
-              if (Number.isFinite(refDa)) daFt = refDa;
-            }
-            // Sin refetched o si el FL fue override, recomputa DA.
-            // El override de FL invalida el refetched.legDa (es para
-            // el FL original).
-            if (daFt == null || overriddenFl) {
-              const paFt = (Number.isFinite(flToUse) ? flToUse : 100) * 100;
-              if (typeof geomRow.densityAltitudeFt === 'function' &&
-                  typeof geomRow.isaTempC === 'function') {
-                let oatC = geomRow.isaTempC(paFt);
-                if (session.calibration && Number.isFinite(session.calibration.oatDeltaC)) {
-                  oatC += session.calibration.oatDeltaC;
-                }
-                daFt = geomRow.densityAltitudeFt(paFt, oatC);
-              } else {
-                daFt = paFt;
+      const geomRow = window.TSAgestor && window.TSAgestor.geom;
+      if (effFl != null) {
+        flToUse = effFl;
+        overriddenFl = true;
+      }
+      if (effIas != null) {
+        iasToUse = effIas;
+        overriddenIas = true;
+        if (geomRow && typeof geomRow.kiasToTAS === 'function') {
+          let daFt = null;
+          if (session.refetched && Array.isArray(session.refetched.legDa) &&
+              i >= session.refetched.startIdx) {
+            const rIdx = i - session.refetched.startIdx;
+            const refDa = session.refetched.legDa[rIdx];
+            if (Number.isFinite(refDa)) daFt = refDa;
+          }
+          if (daFt == null || overriddenFl) {
+            const paFt = (Number.isFinite(flToUse) ? flToUse : 100) * 100;
+            if (typeof geomRow.densityAltitudeFt === 'function' &&
+                typeof geomRow.isaTempC === 'function') {
+              let oatC = geomRow.isaTempC(paFt);
+              if (session.calibration && Number.isFinite(session.calibration.oatDeltaC)) {
+                oatC += session.calibration.oatDeltaC;
               }
+              daFt = geomRow.densityAltitudeFt(paFt, oatC);
+            } else {
+              daFt = paFt;
             }
-            const tasNew = geomRow.kiasToTAS(ovRow.ias, daFt);
-            if (Number.isFinite(tasNew) && tasNew > 0) tasToUse = tasNew;
+          }
+          const tasNew = geomRow.kiasToTAS(effIas, daFt);
+          if (Number.isFinite(tasNew) && tasNew > 0) tasToUse = tasNew;
             // GS efectiva: TAS - HW del refetched (si disponible y
             // mismo leg). Sin viento, GS ≈ TAS.
             let hw = 0;
@@ -963,7 +998,6 @@ window.TSAgestor.livePlan = (function () {
             if (Number.isFinite(tasToUse) && tasToUse > 0) {
               gsToUse = Math.max(30, tasToUse - hw);
             }
-          }
         }
       }
 
@@ -1026,52 +1060,31 @@ window.TSAgestor.livePlan = (function () {
       rest = session.fuelOpts.initialFuel || 0;
       baseIdx = 0;
     }
-    const flowOv = session.overrides;
-    // Test report: si NO hay override explicito en el WP base,
-    // initialFuel es pre-flight (antes de cualquier hold). Un hold AT
-    // WP 0 (o el baseIdx) consume durante el hold y debe restarse de
-    // rest una sola vez. Si SI hay override, ese override es el fuel
-    // medido AHORA (post-hold), asi que NO sumamos el hold ahi.
+    // Per-WP flow override via helper. Cada WP recuerda su propio flow.
     if (!baseFromOverride) {
       const holdAtBase = Number(session.liveHolds[baseIdx]) || 0;
       if (holdAtBase > 0) {
-        // Flow durante el hold: override de flow si aplica, sino flow
-        // del leg arriving o el flow base del plan.
         const lpBase = session.legPlan[baseIdx];
-        const ovAppliesHere = flowOv && Number.isFinite(flowOv.flow) &&
-                              flowOv.fromIdx != null && flowOv.fromIdx <= baseIdx + 1;
-        const holdFlow = ovAppliesHere
-          ? flowOv.flow
+        const effFlow = _effOverride(baseIdx + 1, 'flow');
+        const holdFlow = (effFlow != null)
+          ? effFlow
           : (lpBase && lpBase.flow ? lpBase.flow : session.fuelOpts.fuelFlow);
         rest -= (holdAtBase / 60) * holdFlow;
       }
     }
     for (let k = baseIdx + 1; k <= i; k++) {
       const lp = session.legPlan[k];
-      // Test report: antes legFuel partia de lp.legFuel (calculado al
-      // calcular el plan con el IAS y FL ORIGINALES). Si el override
-      // cambia IAS o FL, el timeMin efectivo cambia (mas lento ->
-      // mas tiempo en aire), pero el legFuel cacheado seguia siendo
-      // el del plan -> consumo desalineado con la ETA. Ahora
-      // partimos del timeMin EFECTIVO (que _legTimeMinAt ya calcula
-      // con overrides + refetched) y aplicamos el flow efectivo.
-      const ovAppliesLeg = flowOv && Number.isFinite(flowOv.flow) && flowOv.flow >= 0 &&
-                           flowOv.fromIdx != null && flowOv.fromIdx <= k;
-      const effectiveFlow = ovAppliesLeg
-        ? flowOv.flow
+      const effFlow = _effOverride(k, 'flow');
+      const effectiveFlow = (effFlow != null)
+        ? effFlow
         : (lp && Number.isFinite(lp.flow) ? lp.flow : session.fuelOpts.fuelFlow);
       const effectiveTimeMin = _legTimeMinAt(k);
       let legFuel = (effectiveTimeMin / 60) * effectiveFlow;
-      // Holds vivos en este k anyaden tiempo y por tanto combustible.
-      // Audit OLA1 BUG#10: el override de flow se aplica al hold AL
-      // ARRANCAR el override (fromIdx==k+1, convencion de
-      // _confirmWpAlert). Aceptamos fromIdx<=k+1 para captar el caso.
       const holdMin = Number(session.liveHolds[k]) || 0;
       if (holdMin > 0) {
-        const ovAppliesHere = flowOv && Number.isFinite(flowOv.flow) &&
-                              flowOv.fromIdx != null && flowOv.fromIdx <= k + 1;
-        const holdFlow = ovAppliesHere
-          ? flowOv.flow
+        const holdEffFlow = _effOverride(k + 1, 'flow');
+        const holdFlow = (holdEffFlow != null)
+          ? holdEffFlow
           : (lp ? lp.flow : session.fuelOpts.fuelFlow);
         legFuel += (holdMin / 60) * holdFlow;
       }
@@ -1114,8 +1127,9 @@ window.TSAgestor.livePlan = (function () {
     }
     const distanceNMviaPlan = distKMviaPlan / 1.852;
 
-    const ov = session.overrides;
-    const iasUsed = (ov && Number.isFinite(ov.ias)) ? ov.ias : (_planIasFromPlan() || 120);
+    // Per-WP IAS lookup: el RTB usa el IAS efectivo en el currentIdx.
+    const effIasRtb = _effOverride(curr, 'ias');
+    const iasUsed = (effIasRtb != null) ? effIasRtb : (_planIasFromPlan() || 120);
 
     // TAS via DA real (refetched si disponible) o ISA del FL actual.
     const fl = Number.isFinite(A.fl) ? A.fl : (session.fuelOpts.flightLevel || 100);
@@ -1644,12 +1658,15 @@ window.TSAgestor.livePlan = (function () {
     const lp = session.legPlan[idx];
     const rows = _recalc();
     const r = rows[idx];
-    const ov = session.overrides;
-    const iasVal  = (ov && Number.isFinite(ov.ias))  ? ov.ias
+    // Pre-fill con el override efectivo en idx (del map per-WP).
+    const effIasW  = _effOverride(idx, 'ias');
+    const effFlowW = _effOverride(idx, 'flow');
+    const effFlW   = _effOverride(idx, 'fl');
+    const iasVal  = (effIasW  != null) ? effIasW
                   : (lp && Number.isFinite(lp.ias))  ? Math.round(lp.ias) : '';
-    const flowVal = (ov && Number.isFinite(ov.flow)) ? ov.flow
+    const flowVal = (effFlowW != null) ? effFlowW
                   : (lp && Number.isFinite(lp.flow)) ? Math.round(lp.flow) : '';
-    const flVal   = (ov && Number.isFinite(ov.fl))   ? ov.fl
+    const flVal   = (effFlW   != null) ? effFlW
                   : Number.isFinite(c.fl)            ? c.fl : '';
     const fuelVal = (r && Number.isFinite(r.fuelRest)) ? Math.round(r.fuelRest) : '';
 
@@ -1959,32 +1976,24 @@ window.TSAgestor.livePlan = (function () {
       session.actualPassTimes[k] = now;
     }
     session.currentIdx = idx;
-    const hasOv = Number.isFinite(ias) || Number.isFinite(flow) || Number.isFinite(fl);
-    if (hasOv) {
-      const prev = session.overrides || { fromIdx: null, ias: null, flow: null, fl: null };
-      const newIas  = (Number.isFinite(ias)  && ias  > 0)  ? ias  : prev.ias;
-      const newFlow = (Number.isFinite(flow) && flow >= 0) ? flow : prev.flow;
-      const newFl   = (Number.isFinite(fl)   && fl   > 0)  ? fl   : prev.fl;
-      // BUG#9 (audit v2): solo encoge fromIdx si el operador
-      // REALMENTE cambio algun valor en el modal del WP-alert. Antes
-      // cualquier "Confirmar paso" reseteaba fromIdx=idx+1 aunque el
-      // operador no tocara IAS/Flow/FL — borrando un rango activo de
-      // override IAS que el piloto queria conservar desde un WP
-      // anterior.
-      const changed = (Number.isFinite(ias)  && ias  > 0  && ias  !== prev.ias) ||
-                      (Number.isFinite(flow) && flow >= 0 && flow !== prev.flow) ||
-                      (Number.isFinite(fl)   && fl   > 0  && fl   !== prev.fl);
-      // Test report: fromIdx = idx (no idx+1). Antes el override solo
-      // aplicaba a partir del SIGUIENTE leg — row del WP actual seguia
-      // mostrando el IAS viejo. Con fromIdx=idx el row del WP al que
-      // el operador acaba de moverse tambien refleja el nuevo IAS,
-      // consistente con la realidad operativa: el operador esta
-      // volando a esa velocidad AHORA, en este WP.
-      const fromIdx = changed
-        ? Math.min(idx, session.coords.length - 1)
-        : (prev.fromIdx != null ? prev.fromIdx
-                                : Math.min(idx, session.coords.length - 1));
-      session.overrides = { fromIdx, ias: newIas, flow: newFlow, fl: newFl };
+    // Per-WP override maps: cada WP recuerda su propio IAS/flow/FL.
+    // Solo se guarda si el operador CAMBIO el valor respecto al
+    // efectivo previo (compara contra el valor que el toast
+    // pre-cargo). Asi avanzar sin tocar nada NO crea entradas.
+    session.iasOverrides  = session.iasOverrides  || {};
+    session.flowOverrides = session.flowOverrides || {};
+    session.flOverrides   = session.flOverrides   || {};
+    const prevEffIas  = _effOverride(idx, 'ias');
+    const prevEffFlow = _effOverride(idx, 'flow');
+    const prevEffFl   = _effOverride(idx, 'fl');
+    if (Number.isFinite(ias) && ias > 0 && ias !== prevEffIas) {
+      session.iasOverrides[idx] = ias;
+    }
+    if (Number.isFinite(flow) && flow >= 0 && flow !== prevEffFlow) {
+      session.flowOverrides[idx] = flow;
+    }
+    if (Number.isFinite(fl) && fl > 0 && fl !== prevEffFl) {
+      session.flOverrides[idx] = fl;
     }
     if (Number.isFinite(fuel)) {
       session.fuelOverrides[idx] = Math.max(0, fuel);
@@ -3324,24 +3333,22 @@ window.TSAgestor.livePlan = (function () {
           const flow = flowEl ? parseFloat(flowEl.value) : NaN;
           const fl   = flEl   ? parseFloat(flEl.value)   : NaN;
           const fuel = fuelEl ? parseFloat(fuelEl.value) : NaN;
-          const hasOv = Number.isFinite(ias) || Number.isFinite(flow) || Number.isFinite(fl);
-          if (hasOv) {
-            const prev = session.overrides || { fromIdx: null, ias: null, flow: null, fl: null };
-            const newIas  = (Number.isFinite(ias)  && ias  > 0)  ? ias  : prev.ias;
-            const newFlow = (Number.isFinite(flow) && flow >= 0) ? flow : prev.flow;
-            const newFl   = (Number.isFinite(fl)   && fl   > 0)  ? fl   : prev.fl;
-            const changed = (Number.isFinite(ias)  && ias  > 0  && ias  !== prev.ias) ||
-                            (Number.isFinite(flow) && flow >= 0 && flow !== prev.flow) ||
-                            (Number.isFinite(fl)   && fl   > 0  && fl   !== prev.fl);
-            // Test report: fromIdx = next (no next+1). El override
-            // aplica al row del WP al que se acaba de mover, no al
-            // siguiente. Coincide con la realidad operativa: el
-            // operador esta AHORA en ese WP con el nuevo IAS.
-            const fromIdx = changed
-              ? Math.min(next, session.coords.length - 1)
-              : (prev.fromIdx != null ? prev.fromIdx
-                                      : Math.min(next, session.coords.length - 1));
-            session.overrides = { fromIdx, ias: newIas, flow: newFlow, fl: newFl };
+          // Per-WP override maps: solo guarda si el operador cambio
+          // respecto al efectivo previo en este WP.
+          session.iasOverrides  = session.iasOverrides  || {};
+          session.flowOverrides = session.flowOverrides || {};
+          session.flOverrides   = session.flOverrides   || {};
+          const prevEffIas  = _effOverride(next, 'ias');
+          const prevEffFlow = _effOverride(next, 'flow');
+          const prevEffFl   = _effOverride(next, 'fl');
+          if (Number.isFinite(ias) && ias > 0 && ias !== prevEffIas) {
+            session.iasOverrides[next] = ias;
+          }
+          if (Number.isFinite(flow) && flow >= 0 && flow !== prevEffFlow) {
+            session.flowOverrides[next] = flow;
+          }
+          if (Number.isFinite(fl) && fl > 0 && fl !== prevEffFl) {
+            session.flOverrides[next] = fl;
           }
           if (Number.isFinite(fuel)) {
             session.fuelOverrides[next] = Math.max(0, fuel);
@@ -3400,13 +3407,23 @@ window.TSAgestor.livePlan = (function () {
     }
     // OLA2 cleanup 3: si hay overrides cuyo fromIdx > currentIdx nuevo,
     // los descartamos — fueron metidos cuando el operador estaba mas
-    // adelante y el rango ya no aplica al estado actual. Si todos los
-    // campos quedan null/inactivos, ponemos overrides=null para que
-    // _renderOverridesUI muestre estado limpio.
+    // adelante y el rango ya no aplica al estado actual.
     if (session.overrides && Number.isFinite(session.overrides.fromIdx) &&
         session.overrides.fromIdx > session.currentIdx + 1) {
       session.overrides = null;
     }
+    // Per-WP maps: limpiar entradas con idx > currentIdx (eran del
+    // futuro al que el operador ya no piensa ir desde aqui).
+    ['iasOverrides', 'flowOverrides', 'flOverrides'].forEach(mapKey => {
+      const m = session[mapKey];
+      if (!m) return;
+      Object.keys(m).forEach(k => {
+        const ki = parseInt(k, 10);
+        if (Number.isFinite(ki) && ki > session.currentIdx) {
+          delete m[ki];
+        }
+      });
+    });
     // OLA2 cleanup 3: refetched.startIdx puede haber quedado por
     // delante de currentIdx — los legTimes/winds son aun validos para
     // legs >= startIdx, pero las ETAs intermedias asumian timing
@@ -3501,6 +3518,9 @@ window.TSAgestor.livePlan = (function () {
       actualPassTimes: Object.assign({}, session.actualPassTimes),
       liveHolds: Object.assign({}, session.liveHolds),
       overrides: session.overrides ? Object.assign({}, session.overrides) : null,
+      iasOverrides:  Object.assign({}, session.iasOverrides  || {}),
+      flowOverrides: Object.assign({}, session.flowOverrides || {}),
+      flOverrides:   Object.assign({}, session.flOverrides   || {}),
       fuelOverrides: Object.assign({}, session.fuelOverrides || {}),
       alertedWPs: Object.assign({}, session.alertedWPs || {}),
       refetched: session.refetched,
@@ -3652,6 +3672,9 @@ window.TSAgestor.livePlan = (function () {
     session.actualPassTimes = snap.actualPassTimes;
     session.liveHolds       = snap.liveHolds;
     session.overrides       = snap.overrides;
+    session.iasOverrides    = snap.iasOverrides  || {};
+    session.flowOverrides   = snap.flowOverrides || {};
+    session.flOverrides     = snap.flOverrides   || {};
     session.fuelOverrides   = snap.fuelOverrides;
     session.alertedWPs      = snap.alertedWPs;
     session.refetched       = snap.refetched;
