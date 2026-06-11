@@ -1963,12 +1963,6 @@
    "type": "RNAV",
    "name": "CORVA"
   },
-  "COSSE": {
-   "lat": 28.22444,
-   "lon": -16.02333,
-   "type": "RNAV",
-   "name": "COSSE"
-  },
   "COSTI": {
    "lat": 27.36,
    "lon": -13.70222,
@@ -5706,6 +5700,12 @@
    "lon": -4.50361,
    "type": "RNAV",
    "name": "RONSI"
+  },
+  "ROPEM": {
+   "lat": 29.53778,
+   "lon": -13.07778,
+   "type": "RNAV",
+   "name": "ROPEM"
   },
   "ROSAL": {
    "lat": 38.02139,
