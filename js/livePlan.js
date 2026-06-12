@@ -782,6 +782,31 @@ window.TSAgestor.livePlan = (function () {
     return null;
   }
 
+  // Workflow override-prior-wp-loss: la fuente UNICA de los valores
+  // pre-rellenados en el toast wp-alert. _confirmWpAlert y _advance
+  // DEBEN comparar el input parseado contra ESTOS valores (no contra
+  // _effOverride) para detectar "el operador no toco nada".
+  //
+  // Sin esto: cuando _effOverride(idx, key) es null (no hay override
+  // ni inherited), el toast pre-llena con lp.ias / lp.flow / c.fl
+  // (defaults del plan). Confirmar SIN tocar produce 120 !== null =
+  // true -> escribe iasOverrides[idx] = 120 espurio. Estas escrituras
+  // pinned al plan default shadow-eaban overrides upstream para WPs
+  // futuros via la regla max-key<=idx de _effOverride.
+  function _prefillsForWp(idx) {
+    if (!session) return { ias: null, flow: null, fl: null };
+    const lp = session.legPlan[idx];
+    const c  = session.coords[idx];
+    const effIas  = _effOverride(idx, 'ias');
+    const effFlow = _effOverride(idx, 'flow');
+    const effFl   = _effOverride(idx, 'fl');
+    return {
+      ias:  (effIas  != null) ? effIas  : (lp && Number.isFinite(lp.ias))  ? Math.round(lp.ias)  : null,
+      flow: (effFlow != null) ? effFlow : (lp && Number.isFinite(lp.flow)) ? Math.round(lp.flow) : null,
+      fl:   (effFl   != null) ? effFl   : (c && Number.isFinite(c.fl))     ? c.fl                : null,
+    };
+  }
+
   function _legTimeMinAt(idx) {
     if (!session) return 0;
     if (idx <= 0) return 0;
@@ -1815,16 +1840,14 @@ window.TSAgestor.livePlan = (function () {
     const lp = session.legPlan[idx];
     const rows = _recalc();
     const r = rows[idx];
-    // Pre-fill con el override efectivo en idx (del map per-WP).
-    const effIasW  = _effOverride(idx, 'ias');
-    const effFlowW = _effOverride(idx, 'flow');
-    const effFlW   = _effOverride(idx, 'fl');
-    const iasVal  = (effIasW  != null) ? effIasW
-                  : (lp && Number.isFinite(lp.ias))  ? Math.round(lp.ias) : '';
-    const flowVal = (effFlowW != null) ? effFlowW
-                  : (lp && Number.isFinite(lp.flow)) ? Math.round(lp.flow) : '';
-    const flVal   = (effFlW   != null) ? effFlW
-                  : Number.isFinite(c.fl)            ? c.fl : '';
+    // Workflow override-prior-wp-loss: usa _prefillsForWp para asegurar
+    // que el toast y el gate de escritura comparen contra LOS MISMOS
+    // valores. Sin esto, escribir override espurio si operador
+    // confirma sin tocar nada.
+    const pre = _prefillsForWp(idx);
+    const iasVal  = (pre.ias  != null) ? pre.ias  : '';
+    const flowVal = (pre.flow != null) ? pre.flow : '';
+    const flVal   = (pre.fl   != null) ? pre.fl   : '';
     const fuelVal = (r && Number.isFinite(r.fuelRest)) ? Math.round(r.fuelRest) : '';
 
     // Cuerpo del toast: 4 inputs en grid + 2 botones de accion.
@@ -2133,23 +2156,29 @@ window.TSAgestor.livePlan = (function () {
       session.actualPassTimes[k] = now;
     }
     session.currentIdx = idx;
-    // Per-WP override maps: cada WP recuerda su propio IAS/flow/FL.
-    // Solo se guarda si el operador CAMBIO el valor respecto al
-    // efectivo previo (compara contra el valor que el toast
-    // pre-cargo). Asi avanzar sin tocar nada NO crea entradas.
+    // Workflow override-prior-wp-loss: compara el input parseado
+    // contra el valor que el toast PRE-RELLENO (no contra
+    // _effOverride). _prefillsForWp devuelve EL MISMO valor que
+    // _showWpAlert metio en el input. Asi:
+    //   - Operador NO toca nada -> ias === prefill.ias -> NO se escribe.
+    //   - Operador edita -> ias !== prefill.ias -> SE escribe.
+    // Antes _effOverride(idx, 'ias') retornaba null cuando no habia
+    // override propio NI inherited -> el toast pre-relleno con
+    // Math.round(lp.ias) (plan default) -> confirmar sin tocar daba
+    // ias=120 !== null = true -> iasOverrides[idx] = 120 ESPURIO.
+    // Ese espurio shadow-eaba overrides reales upstream para WPs
+    // futuros via la regla max-key<=idx de _effOverride.
     session.iasOverrides  = session.iasOverrides  || {};
     session.flowOverrides = session.flowOverrides || {};
     session.flOverrides   = session.flOverrides   || {};
-    const prevEffIas  = _effOverride(idx, 'ias');
-    const prevEffFlow = _effOverride(idx, 'flow');
-    const prevEffFl   = _effOverride(idx, 'fl');
-    if (Number.isFinite(ias) && ias > 0 && ias !== prevEffIas) {
+    const pref = _prefillsForWp(idx);
+    if (Number.isFinite(ias) && ias > 0 && ias !== pref.ias) {
       session.iasOverrides[idx] = ias;
     }
-    if (Number.isFinite(flow) && flow >= 0 && flow !== prevEffFlow) {
+    if (Number.isFinite(flow) && flow >= 0 && flow !== pref.flow) {
       session.flowOverrides[idx] = flow;
     }
-    if (Number.isFinite(fl) && fl > 0 && fl !== prevEffFl) {
+    if (Number.isFinite(fl) && fl > 0 && fl !== pref.fl) {
       session.flOverrides[idx] = fl;
     }
     if (Number.isFinite(fuel)) {
@@ -3631,19 +3660,20 @@ window.TSAgestor.livePlan = (function () {
           // Per-WP override maps: aplica al WP "next" (al que se acaba
           // de mover), no al targetIdx desfasado. Asi el rango edicion
           // del toast cae siempre en el WP correcto post-refetch.
+          // Workflow override-prior-wp-loss: compara contra los valores
+          // del prefill (mismos que _showWpAlert metio en los inputs).
+          // Sin tocar nada el toast -> ias === pref.ias -> NO escribe.
           session.iasOverrides  = session.iasOverrides  || {};
           session.flowOverrides = session.flowOverrides || {};
           session.flOverrides   = session.flOverrides   || {};
-          const prevEffIas  = _effOverride(next, 'ias');
-          const prevEffFlow = _effOverride(next, 'flow');
-          const prevEffFl   = _effOverride(next, 'fl');
-          if (Number.isFinite(ias) && ias > 0 && ias !== prevEffIas) {
+          const pref = _prefillsForWp(next);
+          if (Number.isFinite(ias) && ias > 0 && ias !== pref.ias) {
             session.iasOverrides[next] = ias;
           }
-          if (Number.isFinite(flow) && flow >= 0 && flow !== prevEffFlow) {
+          if (Number.isFinite(flow) && flow >= 0 && flow !== pref.flow) {
             session.flowOverrides[next] = flow;
           }
-          if (Number.isFinite(fl) && fl > 0 && fl !== prevEffFl) {
+          if (Number.isFinite(fl) && fl > 0 && fl !== pref.fl) {
             session.flOverrides[next] = fl;
           }
           if (Number.isFinite(fuel)) {
