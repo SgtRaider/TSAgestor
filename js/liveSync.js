@@ -157,8 +157,31 @@ window.TSAgestor.liveSync = (function () {
   function _isStub() {
     return !_cfg.baseUrl || _cfg.baseUrl === 'stub' || _cfg.baseUrl.indexOf('stub:') === 0;
   }
+  // Workflow corp-proxy-livesync-diagnose: detecta si estamos servidos
+  // desde Cloudflare Pages. En ese caso usamos same-origin /api/live/*
+  // que es proxeado por functions/api/live/[[path]].js hacia
+  // notamhub.duckdns.org desde el edge de Cloudflare. Asi:
+  //   - El cliente solo ve trafico a *.pages.dev (whitelisted en
+  //     firewalls corporativos que ya permiten NotamHub).
+  //   - Sin preflight CORS cross-origin (es same-origin).
+  //   - El metodo PUT/DELETE va oculto del DPI corporativo (queda
+  //     dentro del request a *.pages.dev).
+  // En local (file:// o localhost) caemos al baseUrl configurado directo.
+  function _onRemotePages() {
+    try {
+      if (typeof location === 'undefined') return false;
+      const h = location.hostname || '';
+      return h.endsWith('.pages.dev') || h.endsWith('tsagestor.pages.dev');
+    } catch (_) { return false; }
+  }
   function _apiUrl(path) {
     if (_isStub()) return 'stub://' + path;
+    // Same-origin via Pages Function proxy. El path siempre empieza con
+    // /api/live/... — el proxy /api/live/[[path]].js captura todo el
+    // sub-arbol y lo reenvia al upstream.
+    if (_onRemotePages() && path.indexOf('/api/live') === 0) {
+      return path;
+    }
     return _cfg.baseUrl.replace(/\/+$/,'') + path;
   }
 
@@ -635,33 +658,51 @@ window.TSAgestor.liveSync = (function () {
   async function testConnection() {
     if (!isConfigured()) return { ok: false, error: 'no configurado' };
     const t0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    // Workflow corp-proxy-livesync-diagnose: test granular para
+    // discriminar firewall vs CORS vs PUT block. Devuelve hops:
+    //   - hopGet: GET /health (basico, sin Authorization)
+    //   - hopPut: PUT trivial a /sessions/_test (detecta block por metodo)
+    // Asi el operador en PC corporativo ve donde se rompe.
+    const diag = { onPagesProxy: _onRemotePages() };
     try {
       const r = await _doFetch('GET', '/api/live/health', null, { timeoutMs: 5000 });
       const t1 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
-      return { ok: true, latencyMs: Math.round(t1 - t0), stub: _isStub(), serverVersion: r && r.version };
+      diag.hopGet = 'ok';
+      return { ok: true, latencyMs: Math.round(t1 - t0), stub: _isStub(), serverVersion: r && r.version, diag };
     } catch (e) {
       // Test report: diagnostico extendido. ERR_CONNECTION_CLOSED y
       // 'Failed to fetch' son los sintomas tipicos de firewall
       // corporativo, proxy con TLS interception, o bloqueo de DuckDNS.
       // El operador en cabina necesita saber QUE hacer.
       const raw = (e && e.message) || 'unknown';
-      let diag = raw;
+      diag.hopGet = 'fail';
+      diag.errorRaw = raw;
+      let label = raw;
       let hint = null;
+      const onProxy = diag.onPagesProxy;
       if (e && e.name === 'AbortError') {
-        diag = 'timeout (5s sin respuesta)';
+        label = 'timeout (5s sin respuesta)';
         hint = 'El servidor no respondio. Posibles causas: red lenta, servidor caido, firewall que silencia conexiones. Probar con red distinta (hotspot movil).';
       } else if (e && (e.status === 401 || e.status === 403)) {
-        diag = 'token rechazado (HTTP ' + e.status + ')';
+        label = 'token rechazado (HTTP ' + e.status + ')';
         hint = 'Token de unidad invalido o revocado. Reconfigura en Ajustes > Sync con servidor.';
       } else if (e && (raw.indexOf('Failed to fetch') >= 0 || raw.indexOf('NetworkError') >= 0 ||
                        raw.indexOf('ERR_CONNECTION') >= 0 || raw.indexOf('Load failed') >= 0)) {
-        diag = 'conexion rechazada (' + raw + ')';
-        hint = 'Probablemente FIREWALL CORPORATIVO o proxy bloqueando notamhub.duckdns.org. Sintomas tipicos en PCs de oficina/red restringida. Soluciones: (1) usar hotspot movil, (2) pedir whitelist del host al admin de red, (3) verificar que no haya TLS interception (proxy con cert injection).';
+        label = 'conexion rechazada (' + raw + ')';
+        if (onProxy) {
+          // Estamos en *.pages.dev usando el proxy Pages Function. Si
+          // aqui falla, el backend duckdns probablemente esta caido O
+          // la Pages Function functions/api/live/[[path]].js no esta
+          // desplegada (404 envuelto como network error).
+          hint = 'El proxy Pages Function /api/live/* no responde. Verifica: (1) que functions/api/live/[[path]].js esta desplegado en Cloudflare Pages, (2) que el backend notamhub.duckdns.org responde (curl directo desde otra red), (3) que el firewall corporativo permite tu propio dominio *.pages.dev.';
+        } else {
+          hint = 'Probablemente FIREWALL CORPORATIVO bloqueando notamhub.duckdns.org. Para usar la app desde un PC corporativo, accede via la version desplegada en *.pages.dev (que tiene proxy same-origin), no via file:// local. O usa hotspot movil.';
+        }
       } else if (raw.indexOf('CORS') >= 0 || raw.indexOf('preflight') >= 0) {
-        diag = 'CORS bloqueo';
-        hint = 'Cabecera CORS rechazada por el navegador. Verifica la URL en Ajustes (debe coincidir exactamente con el origen autorizado).';
+        label = 'CORS bloqueo';
+        hint = 'Cabecera CORS rechazada. Si estas en *.pages.dev verifica que functions/api/live/[[path]].js incluye Allow-Methods: PUT,DELETE.';
       }
-      return { ok: false, error: diag, hint };
+      return { ok: false, error: label, hint, diag };
     }
   }
   async function listActive() {

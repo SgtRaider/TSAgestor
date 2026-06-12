@@ -3929,8 +3929,9 @@
           if (!ls) { out.textContent = 'liveSync no cargado.'; return; }
           const r = await ls.testConnection();
           if (r && r.ok) {
+            const proxy = r.diag && r.diag.onPagesProxy ? ' · via Pages proxy' : '';
             out.textContent = '✓ OK' + (r.stub ? ' (stub local)' : '') +
-                              (Number.isFinite(r.latencyMs) ? ' · ' + r.latencyMs + ' ms' : '');
+                              (Number.isFinite(r.latencyMs) ? ' · ' + r.latencyMs + ' ms' : '') + proxy;
             out.style.color = '#22c55e';
             out.title = '';
           } else {
@@ -3943,6 +3944,7 @@
               out.title = r.hint;
               out.textContent += ' (pasa el cursor para diagnostico)';
               console.warn('[liveSync test] Hint:', r.hint);
+              console.warn('[liveSync test] Diag:', r.diag);
             }
           }
         });
