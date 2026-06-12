@@ -1624,6 +1624,21 @@ window.TSAgestor.livePlan = (function () {
     // Comprueba si la ETA del siguiente WP real ha sido alcanzada
     // y, de ser asi, dispara el modal de alerta (una vez por WP).
     _checkWpAlertOnTick();
+    // Workflow live-overrides-marker-diagnose bug 2: actualiza la
+    // posicion estimada del marker en cada tick (~1Hz). Antes el
+    // marker quedaba estatico entre confirmaciones (minutos) — ahora
+    // se mueve continuamente segun fraccion de tiempo en el leg.
+    // Solo toca el marker (no recompone polyline ni stats — barato).
+    _updateMarkerTick();
+  }
+  function _updateMarkerTick() {
+    try {
+      const mv = window.TSAgestor && window.TSAgestor.mapView;
+      if (!mv || typeof mv.setLiveMarker !== 'function') return;
+      if (!session || !session.started) return;
+      const est = _estimateLivePosition();
+      if (est && est.latlng) mv.setLiveMarker(est.latlng);
+    } catch (_) {}
   }
   function _wireVisibility() {
     if (_visibilityWired) return;
@@ -2186,14 +2201,107 @@ window.TSAgestor.livePlan = (function () {
   // progreso recorrida vs pendiente en el mapa. Solo dibuja si la
   // sesion esta arrancada — antes del Iniciar ruta el mapa muestra
   // unicamente la ruta del plan (renderFlightPlan).
+  // Workflow live-overrides-marker-diagnose bug 2: helper para
+  // interpolar la posicion de la aeronave a lo largo de la polilinea
+  // entre currentIdx y nextReal segun fraccion de tiempo en el leg.
+  // Antes el marker estaba estatico en coords[currentIdx] entre
+  // confirmaciones — durante minutos quedaba inmovil aunque el avion
+  // si avanzara fisicamente. Ahora interpola posicion-en-leg.
+  function _interpolateAlongLeg(fromIdx, toIdx, fraction) {
+    if (!session || !Array.isArray(session.coords)) return null;
+    const coords = session.coords;
+    if (fromIdx < 0 || toIdx >= coords.length || fromIdx >= toIdx) {
+      const c = coords[fromIdx];
+      return (c && Number.isFinite(c.lat)) ? [c.lat, c.lon] : null;
+    }
+    const f = Math.max(0, Math.min(1, fraction));
+    // Distancia acumulada del sub-segmento [fromIdx, toIdx].
+    let totalKm = 0;
+    for (let k = fromIdx + 1; k <= toIdx; k++) {
+      const lk = Number(coords[k].legDistKm) || 0;
+      totalKm += lk;
+    }
+    if (totalKm <= 0) {
+      const c = coords[fromIdx];
+      return (c && Number.isFinite(c.lat)) ? [c.lat, c.lon] : null;
+    }
+    const targetKm = totalKm * f;
+    let acc = 0;
+    for (let k = fromIdx + 1; k <= toIdx; k++) {
+      const lk = Number(coords[k].legDistKm) || 0;
+      if (acc + lk >= targetKm || k === toIdx) {
+        const remaining = Math.max(0, targetKm - acc);
+        const t = lk > 0 ? (remaining / lk) : 0;
+        const a = coords[k - 1], b = coords[k];
+        if (!Number.isFinite(a.lat) || !Number.isFinite(b.lat)) return null;
+        const lat = a.lat + (b.lat - a.lat) * t;
+        const lon = a.lon + (b.lon - a.lon) * t;
+        return [lat, lon];
+      }
+      acc += lk;
+    }
+    const c = coords[toIdx];
+    return (c && Number.isFinite(c.lat)) ? [c.lat, c.lon] : null;
+  }
+
+  // Computa la posicion estimada del avion AHORA basada en
+  // actualPassTimes[currentIdx] + ETA[nextReal] + Date.now().
+  // Devuelve { latlng, fraction, overdue } o null si no hay session
+  // activa o no se puede estimar.
+  function _estimateLivePosition() {
+    if (!session || !session.started || !Array.isArray(session.coords) || session.coords.length < 1) return null;
+    const idx = Math.max(0, Math.min(session.currentIdx | 0, session.coords.length - 1));
+    // nextReal = primer WP NO-sub a partir de idx+1.
+    let nextReal = -1;
+    for (let k = idx + 1; k < session.coords.length; k++) {
+      if (!session.coords[k].isSub && !session.coords[k].isClimbDescentSub) {
+        nextReal = k; break;
+      }
+    }
+    if (nextReal < 0) {
+      // En destino o no hay siguiente — marker en currentIdx.
+      const c = session.coords[idx];
+      return (c && Number.isFinite(c.lat))
+        ? { latlng: [c.lat, c.lon], fraction: 1, overdue: false }
+        : null;
+    }
+    const passT = session.actualPassTimes && session.actualPassTimes[idx];
+    if (!Number.isFinite(passT)) {
+      // Sin timestamp de paso en currentIdx (sesion edge), marker en idx.
+      const c = session.coords[idx];
+      return (c && Number.isFinite(c.lat))
+        ? { latlng: [c.lat, c.lon], fraction: 0, overdue: false }
+        : null;
+    }
+    // ETA al nextReal: del cache _recalc si esta vigente; si no,
+    // calculo barato sumando _legTimeMinAt.
+    let etaNext = null;
+    try {
+      const rows = _recalc();
+      if (rows && rows[nextReal] && Number.isFinite(rows[nextReal].liveEta)) {
+        etaNext = rows[nextReal].liveEta;
+      }
+    } catch (_) {}
+    if (!Number.isFinite(etaNext) || etaNext <= passT) {
+      const c = session.coords[idx];
+      return (c && Number.isFinite(c.lat))
+        ? { latlng: [c.lat, c.lon], fraction: 0, overdue: false }
+        : null;
+    }
+    const now = Date.now();
+    const totalMs = etaNext - passT;
+    const elapsedMs = now - passT;
+    const f = Math.max(0, Math.min(1, elapsedMs / totalMs));
+    const latlng = _interpolateAlongLeg(idx, nextReal, f);
+    if (!latlng) return null;
+    return { latlng, fraction: f, overdue: elapsedMs > totalMs * 1.2 };
+  }
+
   function _updateMapOverlay() {
     const mv = window.TSAgestor && window.TSAgestor.mapView;
     if (!mv || typeof mv.setLiveMarker !== 'function') return;
     // BUG#7 (audit v2): mantener sync el flag de supresion del plan
-    // original en el mapa con session.rtbEngaged. Asi al recargar el
-    // tab con RTB persistido + entrar a Live por primera vez, NO se
-    // pinta la ruta amarilla del plan original sobre la cyan del
-    // retorno. Igual al cancelar RTB sin pasar por _cancelRTB (raro).
+    // original en el mapa con session.rtbEngaged.
     if (typeof mv.suppressFlightPlan === 'function') {
       mv.suppressFlightPlan(!!(session && session.rtbEngaged));
     }
@@ -2202,11 +2310,19 @@ window.TSAgestor.livePlan = (function () {
       return;
     }
     const idx = Math.max(0, Math.min(session.currentIdx | 0, session.coords.length - 1));
-    const c = session.coords[idx];
-    if (c && Number.isFinite(c.lat) && Number.isFinite(c.lon)) {
-      mv.setLiveMarker([c.lat, c.lon]);
+    // Marker en posicion estimada (interpolacion temporal en el leg
+    // current -> next). Sin esto el marker se quedaba estatico en el
+    // ultimo WP confirmado durante minutos.
+    const est = _estimateLivePosition();
+    if (est && est.latlng) {
+      mv.setLiveMarker(est.latlng);
     } else {
-      mv.setLiveMarker(null);
+      const c = session.coords[idx];
+      if (c && Number.isFinite(c.lat) && Number.isFinite(c.lon)) {
+        mv.setLiveMarker([c.lat, c.lon]);
+      } else {
+        mv.setLiveMarker(null);
+      }
     }
     mv.setLiveProgress(session.coords, idx);
   }
@@ -3376,7 +3492,19 @@ window.TSAgestor.livePlan = (function () {
       const openToast = document.querySelector('.live-toast[data-toast-id="wp-alert"]');
       if (openToast) {
         const toastIdx = parseInt(openToast.dataset.targetIdx, 10);
-        if (Number.isFinite(toastIdx) && toastIdx === next) {
+        // Workflow live-overrides-marker-diagnose bug 1: guard relajado.
+        // Antes era toastIdx === next (estricto). Tras _refetchWinds
+        // que muta coords[] (anyade/quita sub-WPs por cambio FL/IAS),
+        // los indices se desplazan: targetIdx viejo puede no coincidir
+        // exactamente con el next recien computado, aunque ambos se
+        // refieran al MISMO WP semantico que el operador edito.
+        // Acepta cualquier toastIdx en el rango [currentIdx+1, next]
+        // (todos los WPs que se confirman con este advance). Tambien
+        // acepta si toastIdx == next o == coords[next].name match.
+        const inRange = Number.isFinite(toastIdx) &&
+                        toastIdx > session.currentIdx &&
+                        toastIdx <= next;
+        if (inRange) {
           const iasEl  = document.getElementById('live-alert-ias');
           const flowEl = document.getElementById('live-alert-flow');
           const flEl   = document.getElementById('live-alert-fl');
@@ -3385,8 +3513,9 @@ window.TSAgestor.livePlan = (function () {
           const flow = flowEl ? parseFloat(flowEl.value) : NaN;
           const fl   = flEl   ? parseFloat(flEl.value)   : NaN;
           const fuel = fuelEl ? parseFloat(fuelEl.value) : NaN;
-          // Per-WP override maps: solo guarda si el operador cambio
-          // respecto al efectivo previo en este WP.
+          // Per-WP override maps: aplica al WP "next" (al que se acaba
+          // de mover), no al targetIdx desfasado. Asi el rango edicion
+          // del toast cae siempre en el WP correcto post-refetch.
           session.iasOverrides  = session.iasOverrides  || {};
           session.flowOverrides = session.flowOverrides || {};
           session.flOverrides   = session.flOverrides   || {};
@@ -3405,6 +3534,10 @@ window.TSAgestor.livePlan = (function () {
           if (Number.isFinite(fuel)) {
             session.fuelOverrides[next] = Math.max(0, fuel);
           }
+        } else if (Number.isFinite(toastIdx)) {
+          console.warn('[livePlan] advance: toast targetIdx', toastIdx,
+                       'fuera de rango (currentIdx+1=' + (session.currentIdx + 1) +
+                       ', next=' + next + ') — inputs del toast descartados.');
         }
       }
     } catch (_) {}
