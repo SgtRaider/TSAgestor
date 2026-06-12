@@ -640,7 +640,28 @@ window.TSAgestor.liveSync = (function () {
       const t1 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
       return { ok: true, latencyMs: Math.round(t1 - t0), stub: _isStub(), serverVersion: r && r.version };
     } catch (e) {
-      return { ok: false, error: (e && e.message) || 'unknown' };
+      // Test report: diagnostico extendido. ERR_CONNECTION_CLOSED y
+      // 'Failed to fetch' son los sintomas tipicos de firewall
+      // corporativo, proxy con TLS interception, o bloqueo de DuckDNS.
+      // El operador en cabina necesita saber QUE hacer.
+      const raw = (e && e.message) || 'unknown';
+      let diag = raw;
+      let hint = null;
+      if (e && e.name === 'AbortError') {
+        diag = 'timeout (5s sin respuesta)';
+        hint = 'El servidor no respondio. Posibles causas: red lenta, servidor caido, firewall que silencia conexiones. Probar con red distinta (hotspot movil).';
+      } else if (e && (e.status === 401 || e.status === 403)) {
+        diag = 'token rechazado (HTTP ' + e.status + ')';
+        hint = 'Token de unidad invalido o revocado. Reconfigura en Ajustes > Sync con servidor.';
+      } else if (e && (raw.indexOf('Failed to fetch') >= 0 || raw.indexOf('NetworkError') >= 0 ||
+                       raw.indexOf('ERR_CONNECTION') >= 0 || raw.indexOf('Load failed') >= 0)) {
+        diag = 'conexion rechazada (' + raw + ')';
+        hint = 'Probablemente FIREWALL CORPORATIVO o proxy bloqueando notamhub.duckdns.org. Sintomas tipicos en PCs de oficina/red restringida. Soluciones: (1) usar hotspot movil, (2) pedir whitelist del host al admin de red, (3) verificar que no haya TLS interception (proxy con cert injection).';
+      } else if (raw.indexOf('CORS') >= 0 || raw.indexOf('preflight') >= 0) {
+        diag = 'CORS bloqueo';
+        hint = 'Cabecera CORS rechazada por el navegador. Verifica la URL en Ajustes (debe coincidir exactamente con el origen autorizado).';
+      }
+      return { ok: false, error: diag, hint };
     }
   }
   async function listActive() {

@@ -3924,6 +3924,7 @@
       if (btn && out) {
         btn.addEventListener('click', async () => {
           out.textContent = 'Probando...';
+          out.title = '';
           const ls = window.TSAgestor && window.TSAgestor.liveSync;
           if (!ls) { out.textContent = 'liveSync no cargado.'; return; }
           const r = await ls.testConnection();
@@ -3931,9 +3932,18 @@
             out.textContent = '✓ OK' + (r.stub ? ' (stub local)' : '') +
                               (Number.isFinite(r.latencyMs) ? ' · ' + r.latencyMs + ' ms' : '');
             out.style.color = '#22c55e';
+            out.title = '';
           } else {
-            out.textContent = '✗ Falló: ' + ((r && r.error) || 'desconocido');
+            // Test report: muestra hint extendido con diagnostico de
+            // red. Util en PCs corporativos con firewall.
+            const baseMsg = '✗ Falló: ' + ((r && r.error) || 'desconocido');
+            out.textContent = baseMsg;
             out.style.color = '#ef4444';
+            if (r && r.hint) {
+              out.title = r.hint;
+              out.textContent += ' (pasa el cursor para diagnostico)';
+              console.warn('[liveSync test] Hint:', r.hint);
+            }
           }
         });
       }

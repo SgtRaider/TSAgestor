@@ -1177,7 +1177,11 @@ window.TSAgestor.livePlan = (function () {
 
     const hours = distNM / gs;
     const minutes = hours * 60;
-    const flow = (ov && Number.isFinite(ov.flow)) ? ov.flow : session.fuelOpts.fuelFlow;
+    // Per-WP flow override: usa el efectivo en el currentIdx (lookup
+    // en flowOverrides map). Antes hacia `ov.flow` con ov ya
+    // removido del refactor v266 -> ReferenceError.
+    const effFlowRtb = _effOverride(curr, 'flow');
+    const flow = (effFlowRtb != null) ? effFlowRtb : session.fuelOpts.fuelFlow;
     const fuelNeeded = hours * flow;
     const rows = _recalc();
     const currentRow = rows[curr];
@@ -2441,20 +2445,45 @@ window.TSAgestor.livePlan = (function () {
         detail: `${mins} min en WP #${idx + 1} ${session.coords[idx] && session.coords[idx].name || ''}`,
       });
     });
+    // Legacy single-range overrides (sesiones pre-refactor per-WP).
     if (session.overrides) {
-      const ov = session.overrides;
+      const lov = session.overrides;
       const parts = [];
-      if (Number.isFinite(ov.ias))  parts.push(`IAS ${ov.ias} kt`);
-      if (Number.isFinite(ov.flow)) parts.push(`Flow ${ov.flow}/h`);
-      if (Number.isFinite(ov.fl))   parts.push(`FL${ov.fl}`);
+      if (Number.isFinite(lov.ias))  parts.push(`IAS ${lov.ias} kt`);
+      if (Number.isFinite(lov.flow)) parts.push(`Flow ${lov.flow}/h`);
+      if (Number.isFinite(lov.fl))   parts.push(`FL${lov.fl}`);
       if (parts.length) {
         events.push({
-          time: session.actualPassTimes[ov.fromIdx] || null,
+          time: session.actualPassTimes[lov.fromIdx] || null,
           type: 'Override',
-          detail: `Desde WP #${(ov.fromIdx | 0) + 1}: ${parts.join(', ')}`,
+          detail: `Desde WP #${(lov.fromIdx | 0) + 1}: ${parts.join(', ')}`,
         });
       }
     }
+    // Per-WP override maps (post-refactor v266): emite un event por
+    // cada WP donde el operador cambio algun parametro.
+    const collectIdx = new Set();
+    ['iasOverrides', 'flowOverrides', 'flOverrides'].forEach(k => {
+      const m = session[k];
+      if (!m) return;
+      Object.keys(m).forEach(ki => { collectIdx.add(parseInt(ki, 10)); });
+    });
+    Array.from(collectIdx).filter(Number.isFinite).sort((a, b) => a - b).forEach(idx => {
+      const parts = [];
+      const iasV  = session.iasOverrides  && session.iasOverrides[idx];
+      const flowV = session.flowOverrides && session.flowOverrides[idx];
+      const flV   = session.flOverrides   && session.flOverrides[idx];
+      if (Number.isFinite(iasV))  parts.push(`IAS ${iasV} kt`);
+      if (Number.isFinite(flowV)) parts.push(`Flow ${flowV}/h`);
+      if (Number.isFinite(flV))   parts.push(`FL${flV}`);
+      if (parts.length) {
+        events.push({
+          time: session.actualPassTimes[idx] || null,
+          type: 'Override',
+          detail: `WP #${(idx | 0) + 1}: ${parts.join(', ')}`,
+        });
+      }
+    });
     if (session.rtbEngaged) {
       events.push({ time: startMs, type: 'RTB', detail: 'Modo retorno engaged durante el vuelo' });
     }
@@ -3579,10 +3608,12 @@ window.TSAgestor.livePlan = (function () {
       return;
     }
 
-    // Parámetros del retorno: usa override si activo, sino plan inicial.
-    const ov = session.overrides;
-    const ias  = (ov && Number.isFinite(ov.ias))  ? ov.ias  : (_planIasFromPlan() || 120);
-    const flow = (ov && Number.isFinite(ov.flow)) ? ov.flow : session.fuelOpts.fuelFlow;
+    // Parámetros del retorno: per-WP override en el currentIdx (lookup
+    // en maps post-refactor v266); si no hay, fallback al plan inicial.
+    const effIasRtbBuild  = _effOverride(session.currentIdx, 'ias');
+    const effFlowRtbBuild = _effOverride(session.currentIdx, 'flow');
+    const ias  = (effIasRtbBuild  != null) ? effIasRtbBuild  : (_planIasFromPlan() || 120);
+    const flow = (effFlowRtbBuild != null) ? effFlowRtbBuild : session.fuelOpts.fuelFlow;
 
     // Tiempo de partida = paso real en current, o ahora.
     const startTime  = session.actualPassTimes[curIdx] || Date.now();
