@@ -376,8 +376,15 @@ window.TSAgestor.meteoApi = (function () {
   //       },
   //       ...
   //     ] }
-  async function fetchWindsAloft(points /*, fl (ignored — fetchea todos) */) {
+  async function fetchWindsAloft(points, opts) {
     if (!points || !points.length) return { levels: [], pointsHourly: [] };
+    opts = opts || {};
+    // Workflow wind-eta-resync-design step 1: parametrizar horizon.
+    // Default 2 dias (cubre vuelos cortos + livePlan re-lookup). Planning
+    // de rutas diferidas puede pedir 7 con opts.forecastDays.
+    // Memoria por WP: ~24 KB con 2 dias vs ~109 KB con 7 dias.
+    const forecastDays = Number(opts.forecastDays) > 0 ? Number(opts.forecastDays) : 2;
+    const pastDays     = Number(opts.pastDays)     > 0 ? Number(opts.pastDays)     : 2;
     const lats = points.map(p => p.lat.toFixed(4)).join(',');
     const lons = points.map(p => p.lon.toFixed(4)).join(',');
     const vars = ISA_LEVELS.flatMap(l => [
@@ -385,7 +392,7 @@ window.TSAgestor.meteoApi = (function () {
       `temperature_${l.hPa}hPa`,
     ]).join(',');
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
-                `&hourly=${vars}&windspeed_unit=kn&past_days=2&forecast_days=7&timezone=UTC`;
+                `&hourly=${vars}&windspeed_unit=kn&past_days=${pastDays}&forecast_days=${forecastDays}&timezone=UTC`;
     const res = await safeFetch(url, 'Open-Meteo (vientos pronóstico)');
     if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
     const data = await res.json();

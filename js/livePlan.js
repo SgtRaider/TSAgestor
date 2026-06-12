@@ -82,6 +82,12 @@ window.TSAgestor.livePlan = (function () {
   // recupere.
   let _sigmetLastError = 0;
   const SIGMET_ERROR_COOLDOWN_MS = 2 * 60 * 1000;
+  // Workflow wind-eta-resync-design step 6: trigger automatico de
+  // refetch cuando el cache local se queda corto.
+  const WIND_TTL_MS                   = 60 * 60 * 1000;     // 60 min
+  const WIND_HORIZON_MARGIN_MS        = 60 * 60 * 1000;     // 60 min
+  const WIND_REFETCH_ERROR_COOLDOWN_MS = 2  * 60 * 1000;     // 2 min anti-thrash
+  let _windRefetchLastError = 0;
   let _sigmetCrossings = [];    // ultimo resultado del cross-check vs ruta
   let _activeTSAcrossings = []; // F2.6: TSAs activas que cruza la ruta restante
   // F2.8: cache del ultimo _recalc para evitar recomputar O(N²) en
@@ -525,11 +531,18 @@ window.TSAgestor.livePlan = (function () {
       // 200KB (TSAs con polygons grandes), persiste copia ligera sin
       // crossingTSAs y con _tsaStripped:true. El dispatcher
       // recomputara contra su state.tsas local usando meta.*Ids.
-      let toStore = session;
+      //
+      // Workflow wind-eta-resync-design step 3: SIEMPRE excluir
+      // windsHourly del localStorage. El timeseries crudo ocupa
+      // ~24KB/WP × 30 WPs = ~720KB — explotaria la cuota de 5MB.
+      // Tras un F5, _maybeRefetchWinds detecta !windsHourly y re-fetcha
+      // automaticamente. session.refetched legacy queda como fallback
+      // grosero mientras llega el primer re-lookup.
+      let toStore = Object.assign({}, session, { windsHourly: null });
       try {
-        const tentative = JSON.stringify(session);
+        const tentative = JSON.stringify(toStore);
         if (tentative.length > 200 * 1024) {
-          toStore = Object.assign({}, session, {
+          toStore = Object.assign({}, toStore, {
             crossingTSAs: null,
             _tsaStripped: true,
           });
@@ -846,7 +859,42 @@ window.TSAgestor.livePlan = (function () {
     const rows = _recalcImpl();
     _recalcCache = rows;
     _recalcDirty = false;
+    // Workflow wind-eta-resync-design step 6: comprueba si hay que
+    // refetch en background (TTL agotado, horizon corto o sin cache).
+    // Fire-and-forget — no bloquea el render. Las condiciones se
+    // chequean dentro de _maybeRefetchWinds (no spam).
+    try { _maybeRefetchWinds(rows); } catch (_) {}
     return rows;
+  }
+  // Workflow wind-eta-resync-design step 6: dispara _refetchWinds si:
+  //   (a) No hay windsHourly persistido (boot / post-F5 / nunca fetched)
+  //   (b) TTL agotado (>60 min desde windsHourlyFetchedAt)
+  //   (c) Horizon corto: la ETA del destino se acerca al limite del
+  //       timeseries (< 60 min de margen)
+  //   (d) Cualquier escenario tras error reciente -> cooldown 2 min
+  // Fire-and-forget — no await.
+  function _maybeRefetchWinds(rows) {
+    if (!session || !session.started) return;
+    if (_refetchInFlight) return;
+    const sinceErr = Date.now() - _windRefetchLastError;
+    if (sinceErr < WIND_REFETCH_ERROR_COOLDOWN_MS) return;
+    const wh = session.windsHourly;
+    const noCache = !wh || !Array.isArray(wh) || !wh.length;
+    const ttlExpired = !noCache && Number.isFinite(session.windsHourlyFetchedAt) &&
+                       (Date.now() - session.windsHourlyFetchedAt) > WIND_TTL_MS;
+    // Horizon check: ETA del ultimo WP > horizon - margin.
+    let horizonShort = false;
+    if (!noCache && Number.isFinite(session.windsHourlyHorizonMs) && Array.isArray(rows)) {
+      const lastRow = rows[rows.length - 1];
+      if (lastRow && Number.isFinite(lastRow.liveEta)) {
+        horizonShort = (session.windsHourlyHorizonMs - lastRow.liveEta) < WIND_HORIZON_MARGIN_MS;
+      }
+    }
+    if (noCache || ttlExpired || horizonShort) {
+      // Fire-and-forget. Si falla, el catch en _refetchWinds setea
+      // _windRefetchLastError y el cooldown previene tormenta.
+      _refetchWinds().catch(() => {});
+    }
   }
   function _recalcImpl() {
     if (!session) return [];
@@ -924,6 +972,52 @@ window.TSAgestor.livePlan = (function () {
       let gsToUse  = lp ? lp.gs  : null;
       let iasToUse = lp ? lp.ias : null;
       let flToUse  = c.fl;
+      // Workflow wind-eta-resync-design step 4: re-lookup local en el
+      // timeseries cacheado. Si hay session.windsHourly y este WP esta
+      // en rango, lookup con la liveEta ACTUAL (no la del refetch
+      // original). Asi:
+      //   - Advance con retraso -> liveEta posterior -> nuevo viento.
+      //   - Override IAS reduce GS -> liveEta posterior -> nuevo viento.
+      //   - Cambio departureUTC -> liveEta desplazada -> nuevo viento.
+      // Sin red. Si no hay windsHourly cae al path session.refetched
+      // legacy (back-compat post-F5 antes del primer auto-refetch).
+      const meteoApi = window.TSAgestor && window.TSAgestor.meteoApi;
+      const wh = session.windsHourly;
+      const whStart = session.windsHourlyStartIdx;
+      if (wh && Array.isArray(wh) && Number.isFinite(whStart) &&
+          i >= whStart && Number.isFinite(liveEta) && meteoApi &&
+          typeof meteoApi.lookupWindAt === 'function') {
+        const localIdx = i - whStart;
+        const ph = wh[localIdx];
+        if (ph) {
+          const ovFl = _effOverride(i, 'fl');
+          const flLookup = Number.isFinite(ovFl) ? ovFl
+                         : Number.isFinite(c.fl) ? c.fl : 100;
+          try {
+            const w = meteoApi.lookupWindAt(ph, new Date(liveEta), flLookup);
+            if (w && Number.isFinite(w.windDir) && Number.isFinite(w.windSpeedKt)) {
+              windToUse = { dir: w.windDir, speedKt: w.windSpeedKt };
+              // Si tenemos temperatura, recomputa TAS/DA con kiasToTAS.
+              const geomLocal = window.TSAgestor && window.TSAgestor.geom;
+              if (Number.isFinite(w.temperatureC) && geomLocal &&
+                  typeof geomLocal.densityAltitudeFt === 'function' &&
+                  typeof geomLocal.kiasToTAS === 'function') {
+                const paFt = flLookup * 100;
+                let oatC = w.temperatureC;
+                if (session.calibration && Number.isFinite(session.calibration.oatDeltaC)) {
+                  oatC += session.calibration.oatDeltaC;
+                }
+                const daFt = geomLocal.densityAltitudeFt(paFt, oatC);
+                const iasEff = _effOverride(i, 'ias');
+                const iasForTas = Number.isFinite(iasEff) ? iasEff
+                                : (lp && Number.isFinite(lp.ias) ? lp.ias : 120);
+                const newTAS = geomLocal.kiasToTAS(iasForTas, daFt);
+                if (Number.isFinite(newTAS) && newTAS > 0) tasToUse = newTAS;
+              }
+            }
+          } catch (_) {}
+        }
+      }
       if (session.refetched && i >= session.refetched.startIdx) {
         const rIdx = i - session.refetched.startIdx;
         const wdir = session.refetched.legWindDir   && session.refetched.legWindDir[rIdx];
@@ -1226,7 +1320,8 @@ window.TSAgestor.livePlan = (function () {
   // en vez de la TAS cacheada del plan original. F2.2: marca
   // fetchedAt para que _renderEval pueda mostrar la edad del viento.
   // F2.7: acumula desviaciones ISA > 3°C para alertarlas.
-  async function _refetchWinds() {
+  async function _refetchWinds(opts) {
+    opts = opts || {};
     if (!session || !session.started) return;
     if (_refetchInFlight) return;
     const startIdx = session.currentIdx;
@@ -1357,6 +1452,24 @@ window.TSAgestor.livePlan = (function () {
         fetchedAt: Date.now(),
         isaDeviations,
       };
+      // Workflow wind-eta-resync-design step 2: persiste el timeseries
+      // CRUDO de Open-Meteo para que _recalc pueda hacer re-lookup
+      // local cuando cambien las ETAs (advance con retraso, override
+      // IAS, override FL, departure change). Sin esto, los winds
+      // quedaban congelados al momento del refetch -> ETAs derivadas
+      // con vientos stale tras 30 min de vuelo.
+      session.windsHourly = ph;
+      session.windsHourlyStartIdx = startIdx;
+      // Horizonte: ultimo timestamp util del cache (la entrada mas
+      // tardia del timeseries de cualquier WP).
+      let horizonMs = 0;
+      for (let k = 0; k < ph.length; k++) {
+        const t = ph[k] && Array.isArray(ph[k].time) ? ph[k].time[ph[k].time.length - 1] : null;
+        const tn = t ? Date.parse(t) : NaN;
+        if (Number.isFinite(tn) && tn > horizonMs) horizonMs = tn;
+      }
+      session.windsHourlyHorizonMs = horizonMs;
+      session.windsHourlyFetchedAt = Date.now();
       _invalidateRecalc();
       // F2.x bug fix: poner el flag a false ANTES de _refresh para que
       // _renderEval ya no muestre el spinner cuando recompone el DOM.
@@ -1365,6 +1478,8 @@ window.TSAgestor.livePlan = (function () {
       _refresh();
     } catch (e) {
       console.warn('[livePlan] refetch winds fallo:', e && e.message ? e.message : e);
+      // Workflow wind-eta-resync-design step 6: cooldown anti-thrash.
+      _windRefetchLastError = Date.now();
       // Mismo patron: limpiar flag y refrescar para quitar el spinner
       // antes de mostrar el toast de error.
       _refetchInFlight = false;
@@ -1570,7 +1685,7 @@ window.TSAgestor.livePlan = (function () {
       if (t.id === 'btn-live-calibrate') { _calibrate(); return; }
       if (t.id === 'btn-live-apply-overrides') { _applyOverrides(); return; }
       if (t.id === 'btn-live-clear-overrides') { _clearOverrides(); return; }
-      if (t.id === 'btn-live-refetch-winds') { _refetchWinds(); return; }
+      if (t.id === 'btn-live-refetch-winds') { _refetchWinds({ force: true }); return; }
       if (t.id === 'btn-live-alert-confirm') { _confirmWpAlert(); return; }
       if (t.id === 'btn-live-alert-defer')   { _dismissWpAlert(); return; }
       if (t.id === 'btn-live-alert-close')   { _dismissWpAlert(); return; }
