@@ -719,12 +719,14 @@ window.TSAgestor.flightPlan = (function () {
       eta,
       route,
       narrative: buildNarrative(route, fl),
-      // Workflow wind-heading-gs-audit Fase B: cadena de expansion.
-      // 1. buildCoords: WPs base con etaUTC + cumDistKm
+      // Cadena de expansion:
+      // 1. buildCoords: WPs base del plan con etaUTC + cumDistKm
       // 2. expandClimbDescentLegs: sub-legs cada 25 FL para climb/descent
-      // 3. expandWindSamplingLegs: sub-WPs equidistantes para sampling
-      //    de viento en legs largos (>=60 NM, hasta 5 sub-WPs)
-      coords: expandWindSamplingLegs(
+      //    (mantienen flag isClimbDescentSub:true, saltan en advance)
+      // 3. insertWindWaypoints (NUEVO): WPs full-class cada ≤15 NM en
+      //    legs cruise para refinar sampling de viento. Sin flags
+      //    isSub — son WPs reales que el operador ve y avanza en Live.
+      coords: insertWindWaypoints(
         expandClimbDescentLegs(buildCoords(route, depUTC, speedKt), opts.tsas || [])
       ),
       distanceKM: route.totalDistKm,
@@ -821,12 +823,90 @@ window.TSAgestor.flightPlan = (function () {
     return out;
   }
 
-  // Workflow wind-heading-gs-audit (Fase B): puntos equidistantes
+  // Nuevo (test report): WPs intermedios cada ≤15 NM como WPs REALES
+  // (no sub-legs). Operador pidio: "anyadir waypoints como minimo cada
+  // 15 NM, seran waypoints no sub. Se hara para mejorar el calculo de
+  // los vientos, estos se anyadiran inicialmente en el planeamiento, y
+  // luego apareceran tambien en el live."
+  //
+  // Decisiones de implementacion:
+  //   - MAX_LEG_NM = 15: cada leg post-expansion <= 15 NM.
+  //   - Numero de WPs intermedios: ceil(legNM / 15) - 1.
+  //   - Posiciones equiespaciadas sobre la geodesica (geom.destinationPoint).
+  //   - NO se anyaden flags isSub / isClimbDescentSub / isWindSamplingSub:
+  //     son WPs full-class — entran en numeracion, tabla, mapa, advance,
+  //     PDF. La idea es que cada uno tenga su lookup de viento propio
+  //     en _recalc y la GS efectiva por mini-leg sea precisa.
+  //   - Skip de subdivision si alguno de los endpoints es sub-leg de
+  //     climb/descent (esos legs ya son cortos por naturaleza ~2500ft/step).
+  //   - Nombre: lat.toFixed(4) + ',' + lon.toFixed(4). El wpDisplay()
+  //     detecta el patron coord-decimal y lo renderiza como ICAO coord
+  //     (DDMMN/DDDMMW). Consistente con la convencion existente para WPs
+  //     dibujados manualmente sin nombre.
+  function insertWindWaypoints(coords) {
+    if (!coords || coords.length < 2) return coords;
+    const MAX_LEG_NM = 15;
+    const out = [coords[0]];
+    for (let i = 1; i < coords.length; i++) {
+      const prev = coords[i - 1], cur = coords[i];
+      // Skip subdivision si alguno es sub-leg (climb/descent ya parte
+      // el ascenso/descenso en pasos de 25 FL ~ legs cortos).
+      const isSubBoundary = !!(prev.isClimbDescentSub || cur.isClimbDescentSub);
+      const legKm = geom.greatCircleDistance([prev.lat, prev.lon], [cur.lat, cur.lon]);
+      const legNM = legKm / NM_KM;
+      if (!isSubBoundary && legNM > MAX_LEG_NM) {
+        const nIntermediate = Math.ceil(legNM / MAX_LEG_NM) - 1;
+        if (nIntermediate > 0) {
+          const bearingFwd = geom.bearing([prev.lat, prev.lon], [cur.lat, cur.lon]);
+          const etaA = prev.etaUTC instanceof Date ? prev.etaUTC.getTime() : null;
+          const etaB = cur.etaUTC  instanceof Date ? cur.etaUTC.getTime()  : null;
+          const flA  = Number.isFinite(prev.fl) ? prev.fl : null;
+          const flB  = Number.isFinite(cur.fl)  ? cur.fl  : null;
+          for (let s = 1; s <= nIntermediate; s++) {
+            const t = s / (nIntermediate + 1);
+            const [lat, lon] = geom.destinationPoint([prev.lat, prev.lon], bearingFwd, legKm * t);
+            const fl  = (flA != null && flB != null) ? Math.round(flA + (flB - flA) * t)
+                      : (flA != null ? flA : flB);
+            const eta = (etaA != null && etaB != null) ? new Date(etaA + (etaB - etaA) * t) : null;
+            // Nombre estilo coord-decimal: wpDisplay() lo renderiza como
+            // ICAO coord automaticamente (mismo formato que WPs dibujados
+            // manualmente sin nombre).
+            const name = lat.toFixed(4) + ',' + lon.toFixed(4);
+            out.push({
+              name, lat, lon, fl,
+              airway: cur.airway || '-',
+              tsa: null,
+              etaUTC: eta,
+              // Sin isClimbDescentSub ni isSub ni isWindSamplingSub:
+              // estos son WPs REALES. Entran en numeracion + advance + PDF.
+            });
+          }
+        }
+      }
+      out.push(cur);
+    }
+    // Recompute cumDistKm/legDistKm/cumDistNM sobre la lista expandida.
+    out[0].cumDistKm = 0;
+    out[0].cumDistNM = 0;
+    out[0].legDistKm = 0;
+    for (let k = 1; k < out.length; k++) {
+      const d = geom.greatCircleDistance([out[k - 1].lat, out[k - 1].lon], [out[k].lat, out[k].lon]);
+      out[k].legDistKm = d;
+      out[k].cumDistKm = out[k - 1].cumDistKm + d;
+      out[k].cumDistNM = out[k].cumDistKm / NM_KM;
+    }
+    return out;
+  }
+
+  // Workflow wind-heading-gs-audit (Fase B) DEPRECATED: sub-WPs
   // intermedios para refinar el sampling de viento. Cada leg largo
   // se subdivide en N sub-WPs sobre la geodesica con flag
   // isWindSamplingSub:true. El resto del codigo los trata como
   // sub-legs (igual que isClimbDescentSub) — saltados al advance,
   // saltados en numeracion visible, etc.
+  //
+  // SUPERSEDED por insertWindWaypoints arriba (WPs full-class, no sub).
+  // Se conserva como referencia pero NO se llama desde plan().
   //
   // Densidad bucket-based (~75 NM/sub-WP, alineado con resolucion
   // espacial Open-Meteo ~50-60 km):
