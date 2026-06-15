@@ -2511,20 +2511,20 @@
       return;
     }
 
-    // Test report: cambiamos getVisible() -> state.tsas. Antes el
-    // filtro UI del operador (selected ∩ filter) reducia las TSAs
-    // pasadas al planificador. Resultado: TSAs que la ruta cruzaba
-    // FISICAMENTE pero estaban deseleccionadas no se detectaban como
-    // conflictos ni como sobrevoladas, y por tanto NUNCA llegaban a
-    // Fleet ni al PDF de conflictos. La verdad operacional es que el
-    // avion cruza esas TSAs aunque el operador haya filtrado su
-    // visualizacion en la tabla. Usamos state.tsas (dataset completo)
-    // y el filtro UI se mantiene SOLO como filtro de visualizacion
-    // en la tabla de TSAs.
-    const allTsasForPlan = Array.isArray(state.tsas) ? state.tsas : [];
+    // Test report: vuelve a usar getVisible() (revierte v262). El
+    // operador quiere que su seleccion en la tabla se respete — al
+    // dibujar la ruta solo deben marcarse como conflictos las TSAs
+    // que ESTAN seleccionadas. Si quiere considerar todas, pulsa
+    // "Seleccionar todas".
+    //
+    // V262 habia cambiado a state.tsas porque "el avion cruza fisica-
+    // mente esas TSAs aunque el operador las haya deseleccionado", pero
+    // operativamente el operador deselecciona deliberadamente (NOTAMs
+    // expirados, areas irrelevantes) y NO quiere ruido en su mapa con
+    // overlays rojos dashed de esas TSAs.
     const result = flightPlan.plan({
       origin, destination, flightLevel: fl, speedKt,
-      departureUTC, tsas: allTsasForPlan, via: viaTokens,
+      departureUTC, tsas: getVisible(), via: viaTokens,
     });
 
     if (result.error) {
