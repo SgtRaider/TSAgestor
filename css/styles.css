@@ -5096,6 +5096,24 @@ body.b1-fleet .b1-fleet-shell {
 .b1-fleet-marker-halo {
   animation: b1FleetMarkerPulse 1.8s ease-in-out infinite;
 }
+/* Test report: labels de WPs en fleet detail map (mismo estilo que
+   los del mapa principal para consistencia visual). */
+.b1-fleet-wp-label {
+  background: rgba(15, 23, 42, 0.85);
+  color: #fde68a;
+  border: 1px solid #fbbf24;
+  padding: 1px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 3px;
+  box-shadow: none;
+  white-space: nowrap;
+}
+.b1-fleet-wp-label.extreme {
+  background: #fbbf24;
+  color: #1f2937;
+}
+.b1-fleet-wp-label::before { display: none; }
 
 /* F1.5 Dispatch metrics: highlights de fuel status — joker amarillo
    (alerta moderada, considerar diversion), bingo rojo (alerta seria,

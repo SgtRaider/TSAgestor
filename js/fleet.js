@@ -39,6 +39,10 @@ window.TSAgestor.fleet = (function () {
   let _detailMap = null;
   let _detailLayers = {
     route: null, past: null, future: null, marker: null, halo: null,
+    // Test report: nuevo layer para markers individuales de WPs
+    // (circulos amarillos + numero) — antes solo se dibujaban
+    // polylines + marker rojo central, el operador no veia los WPs.
+    wpMarkers: null,
     // Workflow fleet-tsa-integration: layer groups por categoria TSA.
     // Permite skip-redraw signature por categoria.
     tsaActive: null, tsaScheduled: null, tsaLateral: null,
@@ -332,6 +336,7 @@ window.TSAgestor.fleet = (function () {
     }
     _detailLayers = {
       route: null, past: null, future: null, marker: null, halo: null,
+      wpMarkers: null,
       tsaActive: null, tsaScheduled: null, tsaLateral: null,
     };
     _tsaSig = '';
@@ -472,7 +477,7 @@ window.TSAgestor.fleet = (function () {
       }
     }
     // Limpia capas previas y redibuja con datos nuevos.
-    ['route', 'past', 'future', 'marker', 'halo'].forEach(k => {
+    ['route', 'past', 'future', 'marker', 'halo', 'wpMarkers'].forEach(k => {
       if (_detailLayers[k]) {
         try { _detailMap.removeLayer(_detailLayers[k]); } catch (_) {}
         _detailLayers[k] = null;
@@ -497,7 +502,46 @@ window.TSAgestor.fleet = (function () {
         dashArray: '6 6',
       }).addTo(_detailMap);
     }
-    // Marker "soy aqui" rojo con halo.
+    // Test report: WP markers (circulos amarillos + numero) para que
+    // el dispatcher vea los WPs individuales como en el mapa del
+    // operador. Antes solo se dibujaba la polyline + marker rojo
+    // central — los WPs no aparecian en el mapa de fleet.
+    const wpGroup = L.layerGroup();
+    let displayN = 0;
+    coords.forEach((c, i) => {
+      if (!c || !Number.isFinite(c.lat) || !Number.isFinite(c.lon)) return;
+      // Sub-legs (climb/descent) y wind-sampling intermedios no se
+      // numeran (mismo criterio que el mapa del operador).
+      const isSub = !!(c.isSub || c.isClimbDescentSub || c.isWindSamplingSub);
+      const isExtreme = (i === 0) || (i === coords.length - 1);
+      const radius = isExtreme ? 6 : (isSub ? 2 : 4);
+      const fillColor = isExtreme ? '#fbbf24'
+                      : (isSub ? '#c4b5fd' : '#fde68a');
+      const m = L.circleMarker([c.lat, c.lon], {
+        radius,
+        color: isSub ? '#7c3aed' : '#1f2937',
+        fillColor,
+        fillOpacity: 1,
+        weight: isSub ? 1 : 1.5,
+      }).addTo(wpGroup);
+      // Tooltip de hover con nombre + FL.
+      const flLabel = Number.isFinite(c.fl) ? ' · FL' + String(c.fl).padStart(3, '0') : '';
+      m.bindTooltip((c.name || '?') + flLabel, { direction: 'top', offset: [0, -4] });
+      // Numero permanente al lado del circulo (solo WPs reales).
+      if (!isSub) {
+        displayN++;
+        L.tooltip({
+          permanent: true,
+          direction: 'right',
+          offset: [6, 0],
+          className: 'b1-fleet-wp-label' + (isExtreme ? ' extreme' : ''),
+        }).setLatLng([c.lat, c.lon]).setContent(String(displayN)).addTo(wpGroup);
+      }
+    });
+    wpGroup.addTo(_detailMap);
+    _detailLayers.wpMarkers = wpGroup;
+
+    // Marker "soy aqui" rojo con halo (encima de los WP markers).
     if (curLatLng) {
       _detailLayers.halo = L.circleMarker(curLatLng, {
         radius: 14, color: '#ef4444', fillColor: '#ef4444',
