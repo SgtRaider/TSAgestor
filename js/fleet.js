@@ -382,22 +382,31 @@ window.TSAgestor.fleet = (function () {
         body.innerHTML = '<div class="b1-fleet-empty">Sesion no encontrada (deviceId=' + escapeHTML(_detailDeviceId) + ').</div>';
         return;
       }
-      const callsign = meta.callsign || r.callsign || '—';
-      const origin   = meta.origin   || (session.coords && session.coords[0] && session.coords[0].name) || '?';
-      const destination = meta.destination || (session.coords && session.coords[session.coords.length - 1] && session.coords[session.coords.length - 1].name) || '?';
-      const fuelRest = Number.isFinite(meta.fuelRest) ? meta.fuelRest : (Number.isFinite(r.fuelRest) ? r.fuelRest : null);
-      const fuelUnit = meta.fuelUnit || r.fuelUnit || '';
-      const fuelStatus = meta.fuelStatus || r.fuelStatus || null;
-      const etaNextWp     = Number.isFinite(meta.etaNextWp)     ? meta.etaNextWp     : (Number.isFinite(r.etaNextWp)     ? r.etaNextWp     : null);
-      const nextWpName    = meta.nextWpName || r.nextWpName || null;
-      const etaDestination = Number.isFinite(meta.etaDestination) ? meta.etaDestination : (Number.isFinite(r.etaDestination) ? r.etaDestination : null);
-      const tsPushed = meta.tsPushed || r.tsPushed || null;
-      // _rawIdx (raw array index incl. sub-legs) si presente en meta,
-      // si no fallback a session.currentIdx (que puede ya ser raw en
-      // session_json) o intentar derivarlo del realIdx.
-      let rawIdx = Number.isFinite(meta._rawIdx) ? meta._rawIdx : (session.currentIdx | 0);
-      const realIdx = Number.isFinite(meta.currentIdx) ? meta.currentIdx : null;
-      const wpName = meta.currentWpName || (session.coords && session.coords[rawIdx] && session.coords[rawIdx].name) || '—';
+      // Test report: el backend retorna meta.* con valores STALE
+      // (parece que extrae a columnas en el primer PUT y no actualiza
+      // en los siguientes). session.* SI llega fresco. Por tanto
+      // COMPUTAMOS los metrics LOCALMENTE desde session — meta.* queda
+      // solo como ultimo fallback para campos no derivables (callsign,
+      // origin, destination cuando session.coords es null).
+      const derived = _deriveMetricsFromSession(session);
+      const callsign = derived.callsign || meta.callsign || r.callsign || '—';
+      const origin   = derived.origin   || meta.origin   || '?';
+      const destination = derived.destination || meta.destination || '?';
+      const fuelRest = Number.isFinite(derived.fuelRest) ? derived.fuelRest
+                     : (Number.isFinite(meta.fuelRest) ? meta.fuelRest : null);
+      const fuelUnit = derived.fuelUnit || meta.fuelUnit || '';
+      const fuelStatus = derived.fuelStatus || meta.fuelStatus || null;
+      const etaNextWp     = Number.isFinite(derived.etaNextWp)     ? derived.etaNextWp
+                          : (Number.isFinite(meta.etaNextWp)     ? meta.etaNextWp     : null);
+      const nextWpName    = derived.nextWpName    || meta.nextWpName    || null;
+      const etaDestination = Number.isFinite(derived.etaDestination) ? derived.etaDestination
+                           : (Number.isFinite(meta.etaDestination) ? meta.etaDestination : null);
+      const tsPushed = derived.tsPushed || meta.tsPushed || r.tsPushed || null;
+      // rawIdx siempre directo de session.currentIdx (fresco). realIdx
+      // derivado contando coords no-sub hasta rawIdx.
+      const rawIdx = derived.rawIdx;
+      const realIdx = derived.realIdx;
+      const wpName = derived.wpName || meta.currentWpName || '—';
 
       const st = _statusOf({
         tsEnded:  r.tsEnded || null,
@@ -440,6 +449,96 @@ window.TSAgestor.fleet = (function () {
       _backoffSec = Math.min(120, Math.pow(2, _failCount) * 5);
       if (errEl) errEl.textContent = '⚠ Fallo al obtener vuelo (' + escapeHTML((e && e.message) || 'desconocido') + ') — reintenta en ' + _backoffSec + 's';
     }
+  }
+  // Test report: deriva metrics de session.* (fresco) en lugar de
+  // confiar en meta.* (puede ser stale si el backend extrae a columnas
+  // solo en el primer PUT). Computa con la MISMA logica que
+  // livePlan.getLiveMetrics (per-WP fuel override propagation + ETA
+  // via plannedEtas con liveHolds + currentIdx real-1-based).
+  function _deriveMetricsFromSession(session) {
+    const out = {
+      callsign: null, origin: null, destination: null,
+      fuelRest: null, fuelUnit: null, fuelStatus: null,
+      etaNextWp: null, nextWpName: null, etaDestination: null,
+      tsPushed: null, rawIdx: 0, realIdx: null, wpName: '—',
+    };
+    if (!session || !Array.isArray(session.coords) || session.coords.length < 1) return out;
+    const coords = session.coords;
+    const lastIdx = coords.length - 1;
+    out.origin      = coords[0]       && coords[0].name      || '?';
+    out.destination = coords[lastIdx] && coords[lastIdx].name || '?';
+    out.fuelUnit    = (session.fuelOpts && session.fuelOpts.unit) || '';
+
+    const rawIdx = Math.max(0, Math.min(session.currentIdx | 0, lastIdx));
+    out.rawIdx = rawIdx;
+
+    // realIdx: cuenta coords no-sub hasta rawIdx (1-based).
+    let count = 0;
+    for (let i = 0; i <= rawIdx; i++) {
+      const c = coords[i];
+      const isSub = !!(c && (c.isSub || c.isClimbDescentSub || c.isWindSamplingSub));
+      if (!isSub) count++;
+    }
+    out.realIdx = count;
+    out.wpName  = (coords[rawIdx] && coords[rawIdx].name) || '—';
+
+    // Proximo WP real (skip sub-WPs).
+    let nextRealIdx = -1;
+    for (let i = rawIdx + 1; i <= lastIdx; i++) {
+      const c = coords[i];
+      const isSub = !!(c && (c.isSub || c.isClimbDescentSub || c.isWindSamplingSub));
+      if (!isSub) { nextRealIdx = i; break; }
+    }
+    if (nextRealIdx >= 0) {
+      out.nextWpName = coords[nextRealIdx].name || null;
+    }
+
+    // ETA al proximo WP y al destino. Usa plannedEtas como baseline;
+    // actualPassTimes proyecta el offset operativo.
+    if (Array.isArray(session.plannedEtas)) {
+      const pe = session.plannedEtas;
+      // Offset entre plan y real: si actualPassTimes[rawIdx] existe,
+      // el delta vs plannedEtas[rawIdx] se propaga forward.
+      let offset = 0;
+      const pass = session.actualPassTimes && session.actualPassTimes[rawIdx];
+      if (Number.isFinite(pass) && Number.isFinite(pe[rawIdx])) {
+        offset = pass - pe[rawIdx];
+      }
+      if (nextRealIdx >= 0 && Number.isFinite(pe[nextRealIdx])) {
+        out.etaNextWp = pe[nextRealIdx] + offset;
+      }
+      if (Number.isFinite(pe[lastIdx])) {
+        out.etaDestination = pe[lastIdx] + offset;
+      }
+    }
+
+    // Fuel restante: fuelOverrides[max k <= rawIdx] si existe, sino
+    // plannedFuelRest[rawIdx].
+    if (session.fuelOverrides && typeof session.fuelOverrides === 'object') {
+      let bestK = -1;
+      Object.keys(session.fuelOverrides).forEach(k => {
+        const ki = parseInt(k, 10);
+        if (Number.isFinite(ki) && ki <= rawIdx && ki > bestK) bestK = ki;
+      });
+      if (bestK >= 0 && Number.isFinite(session.fuelOverrides[bestK])) {
+        out.fuelRest = session.fuelOverrides[bestK];
+      }
+    }
+    if (!Number.isFinite(out.fuelRest) && Array.isArray(session.plannedFuelRest)) {
+      const pf = session.plannedFuelRest[rawIdx];
+      if (Number.isFinite(pf)) out.fuelRest = pf;
+    }
+
+    // Fuel status: bingo/joker segun fuelOpts.
+    if (Number.isFinite(out.fuelRest) && session.fuelOpts) {
+      if (Number.isFinite(session.fuelOpts.bingo) && out.fuelRest <= session.fuelOpts.bingo) {
+        out.fuelStatus = 'bingo';
+      } else if (Number.isFinite(session.fuelOpts.joker) && out.fuelRest <= session.fuelOpts.joker) {
+        out.fuelStatus = 'joker';
+      }
+    }
+
+    return out;
   }
   function _statBox(label, value) {
     return '<div class="b1-fleet-stat"><span class="dim">' + escapeHTML(label) + '</span><b>' + value + '</b></div>';
