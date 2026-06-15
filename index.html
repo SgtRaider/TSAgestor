@@ -75,6 +75,26 @@
           funcionando sin acceso</b> a Internet.
         </p>
       </div>
+
+      <div class="home-disclaimer disclaimer-info">
+        <div class="disc-head">
+          <span class="disc-icon" aria-hidden="true">🛰</span>
+          <span class="disc-title">NOVEDADES — MODO LIVE Y DISPATCH</span>
+        </div>
+        <p>
+          <b>Modo Live</b>: pestaña <em>Live</em> para seguimiento en vuelo waypoint
+          por waypoint con overrides per-WP de IAS / Flow / FL / fuel, marker rojo
+          interpolado en tiempo real, re-lookup de viento adaptativo cada 5 min y
+          AAR (after-action report) en PDF al cerrar el vuelo.
+        </p>
+        <p>
+          <b>Sync con servidor + Flota</b>: si está configurada la sincronización
+          en <em>Ajustes &rsaquo; Sync con servidor</em>, las sesiones Live se
+          publican cada 30 s y los dispatchers de la unidad pueden monitorizar
+          todos los vuelos en la URL <code>?fleet=1</code> con mapa, ETAs, fuel
+          y TSAs en ruta.
+        </p>
+      </div>
     </div>
 
     <div class="welcome-footer">
@@ -179,9 +199,10 @@
             <div class="feature-desc">Ruta por aerovías o trazado manual sobre el
               mapa (con botón <em>Vuelta</em> para circuitos). Sub-tramos
               automáticos cada 5000 ft en ascenso y descenso, fijados dentro de
-              la TSA cuando se vuela en banda vertical. Esperas como filas
-              independientes en el log. Exportar / importar plan completo en
-              JSON.</div>
+              la TSA cuando se vuela en banda vertical. <b>WPs intermedios cada
+              ≤ 15 NM</b> sobre la geodésica para muestreo fino de viento.
+              Esperas como filas independientes en el log. Exportar / importar
+              plan completo en JSON.</div>
           </div>
           <div class="feature">
             <div class="feature-title">Log de combustible</div>
@@ -214,10 +235,46 @@
               y patrones del texto.</div>
           </div>
           <div class="feature">
+            <div class="feature-title">Modo Live (cabina)</div>
+            <div class="feature-desc">Seguimiento en vuelo waypoint por
+              waypoint. Toast WP-alert al alcanzar cada ETA con campos editables
+              (IAS, Flow, FL, fuel medido) que se aplican como <b>overrides
+              per-WP</b>. Marker rojo del avión interpolado en tiempo real
+              entre confirmaciones. <b>Re-lookup de viento adaptativo</b> a la
+              ETA actual (auto-refresh Open-Meteo cada 5 min). Calibración OAT,
+              Hold AT current, panel "Ajustes en vuelo", evaluación de Vuelta
+              a Base (RTB) con fuel real. AAR (after-action report) en PDF al
+              cerrar el vuelo.</div>
+          </div>
+          <div class="feature">
+            <div class="feature-title">Sync con servidor (OCI)</div>
+            <div class="feature-desc">Sincronización opt-in con backend OCI:
+              cada 30 s se publica el estado de la sesión Live (callsign,
+              currentIdx, ETAs, fuel, TSAs en ruta) vía PUT al endpoint
+              compartido por la unidad. <b>Tolerancia a fallos</b> con backoff
+              exponencial + same-origin proxy via Cloudflare Pages para
+              entornos corporativos restrictivos. Cross-tab sync por storage
+              event. El operador puede operar offline (la sesión vive en
+              localStorage como single source of truth).</div>
+          </div>
+          <div class="feature">
+            <div class="feature-title">Flota (Dispatch)</div>
+            <div class="feature-desc">Vista de dispatcher (URL
+              <code>?fleet=1</code>) con tabla de vuelos activos de la unidad
+              + estado (verde/ámbar/rojo según edad del último push). Click
+              sobre un vuelo abre el <b>detalle con mapa</b>: ruta cyan
+              (recorrida) + ámbar dashed (pendiente), marker rojo en posición
+              actual, WPs numerados, TSAs en ruta categorizadas (activas
+              ahora / programadas) y stats card (callsign, ruta, WP actual,
+              fuel, ETAs). Refresh automático cada 15 s.</div>
+          </div>
+          <div class="feature">
             <div class="feature-title">Informe PDF</div>
             <div class="feature-desc">Exportación con cabecera institucional EA,
               plan de vuelo, log de combustible (con vientos y esperas), METAR/TAF
-              decodificados y corte transversal en un único documento.</div>
+              decodificados, corte transversal, GRAMET y resumen de conflictos
+              TSA en un único documento. Compatible cross-browser (Safari iOS
+              via Web Share API).</div>
           </div>
           <div class="feature">
             <div class="feature-title">PWA + identidad EA</div>
@@ -230,8 +287,11 @@
       </div>
 
       <div class="home-cta">
-        <p class="hint">Empieza por la pestaña <b>Cargar</b> para subir un NOTAM,
-          o salta directamente a <b>Plan de vuelo</b> o <b>Mapa</b>.</p>
+        <p class="hint">Empieza por la pestaña <b>Cargar</b> para descargar las
+          TSAs activas, configura el plan en <b>Plan de vuelo</b> y, durante el
+          vuelo, usa <b>Live</b> para confirmar WPs y registrar overrides en
+          tiempo real. Los dispatchers ven la flota en
+          <code>?fleet=1</code>.</p>
       </div>
     </section>
 
