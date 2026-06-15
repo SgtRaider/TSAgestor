@@ -82,12 +82,21 @@ window.TSAgestor.livePlan = (function () {
   // recupere.
   let _sigmetLastError = 0;
   const SIGMET_ERROR_COOLDOWN_MS = 2 * 60 * 1000;
-  // Workflow wind-eta-resync-design step 6: trigger automatico de
-  // refetch cuando el cache local se queda corto.
-  const WIND_TTL_MS                   = 60 * 60 * 1000;     // 60 min
-  const WIND_HORIZON_MARGIN_MS        = 60 * 60 * 1000;     // 60 min
-  const WIND_REFETCH_ERROR_COOLDOWN_MS = 2  * 60 * 1000;     // 2 min anti-thrash
+  // Test report: pedido del operador "auto actualizar vientos una vez
+  // cada 5 minutos". Ademas Open-Meteo retorna 429 cuando hay demasiadas
+  // refetches en rapida sucesion — el trigger anterior llamaba
+  // _maybeRefetchWinds en CADA _recalc (frecuente) + cooldown solo 2min,
+  // generando cascade tras error. Ahora:
+  //   - WIND_TTL_MS = 5 min: refresh periodico segun pedido del operador
+  //   - WIND_HORIZON_MARGIN_MS = 60 min (mantenido)
+  //   - WIND_REFETCH_ERROR_COOLDOWN_MS = 10 min: respeta rate limit
+  //   - Timer dedicado en lugar de _maybeRefetchWinds via _recalc
+  //     (elimina la cascada por error)
+  const WIND_TTL_MS                    = 5  * 60 * 1000;     // 5 min auto-refresh
+  const WIND_HORIZON_MARGIN_MS         = 60 * 60 * 1000;     // 60 min margen
+  const WIND_REFETCH_ERROR_COOLDOWN_MS = 10 * 60 * 1000;     // 10 min tras 429/error
   let _windRefetchLastError = 0;
+  let _windAutoTimer = null;
   let _sigmetCrossings = [];    // ultimo resultado del cross-check vs ruta
   let _activeTSAcrossings = []; // F2.6: TSAs activas que cruza la ruta restante
   // F2.8: cache del ultimo _recalc para evitar recomputar O(N²) en
@@ -108,6 +117,21 @@ window.TSAgestor.livePlan = (function () {
     // OLA2: cargar config TTS persistida + aplicar estado del boton.
     _loadTtsConfig();
     _applyTtsButtonState();
+    _initWindAutoRefresh();
+  }
+
+  // Test report: timer dedicado para auto-refresh de viento cada
+  // WIND_TTL_MS (5 min). Sustituye al trigger via _recalc que generaba
+  // cascade tras errores 429 de Open-Meteo. Skip si tab oculto (ahorra
+  // bateria + respeta rate limits del API).
+  function _initWindAutoRefresh() {
+    if (_windAutoTimer) return;
+    _windAutoTimer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      if (!session || !session.started) return;
+      const rows = (typeof _recalcCache !== 'undefined' && _recalcCache) ? _recalcCache : [];
+      try { _maybeRefetchWinds(rows); } catch (_) {}
+    }, WIND_TTL_MS);
   }
 
   // ── Inicializacion de sesion a partir del plan calculado ───────────
@@ -884,11 +908,9 @@ window.TSAgestor.livePlan = (function () {
     const rows = _recalcImpl();
     _recalcCache = rows;
     _recalcDirty = false;
-    // Workflow wind-eta-resync-design step 6: comprueba si hay que
-    // refetch en background (TTL agotado, horizon corto o sin cache).
-    // Fire-and-forget — no bloquea el render. Las condiciones se
-    // chequean dentro de _maybeRefetchWinds (no spam).
-    try { _maybeRefetchWinds(rows); } catch (_) {}
+    // Test report: _maybeRefetchWinds NO se llama aqui (eliminaba el
+    // cascade tras error 429). Se trigger desde un timer dedicado que
+    // arranca en _initWindAutoRefresh (intervalo WIND_TTL_MS=5 min).
     return rows;
   }
   // Workflow wind-eta-resync-design step 6: dispara _refetchWinds si:

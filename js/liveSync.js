@@ -476,6 +476,14 @@ window.TSAgestor.liveSync = (function () {
       started:     !!session.started,
       rtbEngaged:  !!session.rtbEngaged,
     };
+    // Test report: strip windsHourly del body del PUT. El cache de
+    // viento es ~24 KB/WP × N WPs (con v273 los WPs intermedios cada
+    // 15 NM hacen N=40+). Para una ruta tipica de ~50 WPs, el body
+    // subia a >1 MB -> backend respondia 413 Payload Too Large.
+    // El dispatcher remoto puede recomputar localmente con su propio
+    // cache de viento si lo necesita; meta.* lleva los valores
+    // resumidos (fuelRest, etaNext, etaDest).
+    const sessionForPush = Object.assign({}, session, { windsHourly: null });
     const body = {
       deviceId:      _deviceId,
       sessionId:     _sessionId,
@@ -485,7 +493,7 @@ window.TSAgestor.liveSync = (function () {
       unitId:        _cfg.unitId || null,
       clientVersion: CLIENT_VER,
       meta,
-      session,
+      session:       sessionForPush,
     };
     body.clientPushId = _digestBody(body);
     return body;
