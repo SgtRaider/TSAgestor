@@ -5662,3 +5662,707 @@ body.b1-fleet .b1-fleet-shell {
   color: var(--text-mute, #94a3b8);
   font-size: 12px;
 }
+
+
+/* ========================================================================
+   UI REFRESH (workflow ui-style-review-all-sections)
+   Bloques aplicados: Fleet refactor + .btn variants + Live + Settings.
+   Variables del tema ya definidas en :root del archivo.
+   ======================================================================== */
+
+/* ============================================================
+   OLA4 FLEET — refactor visual (P0 + P1 + P2)
+   Pega este bloque AL FINAL de css/styles.css. Las reglas usan
+   especificidad >= a las originales, por lo que las sobreescriben
+   sin tocar el codigo legacy. Todo basado en variables de tema
+   (--ea-*, --bg-*, --r-*, --fs-*) ya definidas en :root.
+   ============================================================ */
+
+/* --- P0: Topbar (botones + h1 alineados) --------------------- */
+body.b1-fleet .b1-fleet-shell h1 {
+  border-bottom: 0;
+  padding-bottom: 0;
+  margin: 0;
+}
+.b1-fleet-topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--ea-amarillo, #fac200);
+}
+.b1-fleet-topbar h1#fleet-title {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 1.2px;
+  color: var(--text);
+  flex: 1;
+  font-family: 'Archivo', sans-serif;
+  font-weight: 700;
+}
+.b1-fleet-topbar .btn {
+  flex: 0 0 auto;
+}
+.b1-fleet-back { margin-right: 0; }
+.b1-fleet-back:not(.hidden) + #fleet-title { margin-left: 4px; }
+
+/* Meta info (clock + counts) limpia y mono */
+body.b1-fleet .b1-fleet-shell .b1-fleet-meta {
+  display: flex;
+  gap: 18px;
+  font-size: var(--fs-md, 12px);
+  color: var(--text-mute);
+  margin-bottom: 14px;
+  font-family: 'Archivo Mono', 'Roboto Mono', monospace;
+  letter-spacing: 0.4px;
+}
+
+/* --- P0: Stats card jerarquia ------------------------------- */
+.b1-fleet-detail-stats {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg, 10px);
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: var(--shadow, 0 4px 12px rgba(0, 25, 60, 0.45));
+}
+.b1-fleet-detail-row1 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.b1-fleet-detail-row1 h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: var(--text);
+  font-family: 'Archivo', sans-serif;
+}
+.b1-fleet-detail-row1 .b1-fleet-chip {
+  font-size: 11px;
+  padding: 4px 10px;
+  letter-spacing: 0.6px;
+}
+.b1-fleet-detail-route {
+  margin-left: auto;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ea-amarillo, #fac200);
+  background: rgba(250, 194, 0, 0.10);
+  border: 1px solid rgba(250, 194, 0, 0.35);
+  padding: 4px 12px;
+  border-radius: var(--r-pill, 999px);
+  letter-spacing: 0.5px;
+  font-family: 'Archivo Mono', 'Roboto Mono', monospace;
+}
+
+/* --- P1: Grid 6 stats uniforme con hairline separators ------ */
+.b1-fleet-detail-row2 {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--r-md, 6px);
+  overflow: hidden;
+  flex-wrap: initial;
+}
+.b1-fleet-stat {
+  background: var(--bg-panel);
+  padding: 10px 12px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.b1-fleet-stat .dim {
+  font-size: var(--fs-xs, 10px);
+  font-weight: 700;
+  color: var(--text-mute);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+.b1-fleet-stat b {
+  font-size: 17px;
+  line-height: 1.2;
+  color: var(--text);
+  font-weight: 700;
+  margin-top: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'Archivo Mono', 'Roboto Mono', monospace;
+}
+@media (max-width: 1200px) {
+  .b1-fleet-detail-row2 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .b1-fleet-detail-row2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Fuel joker/bingo siguen mandando — repintamos con tokens */
+.b1-fleet-fuel-joker, .b1-fleet-stat-joker {
+  background: rgba(250, 194, 0, 0.20) !important;
+  color: #fde68a !important;
+  font-weight: 800;
+}
+.b1-fleet-fuel-bingo, .b1-fleet-stat-bingo {
+  background: rgba(173, 46, 28, 0.30) !important;
+  color: #fecaca !important;
+  font-weight: 800;
+}
+@keyframes b1FleetFuelPulse {
+  0%, 100% { background: rgba(173, 46, 28, 0.30) !important; }
+  50%      { background: rgba(173, 46, 28, 0.48) !important; }
+}
+
+/* --- P1: Chips TSA corporativos + hover --------------------- */
+.b1-fleet-tsa-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--r-pill, 999px);
+  font-size: var(--fs-md, 12px);
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  border: 1px solid transparent;
+  user-select: none;
+  line-height: 1.2;
+  min-height: 24px;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.b1-fleet-tsa-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.b1-fleet-tsa-chip-active {
+  background: rgba(173, 46, 28, 0.28);
+  color: #fecaca;
+  border-color: var(--ea-rojo, #ad2e1c);
+}
+@keyframes b1FleetTsaActivePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(173, 46, 28, 0.55); }
+  50%      { box-shadow: 0 0 0 4px rgba(173, 46, 28, 0); }
+}
+.b1-fleet-tsa-chip-scheduled {
+  background: rgba(173, 46, 28, 0.12);
+  color: #fda4af;
+  border: 1px dashed rgba(173, 46, 28, 0.7);
+}
+.b1-fleet-tsa-chip-lateral {
+  background: rgba(250, 194, 0, 0.14);
+  color: #fde68a;
+  border: 1px dashed rgba(250, 194, 0, 0.7);
+}
+.b1-fleet-tsa-chip-empty {
+  background: rgba(74, 222, 128, 0.14);
+  color: #86efac;
+  border-color: var(--ok, #4ade80);
+}
+.b1-fleet-tsa-chip-dim {
+  background: rgba(183, 199, 211, 0.08);
+  color: var(--text-mute);
+  border: 1px dashed rgba(183, 199, 211, 0.35);
+}
+
+/* --- P1: Tabla con header sticky + hover azul cielo --------- */
+.b1-fleet-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 6px);
+  overflow: hidden;
+}
+.b1-fleet-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-elev, #1a4575);
+  font-size: var(--fs-sm, 11px);
+  text-transform: uppercase;
+  color: var(--text-mute);
+  letter-spacing: 0.6px;
+  padding: 10px 14px;
+  border-bottom: 2px solid var(--border);
+  text-align: left;
+}
+.b1-fleet-table tbody td {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  vertical-align: middle;
+}
+.b1-fleet-table tbody tr:last-child td { border-bottom: 0; }
+.b1-fleet-row-clickable {
+  cursor: pointer;
+  transition: background 120ms ease, outline-color 120ms ease;
+}
+.b1-fleet-row-clickable:hover {
+  background: rgba(141, 198, 232, 0.10) !important;
+  outline: 1px solid rgba(141, 198, 232, 0.30);
+  outline-offset: -1px;
+}
+.b1-fleet-row-clickable:active {
+  background: rgba(141, 198, 232, 0.20) !important;
+}
+
+/* Fila status backgrounds — repintamos con paleta corporativa */
+.b1-fleet-row-flying { background: rgba(74, 222, 128, 0.07); }
+.b1-fleet-row-stale  { background: rgba(250, 194, 0, 0.07); }
+.b1-fleet-row-lost   { background: rgba(173, 46, 28, 0.10); }
+.b1-fleet-row-landed { background: rgba(183, 199, 211, 0.06); color: var(--text-mute); }
+
+/* Chips estado fila (header de fleet list) */
+.b1-fleet-chip {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: var(--r-pill, 999px);
+  font-size: var(--fs-xs, 10px);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.b1-fleet-chip-flying { background: rgba(74, 222, 128, 0.22); color: #86efac; }
+.b1-fleet-chip-stale  { background: rgba(250, 194, 0, 0.22); color: #fde68a; }
+.b1-fleet-chip-lost   { background: rgba(173, 46, 28, 0.28); color: #fecaca; }
+.b1-fleet-chip-landed { background: rgba(183, 199, 211, 0.20); color: #cbd5e1; }
+
+/* --- P2: Banner amarillo corporativo + empty state --------- */
+.b1-fleet-banner {
+  padding: 14px 18px;
+  background: rgba(250, 194, 0, 0.14);
+  border-left: 4px solid var(--ea-amarillo, #fac200);
+  color: #fde68a;
+  border-radius: var(--r-md, 6px);
+  margin-bottom: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: var(--shadow, 0 4px 12px rgba(0, 25, 60, 0.45));
+}
+.b1-fleet-banner b {
+  color: var(--ea-amarillo, #fac200);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-size: 12px;
+}
+.b1-fleet-empty {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-mute);
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md, 6px);
+  font-size: 14px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+/* Detail row3 (TSA chips legend) — separador mas limpio */
+.b1-fleet-detail-row3 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ============================================================
+   .btn refinement — focus visible, transitions y variantes
+   Pega DESPUES del bloque actual de Buttons (~linea 422 styles.css).
+   ============================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 8px 16px;
+  border-radius: var(--r-md, 6px);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  font-family: 'Archivo', sans-serif;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    transform 80ms ease,
+    box-shadow 140ms ease;
+  user-select: none;
+  line-height: 1.2;
+  min-height: 32px;
+}
+.btn:hover:not(:disabled) {
+  background: var(--border);
+  border-color: var(--ea-azul-cielo, #8dc6e8);
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.btn:focus-visible {
+  outline: 2px solid var(--ea-amarillo, #fac200);
+  outline-offset: 2px;
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Primary (CTA) */
+.btn-primary {
+  background: var(--ea-amarillo, #fac200);
+  color: var(--ea-gris-aviador, #1a2332);
+  border-color: var(--ea-amarillo, #fac200);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  box-shadow: 0 2px 4px rgba(250, 194, 0, 0.25);
+}
+.btn-primary:hover:not(:disabled) {
+  background: #d8a700;
+  border-color: #d8a700;
+  box-shadow: 0 4px 10px rgba(250, 194, 0, 0.35);
+}
+
+/* Ghost (low-emphasis) */
+.btn-ghost {
+  background: transparent;
+  border-color: var(--border);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(141, 198, 232, 0.08);
+  border-color: var(--ea-azul-cielo, #8dc6e8);
+}
+
+/* Danger (RTB, abort, delete) */
+.btn-danger {
+  background: var(--ea-rojo, #ad2e1c);
+  border-color: var(--ea-rojo, #ad2e1c);
+  color: #fff;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.btn-danger:hover:not(:disabled) {
+  background: #8a2416;
+  border-color: #8a2416;
+}
+
+/* Small (toolbar / live actions) */
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 12px;
+  min-height: 26px;
+}
+
+/* Active toggle (pestanas/segmented) */
+.btn.is-active {
+  background: var(--ea-azul-cielo, #8dc6e8);
+  color: var(--ea-gris-aviador, #1a2332);
+  border-color: var(--ea-azul-cielo, #8dc6e8);
+}
+
+/* ============================================================
+   LIVE tab — cards operativas y acciones tactiles
+   Apendice al final de styles.css.
+   ============================================================ */
+
+/* Grid stats: que no se rompa en columnas estrechas */
+.live-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--r-md, 6px);
+  overflow: hidden;
+  padding: 0;
+}
+.live-stat {
+  background: var(--bg-panel);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.live-stat-label {
+  font-size: var(--fs-xs, 10px);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-mute);
+  font-weight: 700;
+}
+.live-stat b {
+  font-size: 16px;
+  color: var(--text);
+  font-weight: 800;
+  font-family: 'Archivo Mono', 'Roboto Mono', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.live-fuel-bingo {
+  color: var(--ea-rojo, #ad2e1c) !important;
+  background: rgba(173, 46, 28, 0.12);
+  padding: 2px 6px;
+  border-radius: 3px;
+  animation: liveBadgePulse 1.4s ease-in-out infinite;
+}
+.live-fuel-joker {
+  color: var(--ea-amarillo, #fac200) !important;
+  background: rgba(250, 194, 0, 0.12);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+/* Action bar: botones tactiles 36px min — operacion en tablet */
+.live-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+.live-actions .btn {
+  font-size: 12px;
+  padding: 8px 14px;
+  min-height: 36px;
+  letter-spacing: 0.4px;
+}
+
+/* Overrides — inputs uniformes y agrupados */
+.live-overrides {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 6px);
+}
+.live-override-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--fs-xs, 10px);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-mute);
+  font-weight: 700;
+}
+.live-override-label input {
+  width: 96px;
+  padding: 6px 10px;
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm, 4px);
+  font-family: 'Archivo Mono', 'Roboto Mono', monospace;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.live-override-label input:focus {
+  border-color: var(--ea-azul-cielo, #8dc6e8);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(141, 198, 232, 0.25);
+}
+
+/* Eval list — entradas con icono semantico */
+.live-eval-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.live-eval-list li {
+  padding: 8px 12px;
+  border-radius: var(--r-sm, 4px);
+  font-size: 13px;
+  border-left: 3px solid transparent;
+  line-height: 1.4;
+}
+.live-eval-ok   { background: rgba(74, 222, 128, 0.10);  color: #86efac; border-left-color: var(--ok, #4ade80); }
+.live-eval-warn { background: rgba(250, 194, 0, 0.12);   color: #fde68a; border-left-color: var(--ea-amarillo, #fac200); }
+.live-eval-bad  { background: rgba(173, 46, 28, 0.14);   color: #fecaca; border-left-color: var(--ea-rojo, #ad2e1c); }
+.live-eval-info { background: rgba(141, 198, 232, 0.10); color: var(--ea-azul-cielo, #8dc6e8); border-left-color: var(--ea-azul-cielo, #8dc6e8); }
+.live-eval-mono {
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.36);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-family: 'Archivo Mono', 'Roboto Mono', monospace;
+  font-size: 11px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Clock — destacar el reloj de mision */
+.live-clock-value {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--ea-amarillo, #fac200);
+  letter-spacing: 2px;
+  font-family: 'Archivo Mono', 'Roboto Mono', monospace;
+}
+.live-clock-label {
+  font-size: var(--fs-xs, 10px);
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+@media (max-width: 900px) {
+  .live-status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ============================================================
+   SETTINGS — cards refinadas, jerarquia, agrupacion
+   Apendice al final de styles.css.
+   ============================================================ */
+.settings-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--ea-amarillo, #fac200);
+  border-radius: var(--r-lg, 10px);
+  padding: 18px 22px;
+  box-shadow: var(--shadow, 0 4px 12px rgba(0, 25, 60, 0.45));
+  margin-bottom: 14px;
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+.settings-card:hover {
+  border-color: rgba(141, 198, 232, 0.25);
+}
+.settings-card h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text);
+  font-weight: 800;
+  font-family: 'Archivo', sans-serif;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings-card h3::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ea-amarillo, #fac200);
+  flex: 0 0 auto;
+}
+.settings-card p.hint {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--text-mute);
+  line-height: 1.45;
+}
+
+/* Grid responsive de filas */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 4px 28px;
+}
+.settings-row {
+  display: grid;
+  grid-template-columns: 1fr 160px 56px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+  transition: background 120ms ease;
+}
+.settings-row:hover {
+  background: rgba(141, 198, 232, 0.04);
+}
+.settings-row:last-child { border-bottom: none; }
+.settings-name {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 600;
+}
+.settings-row input[type="range"] {
+  width: 100%;
+  accent-color: var(--ea-amarillo, #fac200);
+  cursor: pointer;
+}
+.settings-row input[type="text"],
+.settings-row input[type="number"],
+.settings-row input[type="password"],
+.settings-row select {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm, 4px);
+  font-family: 'Archivo Mono', 'Roboto Mono', monospace;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.settings-row input:focus,
+.settings-row select:focus {
+  border-color: var(--ea-azul-cielo, #8dc6e8);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(141, 198, 232, 0.25);
+}
+.settings-value {
+  font-family: 'Archivo Mono', 'Roboto Mono', monospace;
+  font-size: 12px;
+  color: var(--ea-amarillo, #fac200);
+  font-weight: 700;
+  text-align: right;
+  letter-spacing: 0.5px;
+}
+
+/* LiveSync card — caso especial: full width labels */
+#settings-card-livesync .settings-row {
+  grid-template-columns: 200px 1fr;
+  gap: 14px;
+}
+#settings-card-livesync .settings-row-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-mute);
+  font-weight: 700;
+}
+
+/* Toggle switch helper (si se usan checkboxes con clase) */
+.settings-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--ea-amarillo, #fac200);
+  cursor: pointer;
+  justify-self: center;
+}
+
+@media (max-width: 600px) {
+  .settings-card { padding: 14px 16px; }
+  .settings-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding: 10px 0;
+  }
+  .settings-value { text-align: left; }
+}
+
