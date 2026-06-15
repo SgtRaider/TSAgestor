@@ -4075,25 +4075,72 @@ window.TSAgestor.livePlan = (function () {
     _buildSessionFromPlan(true);
     _maybeShowContent();
   }
+  // Test report: panel "AJUSTES EN VUELO" debe escribir en las per-WP
+  // maps (iasOverrides/flowOverrides/flOverrides) — el legacy
+  // session.overrides single-range quedaba IGNORADO porque
+  // _effOverride prioriza las maps. Si el toast wp-alert habia
+  // poblado las maps, las escrituras del panel no tenian efecto.
+  //
+  // Semantica del panel: "aplica a partir del proximo WP". Se
+  // implementa con:
+  //   (a) iasOverrides[fromIdx] = ias (entry nueva en fromIdx)
+  //   (b) Borrar entries posteriores (k > fromIdx) para que el nuevo
+  //       override aplique a TODOS los WPs futuros, sobreescribiendo
+  //       overrides que el toast hubiera puesto en WPs adelantados
+  //       respecto al currentIdx.
+  //   (c) Limpiar session.overrides legacy para evitar fuentes duales.
   function _applyOverrides() {
     if (!session) return;
     const ias  = parseFloat(document.getElementById('live-override-ias').value);
     const flow = parseFloat(document.getElementById('live-override-flow').value);
     const fl   = parseFloat(document.getElementById('live-override-fl').value);
     const fromIdx = Math.min(session.currentIdx + 1, session.coords.length - 1);
-    session.overrides = {
+
+    session.iasOverrides  = session.iasOverrides  || {};
+    session.flowOverrides = session.flowOverrides || {};
+    session.flOverrides   = session.flOverrides   || {};
+
+    function applyKey(map, key, val, valid) {
+      if (!valid) return;
+      // Borra entradas posteriores que harian shadow del nuevo override.
+      Object.keys(map).forEach(k => {
+        const ki = parseInt(k, 10);
+        if (Number.isFinite(ki) && ki > fromIdx) delete map[ki];
+      });
+      // Pone la nueva entry en fromIdx.
+      map[fromIdx] = val;
+    }
+    applyKey(session.iasOverrides,  'ias',  ias,  Number.isFinite(ias)  && ias  > 0);
+    applyKey(session.flowOverrides, 'flow', flow, Number.isFinite(flow) && flow >= 0);
+    applyKey(session.flOverrides,   'fl',   fl,   Number.isFinite(fl)   && fl   > 0);
+
+    // Limpiar session.overrides legacy (single-range) para evitar
+    // fuente dual con las maps.
+    session.overrides = null;
+
+    _logEvent('override-apply-panel', {
       fromIdx,
       ias:  Number.isFinite(ias)  && ias  > 0  ? ias  : null,
       flow: Number.isFinite(flow) && flow >= 0 ? flow : null,
       fl:   Number.isFinite(fl)   && fl   > 0  ? fl   : null,
-    };
-    _logEvent('override-apply', Object.assign({}, session.overrides));
+    });
     _saveSession();
     _refresh();
   }
   function _clearOverrides() {
     if (!session) return;
     _logEvent('override-clear', null);
+    // Limpia las per-WP maps (entradas con idx > currentIdx) y el
+    // legacy. Conserva entries en WPs ya pasados (semantica
+    // historica).
+    ['iasOverrides', 'flowOverrides', 'flOverrides'].forEach(mapKey => {
+      const m = session[mapKey];
+      if (!m) return;
+      Object.keys(m).forEach(k => {
+        const ki = parseInt(k, 10);
+        if (Number.isFinite(ki) && ki > session.currentIdx) delete m[ki];
+      });
+    });
     session.overrides = null;
     document.getElementById('live-override-ias').value  = '';
     document.getElementById('live-override-flow').value = '';
