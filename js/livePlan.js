@@ -1038,6 +1038,15 @@ window.TSAgestor.livePlan = (function () {
                                 : (lp && Number.isFinite(lp.ias) ? lp.ias : 120);
                 const newTAS = geomLocal.kiasToTAS(iasForTas, daFt);
                 if (Number.isFinite(newTAS) && newTAS > 0) tasToUse = newTAS;
+                // Test report fix: ANTES gsToUse no se actualizaba aqui
+                // — quedaba en lp.gs (plan default). Si refetched no
+                // cubria el WP y effIas era null, gsToUse era stale.
+                // Ahora recomputa con HW del viento fresco.
+                if (Number.isFinite(newTAS) && newTAS > 0 && i > 0) {
+                  const bearing = _bearingDeg(session.coords[i - 1], session.coords[i]);
+                  const hw = -w.windSpeedKt * Math.cos((w.windDir - bearing) * Math.PI / 180);
+                  gsToUse = Math.max(30, newTAS + hw);
+                }
               }
             }
           } catch (_) {}
@@ -1050,12 +1059,23 @@ window.TSAgestor.livePlan = (function () {
         if (Number.isFinite(wdir) && Number.isFinite(wspd)) {
           windToUse = { dir: wdir, speedKt: wspd };
         }
-        const rTas = session.refetched.legTas && session.refetched.legTas[rIdx];
-        if (Number.isFinite(rTas) && rTas > 0) tasToUse = rTas;
-        if (lp && Number.isFinite(lp.legNM) && lp.legNM > 0) {
-          const tMin = session.refetched.legTimes && session.refetched.legTimes[rIdx];
-          if (Number.isFinite(tMin) && tMin > 0) {
-            gsToUse = (lp.legNM / tMin) * 60;
+        // Test report fix: session.refetched.legTas/legTimes se
+        // computaron al MOMENTO del refetch con el IAS THEN (plan
+        // default o override anterior). Si AHORA hay un override IAS
+        // distinto en este WP (o heredado de uno anterior), aplicar
+        // refetched.legTas sobreescribiria con valor stale. Solo
+        // aplicamos refetched.legTas/legTimes SI no hay override IAS
+        // efectivo en este WP. El bloque effIas posterior recompute
+        // con kiasToTAS(effIas, ...) cuando aplica.
+        const effIasGuard = _effOverride(i, 'ias');
+        if (effIasGuard == null) {
+          const rTas = session.refetched.legTas && session.refetched.legTas[rIdx];
+          if (Number.isFinite(rTas) && rTas > 0) tasToUse = rTas;
+          if (lp && Number.isFinite(lp.legNM) && lp.legNM > 0) {
+            const tMin = session.refetched.legTimes && session.refetched.legTimes[rIdx];
+            if (Number.isFinite(tMin) && tMin > 0) {
+              gsToUse = (lp.legNM / tMin) * 60;
+            }
           }
         }
       }
