@@ -6366,3 +6366,119 @@ body.b1-fleet .b1-fleet-shell .b1-fleet-meta {
   .settings-value { text-align: left; }
 }
 
+
+
+/* ========================================================================
+   ISA box + Amenazas refactor (workflow live-threats-cleanup)
+   ======================================================================== */
+
+/* ── ISA Box dentro de Estado actual ─────────────────────────────────── */
+.live-isa-box {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--ea-azul-cielo, #8dc6e8);
+  border-radius: var(--r-sm, 4px);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.live-isa-box[data-level="warn"] { border-left-color: var(--ea-amarillo, #fac200); }
+.live-isa-box[data-level="bad"]  { border-left-color: var(--ea-rojo, #ad2e1c); }
+
+.live-isa-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+}
+.live-isa-title {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--text-mute); font-weight: 700;
+}
+.live-isa-fl {
+  font-family: 'Archivo Mono', 'JetBrains Mono', Consolas, monospace;
+  font-size: 13px; font-weight: 700; color: var(--text);
+}
+
+.live-isa-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.live-isa-cell {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 3px;
+  position: relative;
+}
+.live-isa-label {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-mute);
+}
+.live-isa-cell b {
+  font-family: 'Archivo Mono', 'JetBrains Mono', Consolas, monospace;
+  font-size: 16px; font-weight: 700; color: var(--text);
+}
+.live-isa-unit { font-size: 10px; color: var(--text-mute); }
+
+.live-isa-delta { color: var(--text); }
+.live-isa-delta.is-warm { color: #fbbf24; }
+.live-isa-delta.is-cold { color: #93c5fd; }
+.live-isa-delta.is-hot  { color: #fca5a5; }
+
+.live-isa-badge {
+  position: absolute; top: 6px; right: 8px;
+  font-size: 9px; font-weight: 700; padding: 2px 6px;
+  border-radius: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.live-isa-badge[data-level="ok"]   { background: rgba(74, 222, 128, 0.18); color: #86efac; }
+.live-isa-badge[data-level="warn"] { background: rgba(250, 194, 0, 0.20); color: #fde68a; }
+.live-isa-badge[data-level="bad"]  { background: rgba(173, 46, 28, 0.24); color: #fecaca; }
+
+.live-isa-footer { font-size: 11px; }
+
+@media (max-width: 720px) {
+  .live-isa-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ── Amenazas: dual badges + monitor details ─────────────────────────── */
+.live-threats-card .live-threats-count {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 6px;
+}
+.lt-attend-badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 12px;
+  background: rgba(173, 46, 28, 0.22);
+  color: #fecaca;
+  border: 1px solid var(--ea-rojo, #ad2e1c);
+}
+.lt-attend-badge.is-empty {
+  background: rgba(74, 197, 94, 0.18);
+  color: #bbf7d0;
+  border-color: #22c55e;
+}
+.lt-monitor-badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+}
+.live-threats-monitor { margin-top: 8px; }
+.live-threats-monitor > summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-mute);
+  list-style: none;
+  padding: 3px 0;
+}
+.live-threats-monitor > summary::before { content: "▸ "; }
+.live-threats-monitor[open] > summary::before { content: "▾ "; }
+.live-threats-monitor > summary::-webkit-details-marker { display: none; }
+
+/* Pulse animation solo en chips data-cat="tsaActive" (no en todos los now). */
+.live-threat-now { animation: none; }
+.live-threat-now[data-cat="tsaActive"] {
+  animation: liveBadgePulse 1.4s ease-in-out infinite;
+}

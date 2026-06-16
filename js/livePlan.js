@@ -620,6 +620,8 @@ window.TSAgestor.livePlan = (function () {
     // El sessionId del DELETE corresponde al del momento de la llamada
     // (capturado en la closure de liveSync), no al nuevo.
     session = null;
+    // Workflow live-threats-cleanup: reset latch del chip fuel.
+    _lastFuelStatusShown = 'ok';
     _invalidateRecalc();
     // BUG#1: epoch++ para que un _refetchWinds en vuelo no committee
     // su resultado sobre la session siguiente.
@@ -1983,6 +1985,10 @@ window.TSAgestor.livePlan = (function () {
   let _ttsLastBingoIdx = -1;
   let _ttsLastJokerIdx = -1;
   let _ttsLastSigmetIds = new Set();
+  // Workflow live-threats-cleanup: latch one-shot del chip fuel en
+  // _renderThreats (independiente del TTS). Solo emite chip en TRANSICION
+  // ok->joker->bingo. Reset en stop() y _resetStateInternal.
+  let _lastFuelStatusShown = 'ok';
   let _ttsLastTSAIds = new Set();
   function _loadTtsConfig() {
     try { _ttsEnabled = localStorage.getItem(TTS_KEY) === '1'; }
@@ -2285,6 +2291,7 @@ window.TSAgestor.livePlan = (function () {
     if (!session) return;
     const rows = _recalc();
     _renderStatus(rows);
+    _renderIsaBox();  // Workflow live-threats-cleanup: ISA en Estado actual
     _renderTable(rows);
     _renderEval(rows);
     _renderThreats(rows);
@@ -3367,13 +3374,37 @@ window.TSAgestor.livePlan = (function () {
   // que aun no se han atravesado. Cada item es un chip con nivel de
   // urgencia (now/30m/1h/info) y un dataset que el operador puede
   // expandir al clicarlo (popup con info).
-  function _renderThreats() {
-    const ul = document.getElementById('live-threats-list');
-    const countEl = document.getElementById('live-threats-count');
+  // Workflow live-threats-cleanup: refactor del panel Amenazas.
+  // Cambios clave:
+  //   - ISA dev por WP -> ELIMINADO (cubierto por _renderIsaBox)
+  //   - TSA activa dedup por id
+  //   - Conflicto TSA dedup por tsa.id (mas cercano gana)
+  //   - SIGMET filtrado por ETA <= 2h
+  //   - Fuel BINGO/JOKER en transicion (latch _lastFuelStatusShown)
+  //   - Viento antiguo umbral 45 min (era 30)
+  //   - Bucketing attend / monitor con badges duales en header
+  function _sigmetCrossEta(c) {
+    if (!c || !Array.isArray(c.segments) || !c.segments.length) return null;
+    const seg = c.segments[0];
+    const fromIdx = Number.isFinite(seg.fromIdx) ? seg.fromIdx
+                  : (Number.isFinite(seg.toIdx) ? seg.toIdx - 1 : null);
+    if (fromIdx == null) return null;
+    return (session && session.plannedEtas) ? session.plannedEtas[fromIdx] : null;
+  }
+  function _renderThreats(rows) {
+    const ul        = document.getElementById('live-threats-list');
+    const ulMon     = document.getElementById('live-threats-list-monitor');
+    const wrapMon   = document.getElementById('live-threats-monitor-wrap');
+    const cntMon    = document.getElementById('live-threats-monitor-count');
+    const badgeAttend  = document.getElementById('live-threats-attend-badge');
+    const badgeMonitor = document.getElementById('live-threats-monitor-badge');
     if (!ul) return;
     ul.innerHTML = '';
+    if (ulMon) ulMon.innerHTML = '';
     if (!session) {
-      if (countEl) countEl.textContent = '0';
+      if (badgeAttend)  { badgeAttend.textContent = '0 atender'; badgeAttend.classList.add('is-empty'); }
+      if (badgeMonitor) badgeMonitor.textContent = '0 monitorizar';
+      if (wrapMon) wrapMon.hidden = true;
       return;
     }
     const threats = [];
@@ -3386,7 +3417,6 @@ window.TSAgestor.livePlan = (function () {
       const h = Math.floor(min / 60), m = min % 60;
       return 'en ' + h + 'h' + (m ? ' ' + m + 'min' : '');
     };
-    // Urgencia: now (<=5min), high (<=30min), med (<=60min), low
     const urgencyOf = (etaMs) => {
       if (!Number.isFinite(etaMs)) return 'info';
       const minTo = (etaMs - nowMs) / 60000;
@@ -3396,8 +3426,30 @@ window.TSAgestor.livePlan = (function () {
       return 'low';
     };
     const orderUrgency = { now: 0, high: 1, med: 2, low: 3, info: 4 };
+    const orderSeverity = { danger: 0, warn: 1, info: 2 };
+    const orderCategory = { tsaActive: 0, sigmet: 1, tsaConflict: 2, fuel: 3, wind: 4, other: 5 };
 
-    // 1) SIGMETs cruzando ruta — _sigmetCrossings ya esta computado.
+    // 1) TSA activa AHORA — dedup por id.
+    if (Array.isArray(_activeTSAcrossings)) {
+      const seen = new Set();
+      _activeTSAcrossings.forEach(c => {
+        const tid = (c.tsa && (c.tsa.id || c.tsa.name)) || '';
+        if (!tid || seen.has(tid)) return;
+        seen.add(tid);
+        const name = c.tsa && c.tsa.name || 'TSA';
+        const ends = c.activeUntil ? _fmtTime(c.activeUntil) : null;
+        threats.push({
+          urgency: 'now',
+          severity: 'danger',
+          category: 'tsaActive',
+          label: '🛑 TSA activa: ' + name,
+          detail: 'Cruza tu ruta restante. ' + (ends ? 'Activa hasta ' + ends + 'Z.' : ''),
+          subtext: ends ? 'hasta ' + ends + 'Z' : '',
+        });
+      });
+    }
+
+    // 2) SIGMETs cruzando ruta — filtra por ETA <= 2h.
     if (Array.isArray(_sigmetCrossings)) {
       _sigmetCrossings.forEach(c => {
         const tipo = (c.sig && (c.sig.hazard || c.sig.icaoId || c.sig.type)) || 'SIGMET';
@@ -3405,92 +3457,263 @@ window.TSAgestor.livePlan = (function () {
         const fl1 = (c.sig && c.sig.altitudeLow1) || '';
         const fl2 = (c.sig && c.sig.altitudeHi1) || '';
         const altTxt = (fl1 || fl2) ? ' · FL' + fl1 + '-' + fl2 : '';
+        const crossEta = _sigmetCrossEta(c);
+        // Filtro: si la ETA del cruce supera 2h, saltamos (queda en
+        // _renderEval para awareness, no aqui en attend).
+        const TWO_HRS_MS = 2 * 60 * 60 * 1000;
+        if (Number.isFinite(crossEta) && (crossEta - nowMs) > TWO_HRS_MS) return;
+        // severity segun hazard.
+        const haz = String(tipo || '');
+        const severe = /TS|SEV TURB|SEV ICE|VA/i.test(haz) ? 'danger' : 'warn';
         threats.push({
-          urgency: 'high',
+          urgency: urgencyOf(crossEta),
+          severity: severe,
+          category: 'sigmet',
           label: '⚠ SIGMET ' + tipo + altTxt,
           detail: c.sig && c.sig.rawSigmet ? c.sig.rawSigmet : 'SIGMET cruzando ruta restante',
-          subtext: validTo ? 'Valido hasta ' + _fmtTime(validTo) : '',
+          subtext: validTo ? 'Válido hasta ' + _fmtTime(validTo) : '',
         });
       });
     }
-    // 2) TSAs activas en este instante que la ruta cruza.
-    if (Array.isArray(_activeTSAcrossings)) {
-      _activeTSAcrossings.forEach(c => {
-        const name = c.tsa && c.tsa.name || 'TSA';
-        const ends = c.activeUntil ? _fmtTime(c.activeUntil) : null;
-        threats.push({
-          urgency: 'now',
-          label: '🛑 TSA activa: ' + name,
-          detail: 'Cruza tu ruta restante. ' + (ends ? 'Activa hasta ' + ends + 'Z.' : ''),
-          subtext: ends ? 'Activa hasta ' + ends + 'Z' : '',
-        });
-      });
-    }
-    // 3) Conflictos del plan (calculados al calcular plan) que aun
-    //    no se han atravesado.
+
+    // 3) Conflictos del plan — dedup por tsa.id, conserva el de planEta minima.
     const plan = _getPlan();
     if (plan && Array.isArray(plan.conflicts)) {
+      const byId = new Map();
       plan.conflicts.forEach(cf => {
-        // Idx del WP "to" del segmento conflictivo
         const segTo = cf.segment && cf.segment.to;
         if (!segTo) return;
-        // Solo si esta delante de currentIdx (mirando coords del plan).
         const idxInCoords = plan.coords.findIndex(c => c.lat === segTo.lat && c.lon === segTo.lon);
         if (idxInCoords < 0) return;
         const liveIdx = session.coords.findIndex(c => c.originalIdx === idxInCoords);
         if (liveIdx < 0 || liveIdx <= session.currentIdx) return;
-        // ETA estimada para llegar
         const planEta = session.plannedEtas[liveIdx];
+        const tid = (cf.tsa && (cf.tsa.id || cf.tsa.name)) || '';
+        if (!tid) return;
+        const prev = byId.get(tid);
+        if (!prev || (Number.isFinite(planEta) && Number.isFinite(prev.planEta) && planEta < prev.planEta)) {
+          byId.set(tid, { cf, planEta });
+        }
+      });
+      byId.forEach(({ cf, planEta }) => {
+        const urg = urgencyOf(planEta);
         threats.push({
-          urgency: urgencyOf(planEta),
+          urgency: urg,
+          severity: urg === 'now' ? 'danger' : 'warn',
+          category: 'tsaConflict',
           label: '⚠ Conflicto TSA: ' + (cf.tsa && cf.tsa.name || ''),
-          detail: 'Cruce planificado del area en aprox ' + fmtMin(planEta - nowMs) + '.',
+          detail: 'Cruce planificado del área ' + fmtMin(planEta - nowMs) + '.',
           subtext: planEta ? _fmtTime(planEta) + 'Z' : '',
         });
       });
     }
-    // 4) Desviaciones ISA del refetched.
-    if (session.refetched && Array.isArray(session.refetched.isaDeviations)) {
-      session.refetched.isaDeviations.forEach(d => {
-        threats.push({
-          urgency: 'info',
-          label: '🌡 ISA dev: WP ' + (d.name || '#' + (d.idx + 1)) + ' ΔT ' +
-                 (d.devC >= 0 ? '+' : '') + Math.round(d.devC) + '°C',
-          detail: 'OAT ' + Math.round(d.oatC) + '°C vs ISA ' + Math.round(d.isaC) +
-                  '°C en FL' + d.fl + ' → DA ' + Math.round(d.daFt) + ' ft. Afecta TAS y consumo.',
-          subtext: '',
-        });
-      });
+
+    // 4) Fuel BINGO/JOKER — solo en TRANSICION (latch).
+    if (Array.isArray(rows) && rows.length) {
+      const cur = rows[Math.min(session.currentIdx | 0, rows.length - 1)];
+      const status = (cur && cur.fuelStatus) || 'ok';
+      if (status !== _lastFuelStatusShown) {
+        if (status === 'bingo') {
+          threats.push({
+            urgency: 'now', severity: 'danger', category: 'fuel',
+            label: '⛽ BINGO alcanzado',
+            detail: 'Combustible restante igual o inferior al BINGO configurado. Diversión imminente — considera diversión o RTB.',
+            subtext: '',
+          });
+        } else if (status === 'joker') {
+          threats.push({
+            urgency: 'high', severity: 'warn', category: 'fuel',
+            label: '⛽ JOKER alcanzado',
+            detail: 'Combustible restante igual o inferior al JOKER configurado. Revisa opciones de diversión.',
+            subtext: '',
+          });
+        }
+        _lastFuelStatusShown = status;
+      }
     }
-    // 5) Antiguedad de viento (warn si >30 min).
+
+    // 5) Viento antiguo (umbral 45 min).
     if (session.refetched && Number.isFinite(session.refetched.fetchedAt)) {
       const ageMin = Math.floor((nowMs - session.refetched.fetchedAt) / 60000);
-      if (ageMin >= 30) {
+      if (ageMin >= 45) {
         threats.push({
-          urgency: 'med',
+          urgency: 'med', severity: 'warn', category: 'wind',
           label: '⌛ Viento refetched hace ' + ageMin + ' min',
-          detail: 'GS y consumo en el log usan datos meteo antiguos. Pulsa "Refresh viento" para reanalizar.',
+          detail: 'GS y consumo del log usan datos meteo antiguos. Pulsa "Refresh viento" para reanalizar.',
           subtext: '',
         });
       }
     }
-    // Ordena por urgencia + alfabetico estable.
-    threats.sort((a, b) => (orderUrgency[a.urgency] - orderUrgency[b.urgency]));
-    if (countEl) countEl.textContent = threats.length;
-    if (!threats.length) {
-      ul.innerHTML = '<li class="dim">Sin amenazas detectadas en la ruta restante.</li>';
+
+    // Sort por [urgency, severity, category].
+    threats.sort((a, b) => {
+      const du = (orderUrgency[a.urgency] || 9) - (orderUrgency[b.urgency] || 9);
+      if (du) return du;
+      const ds = (orderSeverity[a.severity] || 9) - (orderSeverity[b.severity] || 9);
+      if (ds) return ds;
+      return (orderCategory[a.category] || 9) - (orderCategory[b.category] || 9);
+    });
+
+    // Bucketing: attend (urg <= med && severity !== info) vs monitor.
+    const attendList  = [];
+    const monitorList = [];
+    threats.forEach(t => {
+      const isAttend = (orderUrgency[t.urgency] <= orderUrgency.med) && t.severity !== 'info';
+      (isAttend ? attendList : monitorList).push(t);
+    });
+
+    // Render attend.
+    if (!attendList.length) {
+      ul.innerHTML = '<li class="dim">Sin amenazas que requieran atención.</li>';
+    } else {
+      attendList.forEach(t => {
+        const li = document.createElement('li');
+        li.className = 'live-threat live-threat-' + t.urgency;
+        li.setAttribute('data-cat', t.category);
+        const subtext = t.subtext ? '<span class="live-threat-sub dim"> · ' + t.subtext + '</span>' : '';
+        li.innerHTML = '<span class="live-threat-label"><b>' + t.label + '</b>' + subtext + '</span>';
+        if (t.detail) li.title = t.detail;
+        ul.appendChild(li);
+      });
+    }
+
+    // Render monitor.
+    if (ulMon) {
+      monitorList.forEach(t => {
+        const li = document.createElement('li');
+        li.className = 'live-threat live-threat-' + t.urgency;
+        li.setAttribute('data-cat', t.category);
+        const subtext = t.subtext ? '<span class="live-threat-sub dim"> · ' + t.subtext + '</span>' : '';
+        li.innerHTML = '<span class="live-threat-label"><b>' + t.label + '</b>' + subtext + '</span>';
+        if (t.detail) li.title = t.detail;
+        ulMon.appendChild(li);
+      });
+    }
+
+    // Badges.
+    if (badgeAttend) {
+      badgeAttend.textContent = attendList.length + ' atender';
+      badgeAttend.classList.toggle('is-empty', attendList.length === 0);
+    }
+    if (badgeMonitor) {
+      badgeMonitor.textContent = monitorList.length + ' monitorizar';
+    }
+    if (wrapMon) {
+      wrapMon.hidden = monitorList.length === 0;
+      if (cntMon) cntMon.textContent = String(monitorList.length);
+    }
+  }
+
+  // Workflow live-threats-cleanup: render del recuadro ISA del WP/leg
+  // actual. Sustituye los multiples chips ISA por-WP y el bullet de
+  // _renderEval. Usa: geom.isaTempC + geom.densityAltitudeFt +
+  // meteoApi.lookupWindAt + session.calibration / refetched.legOat.
+  function _renderIsaBox() {
+    const box = document.getElementById('live-isa-box');
+    if (!box) return;
+    if (!session || !Array.isArray(session.coords) || !session.coords.length) {
+      box.hidden = true; return;
+    }
+    const geom = window.TSAgestor && window.TSAgestor.geom;
+    if (!geom || typeof geom.isaTempC !== 'function' ||
+        typeof geom.densityAltitudeFt !== 'function') {
+      box.hidden = true; return;
+    }
+    const idx = session.currentIdx | 0;
+    const legIdx = Math.min(idx + 1, session.coords.length - 1);
+    const fl = (session.coords[legIdx] && Number.isFinite(session.coords[legIdx].fl))
+             ? session.coords[legIdx].fl : 100;
+    const wpName = (session.coords[legIdx] && session.coords[legIdx].name) || ('#' + (legIdx + 1));
+    const altFt = fl * 100;
+    const isaC  = geom.isaTempC(altFt);
+    const daIsa = geom.densityAltitudeFt(altFt, isaC);
+
+    // OAT real: cal radio > re-lookup ETA en windsHourly > refetched cache
+    let oatActual = null, src = 'sin datos';
+    if (session.calibration && Number.isFinite(session.calibration.oatDeltaC)) {
+      oatActual = isaC + session.calibration.oatDeltaC;
+      src = '📡 cal radio';
+    } else if (session.windsHourly && Array.isArray(session.windsHourly)) {
+      const startIdx = session.windsHourlyStartIdx | 0;
+      const ph = session.windsHourly[legIdx - startIdx];
+      const etaMs = (session.plannedEtas && session.plannedEtas[legIdx]) || Date.now();
+      const meteoApi = window.TSAgestor && window.TSAgestor.meteoApi;
+      if (ph && meteoApi && typeof meteoApi.lookupWindAt === 'function') {
+        try {
+          const w = meteoApi.lookupWindAt(ph, new Date(etaMs), fl);
+          if (w && Number.isFinite(w.temperatureC)) {
+            oatActual = w.temperatureC;
+            src = 'modelo (re-lookup ETA)';
+          }
+        } catch (_) {}
+      }
+    }
+    if (oatActual == null && session.refetched && Array.isArray(session.refetched.legOat)) {
+      const startIdx = session.refetched.startIdx | 0;
+      const o = session.refetched.legOat[legIdx - startIdx];
+      if (Number.isFinite(o)) { oatActual = o; src = 'modelo (refetch)'; }
+    }
+
+    const flEl   = document.getElementById('live-isa-fl');
+    const expEl  = document.getElementById('live-isa-oat-expected');
+    const oatEl  = document.getElementById('live-isa-oat-actual');
+    const srcEl  = document.getElementById('live-isa-oat-src');
+    const dEl    = document.getElementById('live-isa-delta');
+    const bEl    = document.getElementById('live-isa-badge');
+    const daEl   = document.getElementById('live-isa-da');
+    const dDelta = document.getElementById('live-isa-da-delta');
+    const foot   = document.getElementById('live-isa-foot');
+
+    if (flEl)  flEl.textContent = 'FL' + String(fl).padStart(3, '0') + ' · ' + wpName;
+    if (expEl) expEl.textContent = (isaC >= 0 ? '+' : '') + Math.round(isaC) + '°C';
+
+    if (oatActual == null) {
+      if (oatEl)  oatEl.textContent = '—';
+      if (srcEl)  srcEl.textContent = _refetchInFlight ? 'actualizando…' : src;
+      if (dEl)    { dEl.textContent = '—'; dEl.className = 'live-isa-delta'; }
+      if (bEl)    { bEl.textContent = 'N/A'; bEl.dataset.level = 'ok'; }
+      if (daEl)   daEl.textContent = Math.round(daIsa).toLocaleString() + ' ft';
+      if (dDelta) dDelta.textContent = '(ISA)';
+      box.dataset.level = 'ok';
+      if (foot)   foot.textContent = 'Sin OAT refetched. Pulsa ⟳ Refresh viento.';
+      box.hidden = false;
       return;
     }
-    threats.forEach(t => {
-      const li = document.createElement('li');
-      li.className = 'live-threat live-threat-' + t.urgency;
-      const subtext = t.subtext ? '<span class="live-threat-sub dim"> · ' + t.subtext + '</span>' : '';
-      li.innerHTML = '<span class="live-threat-label"><b>' + t.label + '</b>' + subtext + '</span>';
-      if (t.detail) {
-        li.title = t.detail;
+
+    const dT   = oatActual - isaC;
+    const absD = Math.abs(dT);
+    const da   = geom.densityAltitudeFt(altFt, oatActual);
+    const daDelta = da - daIsa;
+
+    if (oatEl) oatEl.textContent = (oatActual >= 0 ? '+' : '') + Math.round(oatActual) + '°C';
+    if (srcEl) srcEl.textContent = src;
+    const sign = dT >= 0 ? '+' : '';
+    if (dEl) {
+      dEl.textContent = sign + dT.toFixed(1) + '°C';
+      dEl.className = 'live-isa-delta ' +
+        (dT > 0.5 ? 'is-warm' : dT < -0.5 ? 'is-cold' : '');
+      if (absD > 8) { dEl.classList.add('is-hot'); dEl.classList.remove('is-warm'); }
+    }
+    let lvl = 'ok', label = 'ISA';
+    if (absD > 8)      { lvl = 'bad';  label = 'DEV ' + sign + Math.round(dT); }
+    else if (absD > 3) { lvl = 'warn'; label = 'Δ' + sign + Math.round(dT); }
+    if (bEl)  { bEl.dataset.level = lvl; bEl.textContent = label; }
+    box.dataset.level = lvl;
+    if (daEl) daEl.textContent = Math.round(da).toLocaleString() + ' ft';
+    const daSign = daDelta >= 0 ? '+' : '';
+    if (dDelta) dDelta.textContent = '(' + daSign + Math.round(daDelta).toLocaleString() + ' ft vs ISA)';
+
+    if (foot) {
+      if (lvl === 'bad') {
+        foot.textContent = '⚠ Desviación fuerte: revisa TAS/consumo del leg en el log.';
+      } else if (lvl === 'warn') {
+        foot.textContent = 'Atmósfera ' + (dT > 0 ? 'más cálida' : 'más fría') +
+                           ' que ISA — TAS/DA ya ajustados en el plan.';
+      } else {
+        foot.textContent = 'Atmósfera estándar ±3°C. Plan calibrado.';
       }
-      ul.appendChild(li);
-    });
+    }
+    box.hidden = false;
   }
 
   // ── Render: evaluacion ─────────────────────────────────────────────
@@ -3591,20 +3814,10 @@ window.TSAgestor.livePlan = (function () {
       }
     }
 
-    // F2.7: desviaciones ISA significativas (>3 °C). El refetch las
-    // recopila durante el recalculo; aqui las mostramos como warn.
-    if (session.refetched && Array.isArray(session.refetched.isaDeviations) &&
-        session.refetched.isaDeviations.length > 0) {
-      const devs = session.refetched.isaDeviations;
-      // Resumen: peor desviacion + count
-      const worst = devs.reduce((a, b) => Math.abs(b.devC) > Math.abs(a.devC) ? b : a, devs[0]);
-      const sign = worst.devC > 0 ? '+' : '';
-      const li = document.createElement('li');
-      li.className = 'live-eval-warn';
-      li.textContent = `🌡 Desviación ISA detectada en ${devs.length} WP(s). Peor: WP #${worst.idx + 1} ${worst.name} · OAT ${Math.round(worst.oatC)}°C (ISA${sign}${Math.round(worst.devC)}°C, DA ${Math.round(worst.daFt)} ft).`;
-      li.title = devs.map(d => `WP #${d.idx + 1} ${d.name}: OAT ${Math.round(d.oatC)}°C, ISA ${Math.round(d.isaC)}°C, DA ${Math.round(d.daFt)} ft`).join('\n');
-      ul.appendChild(li);
-    }
+    // Workflow live-threats-cleanup: ISA dev YA NO se renderiza aqui.
+    // El recuadro #live-isa-box (Estado actual) es la fuente unica de
+    // la lente ISA en runtime. session.refetched.isaDeviations sigue
+    // poblandose para AAR/timeline/export (buildFlownSnapshot).
 
     // F2.6: TSAs activas que cruza la ruta restante AHORA.
     if (Array.isArray(_activeTSAcrossings) && _activeTSAcrossings.length > 0) {

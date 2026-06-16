@@ -728,6 +728,41 @@
               <b id="live-leg-gs">—</b>
             </div>
           </div>
+
+          <!-- Workflow live-threats-cleanup: ISA box consolida el
+               panorama termico del WP/leg actual. Sustituye los
+               multiples chips por-WP de _renderThreats y el bullet
+               de _renderEval (que generaban ~10-15 alertas redundantes
+               por vuelo con WPs cada 15 NM). -->
+          <div class="live-isa-box" id="live-isa-box" hidden>
+            <div class="live-isa-head">
+              <span class="live-isa-title">ISA · Leg actual</span>
+              <span class="live-isa-fl" id="live-isa-fl">FL—</span>
+            </div>
+            <div class="live-isa-grid">
+              <div class="live-isa-cell">
+                <span class="live-isa-label">OAT esperada</span>
+                <b id="live-isa-oat-expected">—</b>
+                <span class="live-isa-unit">ISA</span>
+              </div>
+              <div class="live-isa-cell">
+                <span class="live-isa-label">OAT real</span>
+                <b id="live-isa-oat-actual">—</b>
+                <span class="live-isa-unit" id="live-isa-oat-src">modelo</span>
+              </div>
+              <div class="live-isa-cell live-isa-delta-cell">
+                <span class="live-isa-label">Δ ISA</span>
+                <b id="live-isa-delta" class="live-isa-delta">—</b>
+                <span class="live-isa-badge" id="live-isa-badge" data-level="ok">ISA</span>
+              </div>
+              <div class="live-isa-cell">
+                <span class="live-isa-label">Density Alt</span>
+                <b id="live-isa-da">—</b>
+                <span class="live-isa-unit" id="live-isa-da-delta">—</span>
+              </div>
+            </div>
+            <div class="live-isa-footer dim" id="live-isa-foot"></div>
+          </div>
         </div>
 
         <!-- Acciones rápidas -->
@@ -794,11 +829,18 @@
         <div class="live-card live-threats-card">
           <div class="live-card-head">
             <h3>Amenazas</h3>
-            <span id="live-threats-count" class="live-threats-count dim">0</span>
+            <span id="live-threats-count" class="live-threats-count">
+              <span class="lt-attend-badge is-empty" id="live-threats-attend-badge">0 atender</span>
+              <span class="lt-monitor-badge dim" id="live-threats-monitor-badge">0 monitorizar</span>
+            </span>
           </div>
           <ul id="live-threats-list" class="live-threats-list">
             <li class="dim">Sin amenazas detectadas.</li>
           </ul>
+          <details id="live-threats-monitor-wrap" class="live-threats-monitor" hidden>
+            <summary>Mostrar info-only (<span id="live-threats-monitor-count">0</span>)</summary>
+            <ul id="live-threats-list-monitor" class="live-threats-list"></ul>
+          </details>
         </div>
 
         <!-- Evaluación / alertas -->
