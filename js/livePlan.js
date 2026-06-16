@@ -3476,34 +3476,38 @@ window.TSAgestor.livePlan = (function () {
       });
     }
 
-    // 3) Conflictos del plan — dedup por tsa.id, conserva el de planEta minima.
+    // 3) Conflictos del plan — usa CLUSTERS (workflow tsa-conflict-redesign).
+    //    Una "zona caliente" = un cluster (TSAs solapadas en mismo
+    //    along-track range). El operador ve 1 chip por zona, no N por
+    //    TSA. Si hay multiples TSAs en el cluster (cluster.severity ===
+    //    'overlap'), se indica en el label.
     const plan = _getPlan();
-    if (plan && Array.isArray(plan.conflicts)) {
-      const byId = new Map();
-      plan.conflicts.forEach(cf => {
-        const segTo = cf.segment && cf.segment.to;
-        if (!segTo) return;
-        const idxInCoords = plan.coords.findIndex(c => c.lat === segTo.lat && c.lon === segTo.lon);
-        if (idxInCoords < 0) return;
-        const liveIdx = session.coords.findIndex(c => c.originalIdx === idxInCoords);
-        if (liveIdx < 0 || liveIdx <= session.currentIdx) return;
-        const planEta = session.plannedEtas[liveIdx];
-        const tid = (cf.tsa && (cf.tsa.id || cf.tsa.name)) || '';
-        if (!tid) return;
-        const prev = byId.get(tid);
-        if (!prev || (Number.isFinite(planEta) && Number.isFinite(prev.planEta) && planEta < prev.planEta)) {
-          byId.set(tid, { cf, planEta });
-        }
-      });
-      byId.forEach(({ cf, planEta }) => {
-        const urg = urgencyOf(planEta);
+    if (plan && Array.isArray(plan.conflictClusters) && plan.conflictClusters.length) {
+      plan.conflictClusters.forEach(cl => {
+        // Filtra clusters cuya zona ya quedo atras del currentIdx.
+        // currentIdx en session.coords -> cumDistKm para comparar.
+        const curCoord = session.coords[session.currentIdx];
+        const curKm = (curCoord && Number.isFinite(curCoord.cumDistKm)) ? curCoord.cumDistKm : 0;
+        if (cl.rangoKm[1] < curKm) return;
+        const tStart = cl.tStartMin instanceof Date ? cl.tStartMin.getTime() : null;
+        const tEnd   = cl.tEndMax   instanceof Date ? cl.tEndMax.getTime()   : null;
+        const urg = urgencyOf(tStart);
+        const nTsa = cl.tsas.length;
+        const repName = (cl.tsas[0] && cl.tsas[0].tsa && cl.tsas[0].tsa.name) || 'TSA';
+        const label = nTsa > 1
+          ? `⚠ Zona caliente: ${repName} + ${nTsa - 1} TSA(s) solapada(s)`
+          : `⚠ Conflicto TSA: ${repName}`;
+        const detail = nTsa > 1
+          ? `Cluster ${cl.id} · ${nTsa} TSAs en zona ${cl.rangoNm[0].toFixed(0)}-${cl.rangoNm[1].toFixed(0)} NM. ` +
+            cl.tsas.map(t => t.tsa && t.tsa.name).filter(Boolean).join(', ') +
+            `. Cruce ${fmtMin((tStart||0) - nowMs)}.`
+          : `Cruce planificado del área ${fmtMin((tStart||0) - nowMs)}.`;
         threats.push({
           urgency: urg,
           severity: urg === 'now' ? 'danger' : 'warn',
           category: 'tsaConflict',
-          label: '⚠ Conflicto TSA: ' + (cf.tsa && cf.tsa.name || ''),
-          detail: 'Cruce planificado del área ' + fmtMin(planEta - nowMs) + '.',
-          subtext: planEta ? _fmtTime(planEta) + 'Z' : '',
+          label, detail,
+          subtext: tStart ? _fmtTime(tStart) + 'Z' : '',
         });
       });
     }

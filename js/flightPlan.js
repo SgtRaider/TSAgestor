@@ -502,66 +502,165 @@ window.TSAgestor.flightPlan = (function () {
     return out;
   }
 
+  // Workflow tsa-conflict-redesign: segIntersectT devuelve t en [0,1]
+  // sobre el segmento a->b si corta c->d dentro de ambos. null si no
+  // hay corte. Necesario para clustering along-track (segCrossesPolygon
+  // solo devuelve bool, perdemos la fraccion del cruce).
+  function segIntersectT(a, b, c, d) {
+    const denom = (b[1] - a[1]) * (d[0] - c[0]) - (b[0] - a[0]) * (d[1] - c[1]);
+    if (Math.abs(denom) < 1e-12) return null;
+    const t = ((c[1] - a[1]) * (d[0] - c[0]) - (c[0] - a[0]) * (d[1] - c[1])) / denom;
+    const u = ((c[1] - a[1]) * (b[0] - a[0]) - (c[0] - a[0]) * (b[1] - a[1])) / denom;
+    if (t < 0 || t > 1 || u < 0 || u > 1) return null;
+    return t;
+  }
+  // [tEnter, tExit] dentro del segmento a->b. 0/1 si un extremo cae
+  // dentro. null si no hay cruce (consistencia con segCrossesPolygon).
+  function segPolyEntryExitFrac(a, b, poly) {
+    const ts = [];
+    if (pointInPoly(a, poly)) ts.push(0);
+    const n = poly.length;
+    for (let i = 0; i < n; i++) {
+      const t = segIntersectT(a, b, poly[i], poly[(i + 1) % n]);
+      if (t != null) ts.push(t);
+    }
+    if (pointInPoly(b, poly)) ts.push(1);
+    if (!ts.length) return null;
+    let lo = ts[0], hi = ts[0];
+    for (let k = 1; k < ts.length; k++) {
+      if (ts[k] < lo) lo = ts[k];
+      if (ts[k] > hi) hi = ts[k];
+    }
+    return [lo, hi];
+  }
+
+  // Workflow tsa-conflict-redesign: shape identico al previo +
+  // alongTrack:{rangos[[enterKm,exitKm],...], enterKm, exitKm}.
+  // tStart/tEnd se interpolan al rango real de paso por la TSA (no
+  // al segmento entero), dando hora exacta de entrada/salida.
   function findConflicts(route, tsas, fl, departureUTC, speedKt) {
     if (!route || !tsas || !tsas.length) return [];
-    const out = [];
+    const raw = [];
     let cumKm = 0;
     for (const seg of route.segments) {
       const segStartKm = cumKm;
       cumKm += seg.dist;
       const segEndKm = cumKm;
-      const tStart = departureUTC.getTime() + (segStartKm / NM_KM / speedKt) * 3600 * 1000;
-      const tEnd   = departureUTC.getTime() + (segEndKm   / NM_KM / speedKt) * 3600 * 1000;
-      // FL operativo del tramo: el mas alto de los dos extremos. Asi en el
-      // ascenso (origen GND -> via FL250) o el descenso (via FL250 -> destino
-      // GND) usamos FL250 para la deteccion: la aeronave alcanza ese nivel
-      // de cruise y solo se reportan conflictos con TSAs cuya banda lo
-      // incluye. Las TSAs bajas (p.ej. TLVR LOW 2500-5000ft) no se marcan
-      // como conflicto cuando el plan es FL250 porque la ruta esta por
-      // encima de ellas en cruise; durante climb/descent se asume separacion
-      // ATC.
       const flA = seg.from.fl != null ? seg.from.fl : fl;
       const flB = seg.to.fl   != null ? seg.to.fl   : fl;
       const flCruise  = Math.max(flA, flB);
       const segLowFt  = flCruise * 100;
       const segHighFt = flCruise * 100;
+      const tStartSegMs = departureUTC.getTime() + (segStartKm / NM_KM / speedKt) * 3600 * 1000;
+      const tEndSegMs   = departureUTC.getTime() + (segEndKm   / NM_KM / speedKt) * 3600 * 1000;
       for (const tsa of tsas) {
-        // El tramo arranca o termina dentro de esta TSA (sea por clic
-        // explicito en modo dibujo o porque un aeropuerto/waypoint cae
-        // geograficamente dentro): cruce esperado, no se reporta como
-        // conflicto.
+        // El tramo arranca/termina dentro de esta TSA: cruce esperado.
         if (seg.from.tsa && seg.from.tsa.id === tsa.id) continue;
         if (seg.to.tsa   && seg.to.tsa.id   === tsa.id) continue;
-        // Audit v3 BLOCKER#1: TSAs sin vertical (KML importado o parse
-        // incompleto) hacian crashear con TypeError. Si no tenemos
-        // limites verticales, no podemos descartar por FL — la opcion
-        // conservadora es INCLUIR el TSA en el cross-check lateral
-        // (mejor falso positivo que silenciar un cruce real).
+        // Audit v3 BLOCKER#1: TSAs sin vertical -> incluir defensivamente.
         const vert = tsa.vertical;
         const haveLower = vert && Number.isFinite(vert.lowerFt);
         const haveUpper = vert && Number.isFinite(vert.upperFt);
         if (haveLower && segHighFt < vert.lowerFt) continue;
         if (haveUpper && segLowFt  > vert.upperFt) continue;
-        if (!segCrossesPolygon(
+        const frac = segPolyEntryExitFrac(
           [seg.from.lat, seg.from.lon],
-          [seg.to.lat, seg.to.lon],
-          tsa.polygon)) continue;
+          [seg.to.lat,   seg.to.lon],
+          tsa.polygon);
+        if (!frac) continue;
+        const enterKm = segStartKm + frac[0] * seg.dist;
+        const exitKm  = segStartKm + frac[1] * seg.dist;
+        const tStart = new Date(tStartSegMs + frac[0] * (tEndSegMs - tStartSegMs));
+        const tEnd   = new Date(tStartSegMs + frac[1] * (tEndSegMs - tStartSegMs));
         const sched = (tsa.schedules || []).find(s =>
           s && s.startUTC && s.endUTC &&
-          s.startUTC.getTime() < tEnd && s.endUTC.getTime() > tStart
+          s.startUTC.getTime() < tEnd.getTime() && s.endUTC.getTime() > tStart.getTime()
         );
         if (!sched) continue;
-        out.push({
-          tsa, segment: seg, schedule: sched,
-          tStart: new Date(tStart), tEnd: new Date(tEnd),
-        });
+        raw.push({ tsa, segment: seg, schedule: sched, tStart, tEnd, enterKm, exitKm });
       }
     }
-    const seen = new Set();
-    return out.filter(c => {
-      if (seen.has(c.tsa.id)) return false;
-      seen.add(c.tsa.id); return true;
-    });
+    // Fusion por tsa.id en orden along-track. Si la ruta sale y vuelve
+    // a entrar a la misma TSA con gap > 1 NM, guarda rangos separados.
+    const EPS_KM = 1.85; // ~1 NM
+    const byId = new Map();
+    for (const r of raw) {
+      let cur = byId.get(r.tsa.id);
+      if (!cur) {
+        byId.set(r.tsa.id, {
+          tsa: r.tsa, segment: r.segment, schedule: r.schedule,
+          tStart: r.tStart, tEnd: r.tEnd,
+          alongTrack: {
+            rangos: [[r.enterKm, r.exitKm]],
+            enterKm: r.enterKm, exitKm: r.exitKm,
+          },
+        });
+        continue;
+      }
+      const rangos = cur.alongTrack.rangos;
+      const ultimo = rangos[rangos.length - 1];
+      if (r.enterKm <= ultimo[1] + EPS_KM) {
+        if (r.exitKm > ultimo[1]) ultimo[1] = r.exitKm;
+      } else {
+        rangos.push([r.enterKm, r.exitKm]);
+      }
+      if (r.enterKm < cur.alongTrack.enterKm) cur.alongTrack.enterKm = r.enterKm;
+      if (r.exitKm  > cur.alongTrack.exitKm)  cur.alongTrack.exitKm  = r.exitKm;
+      if (r.tStart.getTime() < cur.tStart.getTime()) cur.tStart = r.tStart;
+      if (r.tEnd.getTime()   > cur.tEnd.getTime())   cur.tEnd   = r.tEnd;
+    }
+    return Array.from(byId.values());
+  }
+
+  // Workflow tsa-conflict-redesign: agrupa conflicts cuyos rangos
+  // along-track se solapan. Una "zona caliente" para el piloto = un
+  // cluster. Si dos TSAs solapan en el mismo tramo de la ruta, son
+  // 1 cluster (no 2 alarmas). Si la ruta cruza la misma TSA dos veces
+  // (gap > 1NM), van a 2 clusters distintos.
+  function clusterConflictsByAlongTrack(conflicts) {
+    if (!conflicts || !conflicts.length) return [];
+    const EPS_KM = 1.85;
+    const items = [];
+    for (const c of conflicts) {
+      const rangos = (c.alongTrack && Array.isArray(c.alongTrack.rangos) && c.alongTrack.rangos.length)
+        ? c.alongTrack.rangos
+        : [[0, 0]];
+      for (const r of rangos) {
+        items.push({ conflict: c, enterKm: r[0], exitKm: r[1] });
+      }
+    }
+    items.sort((a, b) => a.enterKm - b.enterKm);
+    const clusters = [];
+    let cur = null;
+    let idx = 0;
+    for (const it of items) {
+      if (!cur || it.enterKm > cur.rangoKm[1] + EPS_KM) {
+        cur = {
+          id: 'cl' + (idx++),
+          rangoKm: [it.enterKm, it.exitKm],
+          rangoNm: [it.enterKm / NM_KM, it.exitKm / NM_KM],
+          tsas: [it.conflict],
+          schedules: [it.conflict.schedule],
+          tStartMin: it.conflict.tStart,
+          tEndMax:   it.conflict.tEnd,
+          severity: 'tangent',
+        };
+        clusters.push(cur);
+        continue;
+      }
+      if (it.exitKm > cur.rangoKm[1]) {
+        cur.rangoKm[1] = it.exitKm;
+        cur.rangoNm[1] = it.exitKm / NM_KM;
+      }
+      if (!cur.tsas.includes(it.conflict)) {
+        cur.tsas.push(it.conflict);
+        cur.schedules.push(it.conflict.schedule);
+      }
+      if (it.conflict.tStart.getTime() < cur.tStartMin.getTime()) cur.tStartMin = it.conflict.tStart;
+      if (it.conflict.tEnd.getTime()   > cur.tEndMax.getTime())   cur.tEndMax   = it.conflict.tEnd;
+      cur.severity = cur.tsas.length >= 2 ? 'overlap' : 'tangent';
+    }
+    return clusters;
   }
 
   // TSAs sobrevoladas lateralmente por la ruta, sin filtrar por FL ni
@@ -708,6 +807,12 @@ window.TSAgestor.flightPlan = (function () {
     const timeMinutes = (distNM / speedKt) * 60;
     const eta = new Date(depUTC.getTime() + timeMinutes * 60 * 1000);
     const conflicts = findConflicts(route, opts.tsas || [], fl, depUTC, speedKt);
+    // Workflow tsa-conflict-redesign: clusters de "zonas calientes"
+    // — agrupa TSAs cuyos rangos along-track se solapan. Una zona =
+    // un cluster. Consumers pueden mostrar 1 entrada por cluster en
+    // lugar de N entries por TSA. Backwards compat: si no se usa,
+    // plan.conflicts sigue funcionando igual.
+    const conflictClusters = clusterConflictsByAlongTrack(conflicts);
     const overflownTSAs = findOverflownTSAs(route, opts.tsas || []);
 
     const result = {
@@ -733,6 +838,7 @@ window.TSAgestor.flightPlan = (function () {
       distanceNM: distNM,
       timeMinutes,
       conflicts,
+      conflictClusters,
       overflownTSAs,
     };
     return result;

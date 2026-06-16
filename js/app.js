@@ -151,6 +151,7 @@
         route:        plan.route,
         narrative:    plan.narrative,
         conflicts:    plan.conflicts,
+        conflictClusters: plan.conflictClusters,
         // Workflow fleet-tsa-integration: overflownTSAs incluido bajo
         // cap de 100KB para mejorar fidelidad post-F5 de
         // session.crossingTSAs. Si el JSON supera 100KB lo omitimos
@@ -2779,20 +2780,40 @@
     $('#plan-remarks-text').textContent = remarks.length ? remarks.join(', ') : '—';
     $('#plan-remarks-count').textContent = remarks.length;
 
+    // Workflow tsa-conflict-redesign: render por CLUSTERS (zonas
+    // calientes) en lugar de una entrada por cada TSA cruzada. Si en
+    // un rango along-track hay 3 TSAs solapadas, aparece 1 cluster
+    // con las 3 listadas dentro. Reduce ruido manteniendo el detalle.
     const ul = $('#plan-conflicts-list');
     ul.innerHTML = '';
-    $('#plan-conflicts-count').textContent = p.conflicts.length;
-    if (p.conflicts.length === 0) {
+    const clusters = Array.isArray(p.conflictClusters) ? p.conflictClusters : [];
+    $('#plan-conflicts-count').textContent = clusters.length;
+    if (clusters.length === 0) {
       const li = document.createElement('li');
       li.className = 'ok';
       li.textContent = 'Sin conflictos detectados a FL' + p.flightLevel + ' con la ventana de salida indicada.';
       ul.appendChild(li);
     } else {
-      for (const c of p.conflicts) {
+      for (const cl of clusters) {
+        const nTsa = cl.tsas.length;
+        const t0 = cl.rangoNm[0].toFixed(0);
+        const t1 = cl.rangoNm[1].toFixed(0);
+        const zoneTxt = nTsa > 1
+          ? `Zona caliente · ${t0}-${t1} NM · ${nTsa} TSAs solapadas`
+          : `Zona · ${t0}-${t1} NM`;
+        const tStart = cl.tStartMin instanceof Date ? formatUTC(cl.tStartMin) : '—';
+        const tEnd   = cl.tEndMax   instanceof Date ? formatUTC(cl.tEndMax)   : '—';
+        const tsasHtml = cl.tsas.map(c => {
+          const vert = c.tsa.vertical || {};
+          const lo = vert.lowerLabel || '?';
+          const hi = vert.upperLabel || '?';
+          return `<div class="dim">• <b>${escapeHTML(c.tsa.name || '')}</b> · ${escapeHTML(lo)}–${escapeHTML(hi)}</div>`;
+        }).join('');
         const li = document.createElement('li');
         li.innerHTML = `
-          <b>${escapeHTML(c.tsa.name)}</b> · ${escapeHTML(c.tsa.vertical.lowerLabel)} – ${escapeHTML(c.tsa.vertical.upperLabel)}
-          <br><span class="dim">Segmento ${escapeHTML(wpDisplay(c.segment.from))} → ${escapeHTML(wpDisplay(c.segment.to))} (${escapeHTML(c.segment.airway || 'DCT')}) · paso aprox. ${formatUTC(c.tStart)} – ${formatUTC(c.tEnd)}</span>
+          <b>${escapeHTML(zoneTxt)}</b>
+          <br><span class="dim">Paso aprox. ${tStart} – ${tEnd}</span>
+          ${tsasHtml}
         `;
         ul.appendChild(li);
       }
