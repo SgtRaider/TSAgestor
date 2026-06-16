@@ -663,6 +663,94 @@ window.TSAgestor.flightPlan = (function () {
     return clusters;
   }
 
+  // Workflow tsa-conflict-viability-filter: marca cada cluster con
+  // hasViableAlternative=true si existe alguna TSA del catalogo
+  // (allTsas) cuyo rango along-track abarque TODO el cluster Y este
+  // (a) INACTIVA en la ventana temporal del cluster, o (b) fuera de
+  // la banda vertical del FL crucero. Las TSAs ya en el cluster se
+  // excluyen (self-alt).
+  //
+  // Criterio estricto del operador: "solo debe saltar conflicto si
+  // hay alguna TSA fuera de horarios O si no hay continuidad de TSAs
+  // en la ruta". Una sola TSA alternativa contigua basta para invalidar
+  // el conflicto — no se hace patchwork por trozos.
+  function postProcessClustersWithAlternatives(clusters, allTsas, route, fl, departureUTC, speedKt) {
+    if (!clusters || !clusters.length) return clusters;
+    if (!allTsas  || !allTsas.length)  return clusters;
+    const flFt = fl * 100;
+    const EPS_KM = 1.85; // ~1 NM
+
+    // Pre-computa rango along-track + ventana temporal de CADA TSA
+    // candidata (no solo las del conflict). Mismo bucle/geometria que
+    // findConflicts, sin filtros FL/schedule.
+    const tsaSpan = new Map();
+    let cumKm = 0;
+    for (const seg of route.segments) {
+      const segStartKm = cumKm;
+      cumKm += seg.dist;
+      const segEndKm = cumKm;
+      const tStartSegMs = departureUTC.getTime() + (segStartKm / NM_KM / speedKt) * 3600 * 1000;
+      const tEndSegMs   = departureUTC.getTime() + (segEndKm   / NM_KM / speedKt) * 3600 * 1000;
+      for (const tsa of allTsas) {
+        if (!tsa || !Array.isArray(tsa.polygon) || tsa.polygon.length < 3) continue;
+        const frac = segPolyEntryExitFrac(
+          [seg.from.lat, seg.from.lon],
+          [seg.to.lat,   seg.to.lon],
+          tsa.polygon);
+        if (!frac) continue;
+        const enterKm = segStartKm + frac[0] * seg.dist;
+        const exitKm  = segStartKm + frac[1] * seg.dist;
+        const tStart  = new Date(tStartSegMs + frac[0] * (tEndSegMs - tStartSegMs));
+        const tEnd    = new Date(tStartSegMs + frac[1] * (tEndSegMs - tStartSegMs));
+        const prev = tsaSpan.get(tsa.id);
+        if (!prev) {
+          tsaSpan.set(tsa.id, { tsa, enterKm, exitKm, tStart, tEnd });
+        } else {
+          if (enterKm < prev.enterKm) prev.enterKm = enterKm;
+          if (exitKm  > prev.exitKm)  prev.exitKm  = exitKm;
+          if (tStart.getTime() < prev.tStart.getTime()) prev.tStart = tStart;
+          if (tEnd.getTime()   > prev.tEnd.getTime())   prev.tEnd   = tEnd;
+        }
+      }
+    }
+
+    for (const cl of clusters) {
+      const cEnter = cl.rangoKm[0];
+      const cExit  = cl.rangoKm[1];
+      const winStart = cl.tStartMin.getTime();
+      const winEnd   = cl.tEndMax.getTime();
+      const ownIds = new Set(cl.tsas.map(c => c.tsa.id));
+      const alts = [];
+      for (const span of tsaSpan.values()) {
+        if (ownIds.has(span.tsa.id)) continue;
+        // Cobertura contigua: candidata debe cubrir TODO el rango del
+        // cluster (con tolerancia EPS_KM).
+        if (span.enterKm > cEnter + EPS_KM) continue;
+        if (span.exitKm  < cExit  - EPS_KM) continue;
+        // Hueco temporal: no hay schedule activa solapando la ventana.
+        const scheds = Array.isArray(span.tsa.schedules) ? span.tsa.schedules : [];
+        const activaEnVentana = scheds.some(s =>
+          s && s.startUTC && s.endUTC &&
+          s.startUTC.getTime() < winEnd && s.endUTC.getTime() > winStart
+        );
+        // Hueco vertical: FL crucero fuera de la banda de la candidata.
+        const vert = span.tsa.vertical;
+        const fueraFL = !vert
+          || (Number.isFinite(vert.lowerFt) && flFt < vert.lowerFt)
+          || (Number.isFinite(vert.upperFt) && flFt > vert.upperFt);
+        if (activaEnVentana && !fueraFL) continue; // sin hueco
+        let motivo;
+        if (!activaEnVentana && fueraFL) motivo = 'both';
+        else if (!activaEnVentana)       motivo = 'schedule';
+        else                              motivo = 'fl';
+        alts.push({ id: span.tsa.id, name: span.tsa.name || span.tsa.id, motivo });
+      }
+      cl.hasViableAlternative = alts.length > 0;
+      cl.alternatives = alts;
+    }
+    return clusters;
+  }
+
   // TSAs sobrevoladas lateralmente por la ruta, sin filtrar por FL ni
   // horario (a diferencia de findConflicts). Incluye tambien los TSAs en
   // los que el usuario clico explicitamente al dibujar (point.tsa). Una
@@ -807,12 +895,17 @@ window.TSAgestor.flightPlan = (function () {
     const timeMinutes = (distNM / speedKt) * 60;
     const eta = new Date(depUTC.getTime() + timeMinutes * 60 * 1000);
     const conflicts = findConflicts(route, opts.tsas || [], fl, depUTC, speedKt);
-    // Workflow tsa-conflict-redesign: clusters de "zonas calientes"
-    // — agrupa TSAs cuyos rangos along-track se solapan. Una zona =
-    // un cluster. Consumers pueden mostrar 1 entrada por cluster en
-    // lugar de N entries por TSA. Backwards compat: si no se usa,
-    // plan.conflicts sigue funcionando igual.
-    const conflictClusters = clusterConflictsByAlongTrack(conflicts);
+    // Workflow tsa-conflict-redesign: clusters de "zonas calientes".
+    // Workflow tsa-conflict-viability-filter: post-process marca cada
+    // cluster con hasViableAlternative=true si existe TSA contigua del
+    // catalogo que la ruta pueda usar como alternativa (inactiva en
+    // ETA o fuera de FL band). Solo los clusters SIN alternativa
+    // (realmente sin via libre) se exportan como conflicts.
+    const conflictClustersAll = clusterConflictsByAlongTrack(conflicts);
+    postProcessClustersWithAlternatives(
+      conflictClustersAll, opts.tsas || [], route, fl, depUTC, speedKt
+    );
+    const conflictClusters = conflictClustersAll.filter(c => !c.hasViableAlternative);
     const overflownTSAs = findOverflownTSAs(route, opts.tsas || []);
 
     const result = {
@@ -839,6 +932,9 @@ window.TSAgestor.flightPlan = (function () {
       timeMinutes,
       conflicts,
       conflictClusters,
+      // Dataset completo de clusters (incluyendo los viables) para
+      // debug / futuro toggle UI "mostrar clusters con alternativa".
+      conflictClustersAll,
       overflownTSAs,
     };
     return result;
