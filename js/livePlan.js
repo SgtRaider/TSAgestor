@@ -3819,32 +3819,12 @@ window.TSAgestor.livePlan = (function () {
     // la lente ISA en runtime. session.refetched.isaDeviations sigue
     // poblandose para AAR/timeline/export (buildFlownSnapshot).
 
-    // F2.6: TSAs activas que cruza la ruta restante AHORA.
-    if (Array.isArray(_activeTSAcrossings) && _activeTSAcrossings.length > 0) {
-      for (const t of _activeTSAcrossings) {
-        const until = Number.isFinite(t.endMs)
-          ? `hasta ${_fmtTime(t.endMs)} UTC`
-          : 'hasta hora desconocida';
-        const li = document.createElement('li');
-        li.className = 'live-eval-bad';
-        li.innerHTML = `⛔ <b>Cruzando TSA ACTIVA</b>: ${t.name} · ${until}`;
-        ul.appendChild(li);
-      }
-    }
-
-    // F2.5: SIGMETs que cruzan la ruta restante.
-    if (Array.isArray(_sigmetCrossings) && _sigmetCrossings.length > 0) {
-      for (const c of _sigmetCrossings) {
-        const li = document.createElement('li');
-        li.className = 'live-eval-bad';
-        const hazTxt = c.haz || 'SIGMET';
-        const firTxt = c.fir ? ` (${c.fir})` : '';
-        li.innerHTML = `⚠ <b>SIGMET</b> ${hazTxt}${firTxt} cruza la ruta restante` +
-                       (c.rawShort ? `<div class="live-eval-mono">${c.rawShort}${c.raw.length > c.rawShort.length ? '…' : ''}</div>` : '');
-        if (c.raw) li.title = c.raw;
-        ul.appendChild(li);
-      }
-    }
+    // Workflow live-threats-cleanup: F2.6 (TSAs activas) y F2.5
+    // (SIGMETs) YA NO se renderizan aqui — son redundantes con el
+    // panel Amenazas refactorizado (dedup por id + bucketing
+    // attend/monitor + ordenacion por urgencia). _activeTSAcrossings
+    // y _sigmetCrossings siguen poblandose; el render unificado vive
+    // en _renderThreats(rows).
 
     // F2.4: METAR/TAF de destino si esta cargado y vigente.
     if (_destMet && _destMet.icao) {
