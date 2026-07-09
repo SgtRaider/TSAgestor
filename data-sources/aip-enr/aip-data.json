@@ -1,6 +1,6 @@
 {
  "source": "AIP Espana - eAIP ENAIRE (ENR 3.2 + 4.1 + 4.4) [scraper]",
- "airac": "WEF 16-APR-26",
+ "airac": "WEF 09-JUL-26",
  "generated_from": [
   "https://aip.enaire.es/AIP/contenido_AIP/ENR/LE_ENR_3_2_es.html",
   "https://aip.enaire.es/AIP/contenido_AIP/ENR/LE_ENR_4_1_es.html",
@@ -2676,6 +2676,12 @@
    "lon": -7.48139,
    "type": "RNAV",
    "name": "FORNO"
+  },
+  "FUFFU": {
+   "lat": 28.22444,
+   "lon": -16.02333,
+   "type": "RNAV",
+   "name": "FUFFU"
   },
   "GAFAX": {
    "lat": 36.825,
@@ -6961,12 +6967,6 @@
    "type": "RNAV",
    "name": "VULPE"
   },
-  "WALLY": {
-   "lat": 39.75417,
-   "lon": -1.09444,
-   "type": "RNAV",
-   "name": "WALLY"
-  },
   "WITAZ": {
    "lat": 38.98444,
    "lon": 3.13389,
@@ -7165,12 +7165,6 @@
    "type": "RNAV",
    "name": "YARZU"
   },
-  "YAYHO": {
-   "lat": 40.31667,
-   "lon": -3.3775,
-   "type": "RNAV",
-   "name": "YAYHO"
-  },
   "YELBE": {
    "lat": 27.83667,
    "lon": -17.39194,
@@ -7272,6 +7266,12 @@
    "lon": -2.44972,
    "type": "RNAV",
    "name": "ZURIA"
+  },
+  "EFUSO": {
+   "lat": 39.75417,
+   "lon": -1.09444,
+   "type": "RNAV",
+   "name": "EFUSO"
   }
  },
  "airways": [
@@ -8135,7 +8135,7 @@
     "PRADO",
     "CENTA",
     "CATON",
-    "WALLY",
+    "EFUSO",
     "CLS",
     "VLC",
     "ARGOR",
