@@ -595,6 +595,12 @@
    "type": "NAVAID",
    "name": "SAN JAVIER"
   },
+  "HIG": {
+   "lat": 43.38628,
+   "lon": -1.79575,
+   "type": "NAVAID",
+   "name": "SAN SEBASTIÁN"
+  },
   "SSN": {
    "lat": 43.31119,
    "lon": -1.83039,
