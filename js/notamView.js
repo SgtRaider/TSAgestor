@@ -27,13 +27,61 @@ window.TSAgestor.notamView = (function () {
   const WX_HOURS = 6;
 
   // ── Parseo de minima desde METAR / TAF ─────────────────────────────
-  // Extrae techo (ft), visibilidad (m) y viento maximo (kt, incluyendo
-  // racha) de un trozo de reporte METAR/TAF. Devuelve null si el reporte
-  // no es interpretable.
+  //
+  // Weather phenomena tokens (WMO 306):
+  //   intensity[-|+|VC]  descriptor[MI|PR|BC|DR|BL|SH|TS|FZ]?  phenomena+
+  //   phenomena precip: DZ|RA|SN|SG|IC|PL|GR|GS|UP
+  //   phenomena obscur: BR|FG|FU|VA|DU|SA|HZ|PY
+  //   phenomena otros:  PO|SQ|FC|SS|DS
+  //   RE... = recent (ultimo hora) — se cuenta igual.
+  const WX_PHENOM_RE = /^(RE)?([\-+]|VC)?((?:MI|PR|BC|DR|BL|SH|TS|FZ)?)((?:DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PY|PO|SQ|FC|SS|DS)+)$/;
+
+  // Escanea un texto y devuelve flags de fenomenos operativamente
+  // significativos ademas de la lista cruda de tokens WX para diagnostico.
+  function scanPhenomena(text) {
+    const flags = {
+      rain: false, thunder: false, freezing: false,
+      hail: false, snow: false, tornado: false,
+      heavy: false, tokens: [],
+    };
+    if (!text) return flags;
+    for (const rawTok of String(text).split(/\s+/)) {
+      const tok = rawTok.trim();
+      if (!tok) continue;
+      const m = tok.match(WX_PHENOM_RE);
+      if (!m) continue;
+      const intensity = m[2] || '';
+      const desc      = m[3] || '';
+      const phen      = m[4] || '';
+      flags.tokens.push(tok);
+      if (intensity === '+') flags.heavy = true;
+      // Tormenta: descriptor TS o phenom TS (VCTS / TS solo)
+      if (desc === 'TS' || /TS/.test(phen)) flags.thunder = true;
+      // Freezing (rain / drizzle / fog)
+      if (desc === 'FZ') flags.freezing = true;
+      // Lluvia (cualquier variante: RA, SHRA, TSRA, FZRA, -RA, +RA...)
+      if (/RA/.test(phen)) flags.rain = true;
+      // Granizo (GR o GS)
+      if (/GR|GS/.test(phen)) flags.hail = true;
+      // Nieve
+      if (/SN|SG|PL/.test(phen)) flags.snow = true;
+      // Tornado / funnel cloud
+      if (/FC/.test(phen)) flags.tornado = true;
+    }
+    return flags;
+  }
+
+  // Extrae techo (ft), visibilidad (m), viento maximo (kt) y fenomenos
+  // significativos de un trozo de reporte METAR/TAF. Devuelve null si el
+  // reporte no es interpretable.
   function extractWx(reportText) {
     if (!reportText) return null;
     const tokens = String(reportText).split(/\s+/);
-    const out = { ceilingFt: null, visM: null, windKt: null, gustKt: null, cavok: false, nsc: false };
+    const out = {
+      ceilingFt: null, visM: null, windKt: null, gustKt: null,
+      cavok: false, nsc: false,
+      phenomena: scanPhenomena(reportText),
+    };
     for (const tok of tokens) {
       // CAVOK -> sin nubes <FL050, vis >=10km, sin meteo significativa
       if (tok === 'CAVOK') {
@@ -125,6 +173,15 @@ window.TSAgestor.notamView = (function () {
         reasons.push(`Viento ${w} kt marginal`);
       }
     }
+    // Fenomenos significativos → rojo. Se aplica tanto al METAR (observado)
+    // como al grupo activo del TAF y a las overlays TEMPO/PROB (previsto).
+    const ph = wx.phenomena || {};
+    if (ph.thunder)  { worst('red'); reasons.push('Tormenta (TS)'); }
+    if (ph.rain)     { worst('red'); reasons.push(ph.heavy ? 'Lluvia intensa' : 'Lluvia (RA)'); }
+    if (ph.freezing) { worst('red'); reasons.push('Precip. engelante (FZ)'); }
+    if (ph.hail)     { worst('red'); reasons.push('Granizo (GR/GS)'); }
+    if (ph.tornado)  { worst('red'); reasons.push('Nube embudo / tornado (FC)'); }
+    if (ph.snow && status !== 'red') { worst('yellow'); reasons.push('Nieve (SN)'); }
     return { status, reasons };
   }
 
@@ -360,6 +417,19 @@ window.TSAgestor.notamView = (function () {
         if (fr.overlay) {
           source += '\n+overlay: ' + fr.overlay.text;
           sourceLabel += ' + ' + fr.overlay.type;
+          // Los TEMPO/BECMG/PROB son "previsto" — sus fenomenos cuentan
+          // para el color aunque no sobrescriban los minima numericos.
+          const ovPh = scanPhenomena(fr.overlay.text);
+          if (wx && wx.phenomena) {
+            wx.phenomena.rain     = wx.phenomena.rain     || ovPh.rain;
+            wx.phenomena.thunder  = wx.phenomena.thunder  || ovPh.thunder;
+            wx.phenomena.freezing = wx.phenomena.freezing || ovPh.freezing;
+            wx.phenomena.hail     = wx.phenomena.hail     || ovPh.hail;
+            wx.phenomena.snow     = wx.phenomena.snow     || ovPh.snow;
+            wx.phenomena.tornado  = wx.phenomena.tornado  || ovPh.tornado;
+            wx.phenomena.heavy    = wx.phenomena.heavy    || ovPh.heavy;
+            wx.phenomena.tokens   = wx.phenomena.tokens.concat(ovPh.tokens);
+          }
         }
       } else {
         // Sin grupo activo en el TAF para esta hora: usamos base
@@ -406,6 +476,13 @@ window.TSAgestor.notamView = (function () {
       const g = w.gustKt ? `G${w.gustKt}` : '';
       chips.push(`<span class="wx-chip">Viento ${w.windKt}${g} kt</span>`);
     }
+    const ph = w.phenomena || {};
+    if (ph.thunder)  chips.push(`<span class="wx-chip wx-chip-bad">Tormenta</span>`);
+    if (ph.rain)     chips.push(`<span class="wx-chip wx-chip-bad">${ph.heavy ? 'Lluvia +' : 'Lluvia'}</span>`);
+    if (ph.freezing) chips.push(`<span class="wx-chip wx-chip-bad">Engelante</span>`);
+    if (ph.hail)     chips.push(`<span class="wx-chip wx-chip-bad">Granizo</span>`);
+    if (ph.snow)     chips.push(`<span class="wx-chip">Nieve</span>`);
+    if (ph.tornado)  chips.push(`<span class="wx-chip wx-chip-bad">Tornado</span>`);
 
     const reasons = (cell.reasons && cell.reasons.length)
       ? `<div class="wx-pop-reasons wx-pop-reasons-${cell.status}">${cell.reasons.map(escapeHTML).join(' · ')}</div>`
