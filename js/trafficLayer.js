@@ -3,8 +3,10 @@
 // Fuente: airplanes.live REST API (https://airplanes.live/api-guide/).
 // Endpoint usado: GET /v2/point/{lat}/{lon}/{radiusNM}
 // Limites: radio <=250 NM, 1 req/s. Refrescamos cada 10 s asi entramos
-// muy holgados. La API tiene CORS abierto (Access-Control-Allow-Origin
-// *) asi que no hace falta proxy.
+// muy holgados. En despliegue (*.pages.dev) api.airplanes.live NO envia
+// Access-Control-Allow-Origin, asi que pasamos via Cloudflare Pages
+// Function /api/airplanes/point/<lat>/<lon>/<radius>. En local sigue
+// directo a la API.
 //
 // La capa NO es persistente: solo vive mientras el usuario tenga la
 // caja activa con un ICAO valido. Se para al desactivarla o al cambiar
@@ -14,15 +16,17 @@ window.TSAgestor = window.TSAgestor || {};
 window.TSAgestor.trafficLayer = (function () {
   'use strict';
 
-  const API_BASE = 'https://api.airplanes.live/v2';
-  // Endpoint historico de tar1090 (~10-15 min de traza). En produccion
-  // (Pages) globe.airplanes.live bloquea CORS al browser, asi que vamos
-  // via Cloudflare Pages Function en /api/airplanes/trace/<hex> que
-  // proxy-fetcha el JSON real con el User-Agent y Referer adecuados.
-  // En local (file:// / localhost) pegamos directo (curl con UA decente
-  // ya pasa, y no hay funcion Pages disponible).
+  // En produccion (Pages) api.airplanes.live NO envia Access-Control-Allow-Origin
+  // para el dominio *.pages.dev, y globe.airplanes.live tambien bloquea CORS,
+  // asi que ambos endpoints pasan por Cloudflare Pages Functions server-side
+  // que devuelven con CORS abierto. En local (file:// / localhost) pegamos
+  // directo (no hay Pages Function disponible, y desde curl / localhost la
+  // API responde sin las restricciones de origen).
   const ON_REMOTE = !/^(?:localhost|127\.0\.0\.1)$/i.test(location.hostname) &&
                     location.protocol !== 'file:';
+  const API_BASE = ON_REMOTE
+    ? '/api/airplanes/point'
+    : 'https://api.airplanes.live/v2/point';
   const TRACE_BASE = ON_REMOTE
     ? '/api/airplanes/trace'
     : 'https://globe.airplanes.live/data/traces';
@@ -290,7 +294,7 @@ window.TSAgestor.trafficLayer = (function () {
     // setInterval seguira disparando el siguiente. Solo abortamos en
     // stop(). Asi evitamos el caso "todos los fetch quedan abortados
     // por el siguiente tick" que producia silencios sin datos.
-    const url = `${API_BASE}/point/${_center[0]}/${_center[1]}/${RADIUS_NM}`;
+    const url = `${API_BASE}/${_center[0]}/${_center[1]}/${RADIUS_NM}`;
     console.info('[traffic] fetch', url);
     let data;
     try {
