@@ -1,0 +1,98 @@
+name: AIP auto-update
+
+# Refresca js/aipData.js a partir del eAIP de ENAIRE (HTML scrape).
+# Cada AIRAC son 28 dias; ejecutamos cada jueves para coger el ciclo
+# nuevo el dia que entra en vigor (los AIRAC empiezan los jueves).
+# Tambien se puede disparar manualmente desde la pestana Actions.
+#
+# Si hay cambios reales en el dataset Y los sanity checks pasan, comitea
+# DIRECTAMENTE a la rama default (sin PR intermedio); el bump del SW
+# invalida automaticamente las cachees de PWA en el siguiente despliegue.
+on:
+  schedule:
+    - cron: '0 6 * * 4'      # cada jueves a las 06:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: data-sources/aip-enr/requirements.txt
+
+      - name: Install deps
+        run: pip install -r data-sources/aip-enr/requirements.txt
+
+      - name: Scrape eAIP -> /tmp/aip-data-new.json (staged, no toca repo)
+        # El scraper escribe a un fichero temporal: si crashea o ENAIRE
+        # responde mal, el aip-data.json del repo queda intacto y no se
+        # comitea nada en este run.
+        run: |
+          python data-sources/aip-enr/scrape_eaip.py \
+            --out /tmp/aip-data-new.json
+
+      - name: Validar nuevo dataset (schema + integridad + regresion)
+        # Compara contra el aip-data.json en HEAD. Si la validacion falla
+        # -> job rojo, los pasos siguientes no corren -> el repo no cambia.
+        run: |
+          python data-sources/aip-enr/validate_aip.py \
+            /tmp/aip-data-new.json \
+            data-sources/aip-enr/aip-data.json
+
+      - name: Promover dataset validado al repo
+        # Solo llegamos aqui si scrape + validacion pasaron. Movemos el
+        # JSON al sitio real y regeneramos el JS.
+        run: |
+          cp /tmp/aip-data-new.json data-sources/aip-enr/aip-data.json
+          python data-sources/aip-enr/embed_aip.py
+
+      - name: Detectar si el dataset AIP cambia
+        id: aip_diff
+        run: |
+          if git diff --quiet -- data-sources/aip-enr/aip-data.json js/aipData.js; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Sin cambios en el dataset AIP. Nada que comitear."
+          else
+            echo "changed=true"  >> "$GITHUB_OUTPUT"
+            echo "Cambios detectados:"
+            git diff --stat -- data-sources/aip-enr/aip-data.json js/aipData.js
+          fi
+
+      - name: Bump Service Worker cache version
+        if: steps.aip_diff.outputs.changed == 'true'
+        run: |
+          python - <<'PY'
+          import re, pathlib
+          sw = pathlib.Path('sw.js')
+          t = sw.read_text(encoding='utf-8')
+          m = re.search(r"CACHE_VERSION = 'tsagestor-v(\d+)'", t)
+          if not m:
+              raise SystemExit('No CACHE_VERSION found in sw.js')
+          n = int(m.group(1)) + 1
+          new = re.sub(r"CACHE_VERSION = 'tsagestor-v\d+'",
+                       f"CACHE_VERSION = 'tsagestor-v{n}'", t)
+          sw.write_text(new, encoding='utf-8', newline='\n')
+          print(f"sw.js: tsagestor-v{m.group(1)} -> tsagestor-v{n}")
+          PY
+
+      - name: Commit + push directo a default
+        if: steps.aip_diff.outputs.changed == 'true'
+        run: |
+          AIRAC=$(python -c "import json,io; print(json.load(io.open('data-sources/aip-enr/aip-data.json',encoding='utf-8'))['airac'])")
+          AW=$(python -c "import json,io; print(len(json.load(io.open('data-sources/aip-enr/aip-data.json',encoding='utf-8'))['airways']))")
+          WP=$(python -c "import json,io; print(len(json.load(io.open('data-sources/aip-enr/aip-data.json',encoding='utf-8'))['waypoints']))")
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data-sources/aip-enr/aip-data.json js/aipData.js sw.js
+          git commit -m "chore(aip): refresh from eAIP ENAIRE [auto]" \
+                     -m "AIRAC: $AIRAC" \
+                     -m "Airways: $AW · Waypoints: $WP"
+          git push origin HEAD:${GITHUB_REF_NAME}

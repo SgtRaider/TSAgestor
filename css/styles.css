@@ -1,0 +1,3757 @@
+/* Identidad corporativa Ejército del Aire y del Espacio (Manual v1.0).
+   Paleta principal de azules construida sobre "Gris aviador" (Pantone 2955),
+   con paleta ampliada para acentos (rojo / amarillo / azul cielo de bandera).
+   Tipografía oficial: Archivo (Google Fonts) + fallback Arial. */
+:root {
+  /* Paleta principal EA */
+  --ea-gris-aviador: #003764;   /* Pantone 2955 — color institucional */
+  --ea-azul-medio:   #4e738a;   /* Pantone 5405 */
+  --ea-azul-claro:   #7a97ab;   /* Pantone 5425 */
+  --ea-azul-palido:  #b7c7d3;   /* Pantone 5445 */
+  /* Paleta ampliada (acentos puntuales) */
+  --ea-rojo:         #ad2e1c;   /* Rojo bandera */
+  --ea-amarillo:     #fac200;   /* Amarillo bandera */
+  --ea-azul-cielo:   #8dc6e8;
+
+  /* Tema oscuro derivado de la paleta institucional */
+  --bg:       #0a1f33;          /* fondo profundo derivado del Gris aviador */
+  --bg-panel: var(--ea-gris-aviador);
+  --bg-elev:  #1a4575;
+  --border:   #2c5683;
+  --text:     #ffffff;
+  --text-mute: var(--ea-azul-palido);
+  --accent:   var(--ea-azul-cielo);
+  --accent-dark: var(--ea-azul-medio);
+  --ok:       #4ade80;
+  --warn:     var(--ea-amarillo);
+  --danger:   var(--ea-rojo);
+  --low:      #22c55e;
+  --mid:      var(--ea-amarillo);
+  --high:     var(--ea-rojo);
+  --radius: 6px;
+  --shadow: 0 4px 12px rgba(0, 25, 60, 0.45);
+
+  /* ── Design tokens ──────────────────────────────────────
+     Spacing rhythm (multiples de 4px). Usar var(--sp-N) en
+     nuevos componentes y al refactorizar; los hardcodes
+     antiguos se quedan donde estan por compatibilidad visual. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  /* Radii canonicos */
+  --r-sm:    4px;   /* inputs, chips densos dentro de cards */
+  --r-md:    6px;   /* cards, paneles pequenos */
+  --r-lg:    10px;  /* panels, modales */
+  --r-xl:    14px;  /* contenedores grandes */
+  --r-pill: 999px;  /* chips interactivos tipo "filtro" */
+
+  /* Font sizes (pixel-driven) */
+  --fs-xs:   10px;
+  --fs-sm:   11px;
+  --fs-md:   12px;
+  --fs-lg:   14px;
+  --fs-xl:   16px;
+
+  /* Colores semanticos comunes para chips de estado */
+  --c-ok:        #22c55e;
+  --c-ok-bg:     rgba(34,197,94,0.18);
+  --c-ok-bd:     rgba(34,197,94,0.45);
+  --c-warn:      #f59e0b;
+  --c-warn-bg:   rgba(245,158,11,0.18);
+  --c-warn-bd:   rgba(245,158,11,0.55);
+  --c-danger:    #ef4444;
+  --c-danger-bg: rgba(239,68,68,0.18);
+  --c-danger-bd: rgba(239,68,68,0.55);
+  --c-info:      #38bdf8;
+  --c-info-bg:   rgba(56,189,248,0.18);
+  --c-info-bd:   rgba(56,189,248,0.5);
+  --c-mute:      #64748b;
+  --c-mute-bg:   rgba(100,116,139,0.2);
+  --c-mute-bd:   rgba(100,116,139,0.4);
+}
+
+/* Base unificada para chips interactivos de filtros (notam-chip-btn,
+   tsa-chip). Anclamos radius/padding/font-size/transition; los
+   modificadores .is-active y los variants (red/green/amber) viven
+   donde estan. Evita drift entre las dos barras. */
+.notam-chip-btn,
+.tsa-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 4px var(--sp-3);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  font-family: 'Archivo', Arial, sans-serif;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease,
+              color 0.12s ease, transform 0.08s ease, box-shadow 0.12s ease;
+}
+.notam-chip-btn:active,
+.tsa-chip:active { transform: translateY(1px); }
+.notam-chip-btn.is-active,
+.tsa-chip.is-active { box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+.notam-chip-count,
+.tsa-chip-count {
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  min-width: 18px;
+  text-align: center;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: 'Archivo', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+/* Titulares: variante condensada/ancha de Archivo según el manual */
+h1, h2, h3, .ea-title {
+  font-family: 'Archivo', Arial, sans-serif;
+  font-stretch: 125%;
+  letter-spacing: 0.02em;
+}
+
+/* Sección H2 con filete bandera rojo+amarillo a la izquierda
+   (motivo recurrente en el manual de identidad EA) */
+.table-header h2,
+.export-card h2 {
+  position: relative;
+  padding-left: 14px;
+  border-left: 4px solid var(--ea-amarillo);
+  box-shadow: -8px 0 0 -4px var(--ea-rojo);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 16px;
+  color: #ffffff;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ── Header (banda institucional EA) ───────────────── */
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  background: var(--ea-gris-aviador);
+  border-bottom: 3px solid var(--ea-amarillo);
+  box-shadow: var(--shadow);
+  gap: 16px;
+  position: relative;
+}
+/* Filete inferior bicolor rojo + amarillo (alusión a la bandera) */
+.app-header::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 50%;
+  bottom: -3px;
+  height: 3px;
+  background: var(--ea-rojo);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.brand-logo {
+  display: block;
+  height: 120px;
+  width: auto;
+}
+
+.brand h1 {
+  font-size: 22px;
+  margin: 0;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffffff;
+}
+
+.brand-sub {
+  color: var(--ea-azul-palido);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.tab-btn {
+  background: transparent;
+  color: var(--ea-azul-palido);
+  border: 1px solid transparent;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: all 0.15s;
+}
+
+.tab-btn:hover { color: #ffffff; background: rgba(141, 198, 232, 0.10); }
+
+.tab-btn.active {
+  color: var(--ea-gris-aviador);
+  background: var(--ea-amarillo);
+  border-color: var(--ea-amarillo);
+  box-shadow: 0 0 0 1px var(--ea-amarillo) inset;
+}
+
+/* ── Filter bar ───────────────────────────────────── */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+  padding: 12px 20px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.filter-bar.hidden { display: none; }
+
+.filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.filter-bar label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.filter-bar input {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  color-scheme: dark;
+}
+
+.filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.filter-summary {
+  font-size: 12px;
+  color: var(--text-mute);
+}
+
+/* Chips de filtro rapido (work/transit/activas ahora) */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.tsa-chip {
+  background: rgba(255,255,255,0.04);
+  color: var(--ea-azul-palido);
+  border: 1px solid var(--border);
+}
+.tsa-chip:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: var(--ea-azul-claro);
+  color: #fff;
+}
+.tsa-chip.is-active {
+  background: var(--ea-amarillo);
+  color: #1a1200;
+  border-color: var(--ea-amarillo);
+}
+.tsa-chip-work.is-active    { background: #22c55e; color: #00200a; border-color: #22c55e; }
+.tsa-chip-transit.is-active { background: #ef4444; color: #fff;    border-color: #ef4444; }
+.tsa-chip-now.is-active     { background: #38bdf8; color: #0a1a22; border-color: #38bdf8; }
+.tsa-chip-count {
+  display: inline-block;
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+}
+.tsa-chip:not(.is-active) .tsa-chip-count {
+  background: rgba(255,255,255,0.12);
+  color: var(--ea-azul-cielo);
+}
+
+/* Quick-select por grupo (FIR/tipo/banda) sobre la tabla TSA */
+.tsa-quickselect {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--sp-2) var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.tsa-quickselect.hidden { display: none; }
+.quickselect-label {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--ea-azul-cielo);
+}
+.quickselect-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+}
+.quickselect-hint {
+  font-size: var(--fs-xs);
+  color: var(--ea-azul-palido);
+  white-space: nowrap;
+}
+.tsa-qs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 4px 10px;
+  background: rgba(255,255,255,0.04);
+  color: var(--ea-azul-palido);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  font-family: 'Archivo', Arial, sans-serif;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease,
+              color 0.12s ease, transform 0.08s ease;
+}
+.tsa-qs-chip:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: var(--ea-azul-claro);
+  color: #fff;
+}
+.tsa-qs-chip:active { transform: translateY(1px); }
+.tsa-qs-chip.is-active {
+  background: var(--ea-amarillo);
+  color: #1a1200;
+  border-color: var(--ea-amarillo);
+}
+.tsa-qs-chip.is-partial {
+  background: rgba(250,194,0,0.18);
+  color: #fde68a;
+  border-color: rgba(250,194,0,0.55);
+}
+.tsa-qs-chip.tsa-qs-sep { margin-left: var(--sp-3); position: relative; }
+.tsa-qs-chip.tsa-qs-sep::before {
+  content: '';
+  position: absolute;
+  left: calc(-1 * var(--sp-3) + 4px);
+  top: 4px;
+  bottom: 4px;
+  border-left: 1px dashed var(--border);
+}
+.tsa-qs-count {
+  display: inline-block;
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  min-width: 18px;
+  text-align: center;
+}
+.tsa-qs-chip:not(.is-active) .tsa-qs-count {
+  background: rgba(255,255,255,0.12);
+  color: var(--ea-azul-cielo);
+}
+
+/* ── Main ─────────────────────────────────────────── */
+main { flex: 1; display: flex; flex-direction: column; }
+
+.tab-content {
+  display: none;
+  padding: 20px;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tab-content.active { display: flex; }
+
+/* ── Buttons ──────────────────────────────────────── */
+.btn {
+  display: inline-block;
+  background: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+
+.btn:hover:not(:disabled) { background: var(--border); }
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--ea-amarillo);
+  color: var(--ea-gris-aviador);
+  border-color: var(--ea-amarillo);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #d8a700;
+  border-color: #d8a700;
+}
+
+.btn-ghost { background: transparent; }
+
+/* ── Dropzone ─────────────────────────────────────── */
+.dropzone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 48px 24px;
+  text-align: center;
+  transition: all 0.2s;
+  background: var(--bg-panel);
+}
+
+.dropzone.drag-over {
+  border-color: var(--accent);
+  background: rgba(56, 189, 248, 0.05);
+}
+
+.drop-icon {
+  font-size: 44px;
+  margin-bottom: 12px;
+}
+
+.drop-primary { font-size: 16px; font-weight: 600; margin: 4px 0; }
+.drop-secondary { color: var(--text-mute); margin: 4px 0 16px; }
+.drop-skip {
+  margin: 18px 0 0;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
+  color: var(--text-mute);
+  font-size: 12px;
+}
+.drop-skip b { color: var(--text); font-weight: 600; }
+
+/* ── Status ───────────────────────────────────────── */
+.status {
+  min-height: 20px;
+  font-size: 13px;
+}
+
+.status.error { color: var(--danger); }
+.status.ok { color: var(--ok); }
+.status.info { color: var(--text-mute); }
+
+/* ── Table ────────────────────────────────────────── */
+.table-wrap.hidden { display: none; }
+
+.table-wrap h2 {
+  font-size: 16px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.table-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+th.col-check, td.col-check {
+  width: 36px;
+  text-align: center;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.tsa-check, #tsa-select-all-cb { cursor: pointer; transform: scale(1.1); }
+
+tr.out-of-filter { opacity: 0.42; }
+tr.out-of-filter td { color: var(--text-mute); }
+tr.out-of-filter td:first-child { opacity: 1; }
+
+tr.tsa-row.selected { background: rgba(56, 189, 248, 0.06); }
+
+details.sched-details { font-size: 12px; }
+details.sched-details > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 2px 0;
+  user-select: none;
+}
+details.sched-details > summary::-webkit-details-marker { display: none; }
+details.sched-details > summary::before {
+  content: '▸ ';
+  display: inline-block;
+  width: 10px;
+  color: var(--text-mute);
+}
+details.sched-details[open] > summary::before { content: '▾ '; }
+.sched-list {
+  margin-top: 4px;
+  padding-left: 14px;
+  border-left: 2px solid var(--border);
+  font-size: 12px;
+}
+.sched-list .sched-item { padding: 1px 0; }
+.sched-list .muted { color: var(--text-mute); font-style: italic; }
+
+.badge {
+  background: var(--accent);
+  color: var(--bg);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.chip {
+  display: inline-block;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--text-mute);
+}
+
+.table-scroll {
+  overflow-x: auto;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+thead {
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
+}
+
+th, td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+tbody tr:last-child td { border-bottom: none; }
+
+tbody tr:hover { background: rgba(56, 189, 248, 0.05); }
+
+/* ── Toolbar ──────────────────────────────────────── */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ── Panel de capa de trafico aereo (airplanes.live) ── */
+.traffic-panel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 4px var(--sp-3);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-sm);
+}
+.traffic-panel.hidden { display: none; }
+.traffic-panel-label {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--ea-azul-cielo);
+  font-weight: 600;
+}
+.traffic-panel-label span { line-height: 1.1; }
+.traffic-panel input {
+  background: var(--bg);
+  color: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 3px 7px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  width: 72px;
+}
+.traffic-panel input:focus {
+  outline: none;
+  border-color: var(--ea-amarillo);
+  box-shadow: 0 0 0 2px rgba(250, 194, 0, 0.18);
+}
+.btn.btn-sm {
+  padding: 3px 10px;
+  font-size: var(--fs-sm);
+}
+.traffic-status {
+  font-size: var(--fs-sm);
+  color: var(--ea-azul-palido);
+  white-space: nowrap;
+}
+.traffic-status-ok      { color: #86efac; }
+.traffic-status-error   { color: #fca5a5; }
+.traffic-status-loading { color: var(--ea-amarillo); }
+
+/* Iconos de los aviones en el mapa. El SVG ya viene rotado por
+   transform inline; rotamos el wrapper para que el origen sea el
+   centro del icon. */
+.traffic-plane-icon { background: transparent !important; border: 0 !important; }
+.traffic-plane {
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+}
+.traffic-tt {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+}
+.traffic-ad-marker { background: transparent !important; border: 0 !important; }
+.traffic-ad-marker .ad-pin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ea-amarillo);
+  color: #1a1200;
+  border-radius: var(--r-sm);
+  padding: 1px 6px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  border: 1.5px solid #1a1200;
+}
+.traffic-popup { font-family: 'Archivo', Arial, sans-serif; color: #0f172a; }
+.traffic-popup-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 4px;
+}
+.traffic-popup-head b { font-size: 14px; }
+.traffic-popup-type {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 10px;
+  background: #e2e8f0;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.traffic-popup-row { font-size: 12px; line-height: 1.5; }
+.traffic-popup-row span {
+  display: inline-block;
+  min-width: 78px;
+  color: #64748b;
+  font-weight: 600;
+}
+.traffic-popup-row.dim { color: #94a3b8; font-size: 10px; margin-top: 4px; }
+
+/* ── Map ──────────────────────────────────────────── */
+#map {
+  flex: 1;
+  min-height: 500px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.leaflet-popup-content { font-size: 12px; line-height: 1.5; }
+.leaflet-popup-content b { color: #0f172a; }
+.tsa-popup-multi {
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.gramet-wp-tip {
+  background: #ede9fe;
+  border: 1px solid #7c3aed;
+  color: #4c1d95;
+  font-weight: 700;
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+.gramet-wp-tip:before { display: none; }
+
+/* Fila de espera/hold en el log de combustible */
+.hold-row { background: rgba(250, 204, 21, 0.08); }
+.hold-row td:first-child,
+.hold-row td:nth-child(2) { color: #92400e; }
+.hold-badge {
+  display: inline-block;
+  background: #fef3c7;
+  color: #92400e;
+  font-weight: 700;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  letter-spacing: 0.4px;
+}
+.btn-hold-add {
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-hold-add:hover {
+  background: #fbbf24;
+  border-color: #d97706;
+  color: #78350f;
+}
+.btn-hold-del {
+  background: transparent;
+  border: 0;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0 4px;
+  margin-left: 4px;
+}
+.btn-hold-del:hover { color: #7f1d1d; }
+
+/* Agrupamiento de TSAs en la tabla de Cargar */
+.tsa-row-group { background: rgba(56, 189, 248, 0.06); }
+.tsa-row-group b { color: #0369a1; }
+.tsa-group-toggle {
+  display: inline-block;
+  width: 18px;
+  border: 0;
+  background: transparent;
+  color: #0369a1;
+  font-weight: 700;
+  cursor: pointer;
+  margin-right: 4px;
+  padding: 0;
+}
+.tsa-group-count {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #38bdf8;
+  color: #0c4a6e;
+  border-radius: 8px;
+}
+.tsa-row-member .tsa-name-indent { padding-left: 28px; }
+.tsa-row-member { background: rgba(255,255,255,0.02); }
+
+/* Badge de grupo en la leyenda del mapa */
+.tsa-legend-group-count {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 5px;
+  background: #38bdf8;
+  color: #0c4a6e;
+  border-radius: 7px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.tsa-popup-head {
+  position: sticky; top: 0;
+  background: #f8fafc;
+  padding: 4px 6px;
+  margin: -4px -4px 6px;
+  border-bottom: 1px solid #e2e8f0;
+  font-weight: 700;
+  color: #0f172a;
+}
+/* Flag work/transit en la cabecera del popup de TSA */
+.tsa-popup-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 2px;
+}
+.tsa-flag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  line-height: 1.3;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.tsa-flag-work {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #86efac;
+}
+.tsa-flag-transit {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fca5a5;
+}
+.tsa-flag-unknown {
+  background: #e2e8f0;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+
+.map-legend {
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f172a;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.map-legend .swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.leaflet-tooltip.city-label {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: #1f2937;
+  font-size: 10px;
+  padding: 0 2px;
+  text-shadow:
+    -1px -1px 0 #fff, 1px -1px 0 #fff,
+    -1px  1px 0 #fff, 1px  1px 0 #fff,
+     0   -1px 0 #fff, 0    1px 0 #fff,
+    -1px  0   0 #fff, 1px  0   0 #fff;
+}
+.leaflet-tooltip.city-label.capital { font-size: 11px; font-weight: 700; }
+.leaflet-tooltip.city-label::before { display: none; }
+
+.leaflet-tooltip.airway-label {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+.leaflet-tooltip.airway-label.upper { color: #6d28d9; border-color: #7c3aed; }
+.leaflet-tooltip.airway-label.lower { color: #0369a1; border-color: #0ea5e9; }
+.leaflet-tooltip.airway-label::before { display: none; }
+
+.leaflet-tooltip.airspace-label {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+}
+.leaflet-tooltip.airspace-label.tma { color: #075985; border-color: #0369a1; }
+.leaflet-tooltip.airspace-label.ctr { color: #991b1b; border-color: #dc2626; }
+.leaflet-tooltip.airspace-label::before { display: none; }
+
+.leaflet-tooltip.wp-label {
+  background: transparent;
+  border: none;
+  padding: 0 2px;
+  box-shadow: none;
+  font-size: 9px;
+  font-weight: 700;
+  text-shadow:
+    -1px -1px 0 #fff, 1px -1px 0 #fff,
+    -1px  1px 0 #fff, 1px  1px 0 #fff,
+     0   -1px 0 #fff, 0    1px 0 #fff,
+    -1px  0   0 #fff, 1px  0   0 #fff;
+}
+.leaflet-tooltip.wp-label.navaid { color: #92400e; font-size: 10px; }
+.leaflet-tooltip.wp-label.rnav   { color: #334155; }
+.leaflet-tooltip.wp-label::before { display: none; }
+
+/* La visibilidad por zoom (ciudades / NAVAIDs / RNAVs) la gestiona
+   _applyZoomVisibility en mapView.js anyadiendo / quitando elementos
+   directamente del mapa o de sus grupos. No hace falta CSS. */
+
+/* Leyenda flotante de TSAs activas (toggle desde la pestana Mapa).
+   Layout: panel mas ancho con cuerpo en grid 2 columnas y filas finas para
+   poder ver todas las TSAs activas hoy+manyana sin scrollear. */
+.tsa-legend {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  /* Width pasa a ser dinamica: JS asigna el inicial (1/2/3 cols segun
+     count) y CSS la mantiene resizable por la esquina inf-der. */
+  width: 720px;
+  max-width: calc(100vw - 60px);
+  max-height: calc(100vh - 100px);
+  min-width: 240px;
+  min-height: 120px;
+  /* Necesario para que `resize: both` funcione (no puede ser visible) */
+  overflow: hidden;
+  resize: both;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  color: #0f172a;
+  font-size: 12px;
+  /* min-height:0 a nivel container para que el body interior pueda
+     reducirse y activar overflow-y:auto cuando el contenido excede. */
+  min-height: 0;
+}
+.tsa-legend-head {
+  font-weight: 700;
+  font-size: 13px;
+  padding: 8px 10px;
+  background: #003764;
+  color: #ffffff;
+  border-bottom: 1px solid #1e293b;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.tsa-legend-count {
+  background: #facc15;
+  color: #003764;
+  font-weight: 700;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 10px;
+}
+.tsa-legend-body {
+  /* min-height:0 + flex:1 1 auto hace que el body se ajuste al espacio
+     disponible y permita scroll cuando hay mas TSAs de las que entran.
+     Las cells mantienen ~220px de ancho minimo; al cambiar el ancho del
+     panel por arrastre, las columnas se ajustan automaticamente (auto-fit)
+     manteniendo el tamano de cada celda. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  column-gap: 1px;
+  background: #e2e8f0;
+}
+.tsa-legend-empty {
+  padding: 10px;
+  color: #64748b;
+}
+.tsa-legend-window-bar {
+  padding: 4px 10px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 600;
+  border-bottom: 1px solid #e2e8f0;
+  letter-spacing: 0.3px;
+}
+.tsa-legend-window {
+  font-size: 11px;
+  color: #475569;
+}
+.tsa-legend-row {
+  display: flex;
+  gap: 6px;
+  padding: 3px 8px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+}
+.tsa-legend-row:last-child { border-bottom: 0; }
+.tsa-legend-swatch {
+  flex: 0 0 6px;
+  width: 6px;
+  border-radius: 2px;
+  margin-top: 3px;
+}
+.tsa-legend-text { flex: 1; min-width: 0; }
+.tsa-legend-name {
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  line-height: 1.2;
+}
+.tsa-legend-alt {
+  color: #475569;
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tsa-legend-sched {
+  color: #1e3a8a;
+  font-size: 10px;
+  line-height: 1.2;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Estado pulsado del boton toggle de la leyenda. */
+.btn.is-active {
+  background: var(--ea-amarillo, #facc15);
+  color: var(--ea-gris-aviador, #0f172a);
+  border-color: var(--ea-amarillo, #facc15);
+}
+
+/* Toast flotante sobre el mapa para confirmar acciones (anyadir waypoint, ...) */
+.map-toast {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translate(-50%, -8px);
+  z-index: 1000;
+  padding: 8px 14px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #fbbf24;
+  font-weight: 700;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+}
+.map-toast.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* Flash breve al recibir un waypoint en el campo Via */
+#plan-via.flash {
+  animation: viaFlash 0.5s ease-out;
+}
+@keyframes viaFlash {
+  0%   { background: rgba(251, 191, 36, 0.0); }
+  30%  { background: rgba(251, 191, 36, 0.35); }
+  100% { background: rgba(251, 191, 36, 0.0); }
+}
+
+/* Control de capas: hacer obvio que las aerovías son demo */
+.leaflet-control-layers-overlays label { font-size: 12px; }
+
+/* ── Cross section ────────────────────────────────── */
+#cross-wrap {
+  flex: 1;
+  background: #ffffff;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  padding: 12px;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 500px;
+}
+
+#cross-svg { display: block; background: #ffffff; }
+
+#cross-svg.empty { display: none; }
+
+.empty {
+  color: #64748b;
+  text-align: center;
+  font-size: 14px;
+}
+
+/* ── Export ───────────────────────────────────────── */
+.export-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  max-width: 640px;
+}
+
+.export-card h2 { margin-top: 0; }
+
+.export-summary {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  margin: 16px 0;
+  font-size: 13px;
+  color: var(--text-mute);
+  white-space: pre-line;
+  min-height: 20px;
+}
+
+.hint {
+  color: var(--text-mute);
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+/* ── Plan de vuelo ────────────────────────────────── */
+.plan-form {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.plan-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.plan-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-mute);
+}
+.plan-fields input {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+}
+.plan-via {
+  margin-top: 14px;
+}
+.plan-via > label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-mute);
+}
+.plan-via-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.plan-via-row input {
+  flex: 1;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-size: 13px;
+}
+.plan-via-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-mute);
+}
+
+.plan-actions {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.plan-actions .hint.inline {
+  margin: 0;
+}
+.plan-error {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(248, 113, 113, 0.15);
+  border: 1px solid var(--danger);
+  color: #fecaca;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.plan-results {
+  display: grid;
+  gap: 16px;
+}
+.plan-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 18px;
+  padding: 14px 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.plan-stat { font-size: 13px; color: var(--text); }
+.plan-stat .lbl { color: var(--text-mute); }
+.plan-stat .dim { color: var(--text-mute); font-size: 12px; }
+.plan-stat.warn {
+  grid-column: 1 / -1;
+  color: var(--warn);
+  font-weight: 500;
+}
+.plan-narrative,
+.plan-remarks,
+.plan-conflicts,
+.plan-coords {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.plan-narrative h3,
+.plan-remarks h3,
+.plan-conflicts h3,
+.plan-coords h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+#plan-remarks-text {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.plan-remarks .hint { margin: 8px 0 0; font-size: 12px; }
+.notam-source {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.notam-source-text { font-size: 14px; }
+.notam-source-text .dim { display: block; margin-top: 2px; }
+.plan-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.plan-block-head h3 { margin: 0; }
+#plan-narrative-text {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg);
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-size: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.plan-conflicts ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.plan-conflicts li {
+  padding: 8px 12px;
+  background: rgba(248, 113, 113, 0.12);
+  border-left: 3px solid var(--danger);
+  border-radius: 4px;
+  font-size: 13px;
+}
+.plan-conflicts li.ok {
+  background: rgba(74, 222, 128, 0.10);
+  border-left-color: var(--ok);
+  color: var(--text);
+}
+.plan-conflicts li .dim {
+  color: var(--text-mute);
+  font-size: 12px;
+}
+#plan-coords-table th,
+#plan-coords-table td { font-size: 13px; }
+/* Headers + body alineados a la derecha en cols numericas/coord/date. */
+#plan-coords-table th:nth-child(5),
+#plan-coords-table th:nth-child(6),
+#plan-coords-table th:nth-child(7),
+#plan-coords-table th:nth-child(8),
+#plan-coords-table th:nth-child(9),
+#plan-coords-table td:nth-child(5),
+#plan-coords-table td:nth-child(6),
+#plan-coords-table td:nth-child(7),
+#plan-coords-table td:nth-child(8),
+#plan-coords-table td:nth-child(9) {
+  text-align: right;
+}
+#plan-coords-table td:nth-child(5),
+#plan-coords-table td:nth-child(6),
+#plan-coords-table td:nth-child(7),
+#plan-coords-table td:nth-child(8),
+#plan-coords-table td:nth-child(9) {
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+}
+
+.route-label {
+  background: rgba(15, 23, 42, 0.85);
+  color: #fde68a;
+  border: 1px solid #fbbf24;
+  padding: 1px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 3px;
+  box-shadow: none;
+  white-space: nowrap;
+}
+.route-label.extreme {
+  background: #fbbf24;
+  color: #1f2937;
+}
+.route-label.tsa {
+  background: rgba(127, 29, 29, 0.95);
+  color: #fee2e2;
+  border-color: #dc2626;
+}
+.route-label::before { display: none; }
+
+#plan-coords-table tr.in-tsa td {
+  background: rgba(248, 113, 113, 0.08);
+}
+#plan-coords-table .fl-adj {
+  color: var(--warn);
+  border-bottom: 1px dashed var(--warn);
+  cursor: help;
+}
+
+/* Log de vuelo y combustible */
+.plan-fuel {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.plan-fuel h4 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.plan-log {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.plan-log h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.plan-log-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 6px 18px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.plan-log-stat {
+  font-size: 13px;
+  color: var(--text);
+}
+.plan-log-stat .lbl { color: var(--text-mute); }
+.plan-log-stat .dim { color: var(--text-mute); font-size: 12px; }
+.plan-log-stat b.joker { color: var(--warn); }
+.plan-log-stat b.bingo { color: var(--danger); }
+.plan-log-warn {
+  display: block;
+  grid-column: 1 / -1;
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: rgba(248, 113, 113, 0.18);
+  border-left: 3px solid var(--danger);
+  border-radius: 4px;
+  color: #fee2e2;
+  font-weight: 600;
+}
+#plan-log-table th,
+#plan-log-table td { font-size: 13px; }
+#plan-log-table .leg-input {
+  width: 70px;
+  padding: 2px 5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 3px;
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-size: 12px;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+#plan-log-table .leg-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg-elev);
+}
+#plan-log-table .leg-input::-webkit-outer-spin-button,
+#plan-log-table .leg-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+/* Cols numericas/derechas del log: Tramo NM, TAS, Viento, GS, Espera,
+   Tiempo tramo, Tiempo total, Consumo, Combustible tramo, Restante.
+   Aplicamos right-align tanto al header como al cuerpo para que
+   visualmente las cifras queden alineadas con su titulo. */
+#plan-log-table th:nth-child(3),
+#plan-log-table th:nth-child(4),
+#plan-log-table th:nth-child(5),
+#plan-log-table th:nth-child(6),
+#plan-log-table th:nth-child(7),
+#plan-log-table th:nth-child(8),
+#plan-log-table th:nth-child(9),
+#plan-log-table th:nth-child(10),
+#plan-log-table th:nth-child(11),
+#plan-log-table th:nth-child(12),
+#plan-log-table td:nth-child(3),
+#plan-log-table td:nth-child(4),
+#plan-log-table td:nth-child(5),
+#plan-log-table td:nth-child(6),
+#plan-log-table td:nth-child(7),
+#plan-log-table td:nth-child(8),
+#plan-log-table td:nth-child(9),
+#plan-log-table td:nth-child(10),
+#plan-log-table td:nth-child(11),
+#plan-log-table td:nth-child(12) {
+  text-align: right;
+}
+#plan-log-table td:nth-child(3),
+#plan-log-table td:nth-child(4),
+#plan-log-table td:nth-child(5),
+#plan-log-table td:nth-child(6),
+#plan-log-table td:nth-child(8),
+#plan-log-table td:nth-child(9),
+#plan-log-table td:nth-child(11),
+#plan-log-table td:nth-child(12) {
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+}
+#plan-log-table tr.row-joker td {
+  background: rgba(250, 204, 21, 0.15);
+}
+#plan-log-table tr.row-joker td:last-child {
+  color: var(--warn);
+  font-weight: 700;
+}
+#plan-log-table tr.row-bingo td {
+  background: rgba(248, 113, 113, 0.18);
+}
+#plan-log-table tr.row-bingo td:last-child {
+  color: var(--danger);
+  font-weight: 700;
+}
+#plan-log-table .cell-wind.wind-head { color: var(--ea-rojo); font-weight: 600; }
+#plan-log-table .cell-wind.wind-tail { color: var(--ok); font-weight: 600; }
+#plan-log-table .cell-gs { font-weight: 700; color: var(--ea-azul-cielo); }
+
+/* Meteorología (METAR / TAF en aeropuertos cerca de la ruta) */
+.plan-meteo {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.plan-meteo h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.plan-meteo-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.plan-meteo-radius {
+  font-size: 12px;
+  color: var(--text-mute);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.plan-meteo-radius input {
+  width: 60px;
+  padding: 4px 6px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+}
+.plan-meteo-content {
+  margin-top: 10px;
+}
+.meteo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 10px;
+}
+.meteo-card {
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--text-mute);
+  border-radius: 4px;
+}
+.meteo-card.cat-VFR  { border-left-color: #22c55e; }
+.meteo-card.cat-MVFR { border-left-color: #3b82f6; }
+.meteo-card.cat-IFR  { border-left-color: #ef4444; }
+.meteo-card.cat-LIFR { border-left-color: #a855f7; }
+.meteo-card-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.meteo-card-head .dim { color: var(--text-mute); font-size: 12px; }
+.meteo-cat-badge {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--bg-elev);
+  color: var(--text);
+}
+.meteo-cat-badge.cat-VFR  { background: #14532d; color: #d1fae5; }
+.meteo-cat-badge.cat-MVFR { background: #1e3a8a; color: #dbeafe; }
+.meteo-cat-badge.cat-IFR  { background: #7f1d1d; color: #fee2e2; }
+.meteo-cat-badge.cat-LIFR { background: #581c87; color: #f3e8ff; }
+.meteo-dist {
+  margin-left: 4px;
+}
+.meteo-section {
+  margin-top: 6px;
+  font-size: 12px;
+}
+.meteo-section .lbl {
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+}
+.meteo-section pre {
+  margin: 2px 0 0;
+  padding: 6px 8px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+/* Versión decodificada en español: lista compacta tras el raw. */
+.meteo-decoded {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 6px 8px 6px 10px;
+  background: rgba(56, 189, 248, 0.06);
+  border-left: 2px solid var(--accent);
+  border-radius: 0 3px 3px 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text);
+}
+.meteo-decoded li { padding: 1px 0; }
+.meteo-decoded li.lvl-1 { padding-left: 8px; }
+.meteo-decoded li.lvl-2 { padding-left: 18px; color: var(--text-mute); }
+.meteo-decoded .lbl {
+  display: inline-block;
+  min-width: 90px;
+  font-weight: 600;
+  color: var(--text-mute);
+}
+.meteo-decoded-empty { color: var(--text-mute); font-size: 11px; }
+.meteo-warn {
+  padding: 6px 10px;
+  background: rgba(250, 204, 21, 0.10);
+  border-left: 3px solid var(--warn);
+  border-radius: 4px;
+  color: var(--warn);
+  font-size: 12px;
+  margin: 0 0 8px;
+}
+
+/* Leyenda de Cloud Top Height — usa la oficial del WMS si existe (img),
+   o el gradiente manual si no. */
+.cloud-legend {
+  background: rgba(255, 255, 255, 0.94);
+  color: #0f172a;
+  padding: 8px 10px;
+  border: 1px solid #94a3b8;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  font-size: 11px;
+  width: 320px;
+  max-width: 90vw;
+}
+/* Las leyendas genericas (LI AFA, RGB Convection) son mas estrechas y se
+   apilan en la esquina inferior-izquierda cuando hay varias activas: cada
+   addTo(map) en el mismo position se renderiza como una "fila" mas en el
+   bottomleft sin solaparse (Leaflet lo gestiona automaticamente). */
+.cloud-legend-generic { width: 240px; margin-top: 6px; }
+.cloud-legend-generic .cloud-legend-image { display: block; width: 100%; height: auto; }
+
+/* Leyenda Lightning Imager (LI AFA): replica la paleta oficial EUMETSAT
+   para Accumulated Flash Area. Va de crema (1 flash) -> amarillo (3) ->
+   naranja (10) -> rojo (20+) en 5 min de acumulacion. */
+.cloud-legend-generic .li-legend-label {
+  font-size: 10px;
+  color: #475569;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.cloud-legend-generic .li-legend-bar {
+  height: 14px;
+  background: linear-gradient(to right,
+    #fff7d1 0%,
+    #fde68a 12%,
+    #fbbf24 30%,
+    #f97316 55%,
+    #dc2626 80%,
+    #b91c1c 100%);
+  border: 1px solid #94a3b8;
+  border-radius: 2px;
+  margin: 2px 0 0;
+  position: relative;
+}
+.cloud-legend-generic .li-legend-ticks {
+  position: relative;
+  height: 14px;
+  font-size: 10px;
+  color: #1f2937;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.cloud-legend-generic .li-legend-ticks span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.cloud-legend-generic .li-legend-ticks span:first-child { transform: translateX(0); }
+.cloud-legend-generic .li-legend-ticks span:last-child  { transform: translateX(-100%); }
+.cloud-legend-generic .li-legend-help {
+  font-size: 10px;
+  color: #475569;
+  font-style: italic;
+  line-height: 1.2;
+}
+.cloud-legend img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #ffffff;
+  border-radius: 2px;
+}
+/* Pila para la leyenda EUMETSAT: imagen + máscara que oculta las
+   etiquetas en metros + nuestras etiquetas FL en las mismas posiciones */
+.cth-legend-stack {
+  position: relative;
+  width: 100%;
+}
+.cth-legend-stack img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.cth-legend-mask {
+  position: absolute;
+  bottom: 0;
+  left: 14%;       /* desde donde empieza el color bar de la imagen */
+  right: 0;
+  height: 36%;     /* tapa la fila de "320 4240 8160 12080 16000" + "m" */
+  background: #ffffff;
+}
+.cth-legend-fl {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 6%;
+  font-size: 10px;
+  font-weight: 700;
+  color: #1e293b;
+  pointer-events: none;
+}
+.cth-legend-fl span {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.cloud-legend .cloud-legend-title {
+  font-weight: 700;
+  font-size: 12px;
+  margin-bottom: 6px;
+  color: #0f172a;
+}
+.cloud-legend .cloud-legend-bar {
+  height: 14px;
+  /* MODIS Cloud Top Height: rojo (baja, ~1 km) → violeta (alta, ~15 km) */
+  background: linear-gradient(to right,
+    #ef4444 0%,
+    #eab308 20%,
+    #22c55e 40%,
+    #06b6d4 60%,
+    #1d4ed8 80%,
+    #6b21a8 100%);
+  border: 1px solid #475569;
+  border-radius: 2px;
+}
+.cloud-legend .cloud-legend-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  margin-top: 3px;
+  color: #1e293b;
+  line-height: 1.2;
+  text-align: center;
+}
+.cloud-legend .cloud-legend-ticks b { font-weight: 700; }
+.cloud-legend .cloud-legend-ticks i {
+  font-style: normal;
+  color: #64748b;
+  font-size: 9px;
+}
+.cloud-legend .cloud-legend-help {
+  margin-top: 6px;
+  font-size: 10px;
+  color: #475569;
+  font-style: italic;
+}
+.cloud-legend .cloud-legend-attr {
+  margin-top: 4px;
+  font-size: 10px;
+  color: #475569;
+  text-align: right;
+}
+
+/* Banner mientras se cargan los METAR/TAF */
+.meteo-loading {
+  background: rgba(15, 23, 42, 0.92);
+  color: #fde68a;
+  border: 1px solid #fbbf24;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+
+/* Popups Leaflet — el tema oscuro general hace que el texto se herede en
+   gris claro sobre el fondo blanco del popup. Forzamos color oscuro con
+   !important porque .meteo-section pre del panel le gana en especificidad. */
+.leaflet-popup-content,
+.leaflet-popup-content *,
+.leaflet-popup-content pre,
+.leaflet-popup-content .meteo-section pre {
+  color: #0f172a !important;
+}
+.leaflet-popup-content b,
+.leaflet-popup-content strong { color: #020617 !important; }
+.leaflet-popup-content i,
+.leaflet-popup-content .dim { color: #475569 !important; }
+.leaflet-popup-content pre,
+.leaflet-popup-content .meteo-section pre {
+  background: #f1f5f9 !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+/* Popup de meteo en el mapa */
+.meteo-popup .meteo-popup-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.meteo-popup .meteo-cat {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  background: #e5e7eb;
+  color: #1f2937;
+}
+.meteo-popup .meteo-cat.cat-VFR  { background: #bbf7d0; color: #14532d; }
+.meteo-popup .meteo-cat.cat-MVFR { background: #bfdbfe; color: #1e3a8a; }
+.meteo-popup .meteo-cat.cat-IFR  { background: #fecaca; color: #7f1d1d; }
+.meteo-popup .meteo-cat.cat-LIFR { background: #e9d5ff; color: #581c87; }
+.meteo-popup .meteo-section {
+  margin-top: 6px;
+  font-size: 11px;
+}
+.meteo-popup pre {
+  margin: 2px 0 0;
+  padding: 4px 6px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+/* Decoded list dentro del popup blanco */
+.leaflet-popup-content .meteo-decoded {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 4px 6px 4px 8px;
+  background: #eff6ff !important;
+  border-left: 2px solid #2563eb;
+  border-radius: 0 3px 3px 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #0f172a !important;
+}
+.leaflet-popup-content .meteo-decoded li { padding: 1px 0; }
+.leaflet-popup-content .meteo-decoded li.lvl-1 { padding-left: 6px; }
+.leaflet-popup-content .meteo-decoded li.lvl-2 { padding-left: 14px; color: #475569 !important; }
+.leaflet-popup-content .meteo-decoded .lbl {
+  display: inline-block;
+  min-width: 82px;
+  font-weight: 600;
+  color: #475569 !important;
+}
+
+/* Banner de dibujo de ruta */
+.draw-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  margin-bottom: 8px;
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid #fbbf24;
+  border-radius: var(--radius);
+  flex-wrap: wrap;
+}
+.draw-banner-text {
+  font-size: 13px;
+  color: var(--text);
+}
+.draw-banner-text .dim { color: var(--text-mute); }
+.draw-banner-actions {
+  display: flex;
+  gap: 6px;
+}
+#map.drawing-route,
+.drawing-route .leaflet-container {
+  cursor: crosshair !important;
+}
+/* Mientras dibujas, los polígonos de TSA / TMA / aerovías no deben
+   capturar el clic: el mapa debe recibirlo para añadir el waypoint. */
+.drawing-route .leaflet-overlay-pane,
+.drawing-route .leaflet-marker-pane,
+.drawing-route .leaflet-tooltip-pane {
+  pointer-events: none;
+}
+
+/* GRAMET (Autorouter) — corte vertical meteorológico embebido */
+.gramet-container {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.gramet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.gramet-head h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.gramet-actions {
+  display: flex;
+  gap: 6px;
+}
+.gramet-img-wrap {
+  margin-top: 10px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  overflow: auto;
+}
+.gramet-img-wrap img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+.gramet-route {
+  padding: 8px 12px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text);
+}
+.gramet-route-strategy {
+  font-size: 12px;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.gramet-strat-warn .gramet-route-strategy {
+  color: var(--ea-amarillo);
+}
+.gramet-route-wps {
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  word-break: break-word;
+}
+.gramet-wp {
+  display: inline-block;
+  padding: 1px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  margin: 1px 0;
+  color: var(--accent);
+}
+.gramet-loading {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-mute);
+  font-size: 13px;
+}
+.gramet-loading .dim { color: var(--text-mute); font-size: 11px; }
+
+/* Formulario de login Autorouter */
+.ar-login-form {
+  display: grid;
+  gap: 10px;
+  max-width: 380px;
+  margin-top: 12px;
+  padding: 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.ar-login-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-mute);
+}
+.ar-login-form input {
+  padding: 6px 8px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 3px;
+  font-family: inherit;
+  font-size: 13px;
+}
+.ar-login-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.gramet-container code {
+  background: var(--bg-elev);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+/* ── Planes guardados (Plan de vuelo) ─────────────── */
+.saved-plans {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--ea-azul-cielo);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+}
+.saved-plans-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.saved-plans-head h3 {
+  margin: 0;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ea-azul-palido);
+}
+.save-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.save-row input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+  min-width: 220px;
+}
+.save-row input:focus {
+  outline: none;
+  border-color: var(--ea-amarillo);
+}
+.saved-plans-list {
+  display: grid;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.saved-plan {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.saved-plan-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 13px;
+  min-width: 0;
+}
+.saved-plan-info b {
+  color: var(--text);
+  font-weight: 700;
+}
+.saved-plan-info .dim {
+  font-size: 11px;
+  color: var(--text-mute);
+}
+.saved-plan-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ── Pestaña Ajustes ──────────────────────────────── */
+.settings-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--ea-amarillo);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+}
+.settings-card h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #ffffff;
+}
+.settings-card p.hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--ea-azul-palido);
+}
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 8px 24px;
+}
+.settings-row {
+  display: grid;
+  grid-template-columns: 1fr 160px 56px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border);
+}
+.settings-row:last-child { border-bottom: none; }
+.settings-name {
+  font-size: 13px;
+  color: var(--text);
+}
+.settings-row input[type="range"] {
+  width: 100%;
+  accent-color: var(--ea-amarillo);
+  cursor: pointer;
+}
+.settings-value {
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  font-size: 12px;
+  color: var(--ea-azul-palido);
+  text-align: right;
+}
+.settings-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.settings-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ea-azul-palido);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.settings-fields input {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 13px;
+}
+.settings-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ── Modal de bienvenida (overlay full-screen) ───── */
+.welcome-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(10, 31, 51, 0.96);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+}
+.welcome-modal.hidden { display: none !important; }
+body.welcome-open { overflow: hidden; }
+
+.welcome-card {
+  width: 100%;
+  max-width: 760px;
+  background: var(--ea-gris-aviador);
+  border: 1px solid var(--ea-azul-medio);
+  border-top: 4px solid var(--ea-amarillo);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 48px);
+}
+.welcome-head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  position: relative;
+}
+.welcome-head::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 50%;
+  bottom: -2px;
+  height: 2px;
+  background: var(--ea-rojo);
+}
+.welcome-head + * { border-top: 2px solid var(--ea-amarillo); }
+.welcome-logo {
+  height: 64px;
+  width: auto;
+  display: block;
+  flex-shrink: 0;
+}
+.welcome-head h2 {
+  margin: 0;
+  font-size: 22px;
+  color: #ffffff;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.welcome-sub {
+  font-size: 11px;
+  color: var(--ea-azul-palido);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+.welcome-body {
+  padding: 18px 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.welcome-footer {
+  padding: 16px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.welcome-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+.welcome-confirm input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--ea-amarillo);
+  cursor: pointer;
+}
+
+/* ── Página de Inicio ─────────────────────────────── */
+.home-hero {
+  padding: 24px 28px;
+  background: linear-gradient(135deg, var(--ea-gris-aviador) 0%, #1a4575 100%);
+  border: 1px solid var(--ea-azul-medio);
+  border-left: 6px solid var(--ea-amarillo);
+  border-radius: var(--radius);
+}
+.home-hero h2 {
+  margin: 0 0 8px;
+  font-size: 26px;
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 800;
+}
+.home-lead {
+  margin: 0;
+  font-size: 15px;
+  color: var(--ea-azul-palido);
+  line-height: 1.5;
+  max-width: 900px;
+}
+
+.home-disclaimer {
+  padding: 16px 20px;
+  border-radius: var(--radius);
+  border-width: 1px;
+  border-style: solid;
+}
+.home-disclaimer p {
+  margin: 8px 0 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text);
+}
+.home-disclaimer p:first-of-type { margin-top: 8px; }
+.disc-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.disc-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+.disc-title {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Aviso de seguridad: rojo bandera, mayor jerarquía visual */
+.disclaimer-warn {
+  background: rgba(173, 46, 28, 0.12);
+  border-color: var(--ea-rojo);
+  border-left: 5px solid var(--ea-rojo);
+}
+.disclaimer-warn .disc-icon { color: var(--ea-amarillo); }
+.disclaimer-warn .disc-title { color: #fecaca; }
+
+/* Aviso informativo: azul cielo */
+.disclaimer-info {
+  background: rgba(141, 198, 232, 0.10);
+  border-color: var(--ea-azul-cielo);
+  border-left: 5px solid var(--ea-azul-cielo);
+}
+.disclaimer-info .disc-icon { color: var(--ea-azul-cielo); }
+.disclaimer-info .disc-title { color: var(--ea-azul-cielo); }
+
+.home-features h3 {
+  margin: 0 0 14px;
+  font-size: 16px;
+  color: var(--ea-azul-palido);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-left: 4px solid var(--ea-amarillo);
+  box-shadow: -8px 0 0 -4px var(--ea-rojo);
+  padding-left: 12px;
+}
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.feature {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--ea-azul-cielo);
+  border-radius: 4px;
+  padding: 12px 14px;
+}
+.feature-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: #ffffff;
+  margin-bottom: 4px;
+  letter-spacing: 0.02em;
+}
+.feature-desc {
+  font-size: 12px;
+  color: var(--ea-azul-palido);
+  line-height: 1.5;
+}
+
+.home-cta {
+  text-align: center;
+  padding: 8px;
+}
+.home-cta .hint {
+  font-size: 13px;
+  color: var(--ea-azul-palido);
+}
+.home-cta b { color: var(--ea-amarillo); }
+
+/* ── Pestanya Cargar: bloque NotamHub destacado ───── */
+.notamhub-card {
+  background: linear-gradient(135deg, rgba(14,165,233,0.16) 0%, rgba(0,55,100,0.4) 100%);
+  border: 1px solid var(--ea-azul-cielo);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+}
+.notamhub-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.notamhub-tag {
+  display: inline-block;
+  background: var(--ea-amarillo);
+  color: #1a1a1a;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+.notamhub-title { margin: 0; font-size: 17px; color: #fff; }
+.notamhub-desc  {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--ea-azul-palido);
+  line-height: 1.4;
+}
+.notamhub-desc a { color: var(--ea-azul-cielo); }
+.notamhub-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 8px;
+}
+.notamhub-input-label {
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  color: var(--ea-azul-palido);
+  font-weight: 600;
+  flex: 0 0 240px;
+}
+.notamhub-input-label input {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: #fff;
+  font-family: 'Archivo', Arial, sans-serif;
+  font-size: 13px;
+}
+.notamhub-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ea-azul-palido);
+  cursor: pointer;
+  margin: 4px 0 8px;
+  user-select: none;
+}
+.notamhub-check input { cursor: pointer; }
+
+.notamhub-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 8px;
+  font-size: 12px;
+}
+.notamhub-presets-label {
+  color: var(--ea-azul-palido);
+  font-weight: 600;
+  margin-right: 4px;
+}
+.btn.btn-sm {
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.notamhub-divider {
+  text-align: center;
+  position: relative;
+  margin: 18px 0 12px;
+  color: var(--ea-azul-palido);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.notamhub-divider::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--border);
+  z-index: 0;
+}
+.notamhub-divider span {
+  position: relative;
+  z-index: 1;
+  background: var(--bg);
+  padding: 0 12px;
+}
+
+/* ── Tarjeta KML en Cargar ────────────────────────── */
+.kml-card {
+  background: linear-gradient(135deg, rgba(74, 222, 128, 0.10) 0%, rgba(22, 78, 99, 0.45) 100%);
+  border: 1px solid #4ade80;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+.kml-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.kml-tag {
+  display: inline-block;
+  background: #4ade80;
+  color: #064e3b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+.kml-title { margin: 0; font-size: 17px; color: #fff; }
+.kml-desc {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--ea-azul-palido);
+  line-height: 1.45;
+}
+.kml-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.kml-counter {
+  margin-left: auto;
+  font-size: 11px;
+  font-style: italic;
+}
+.btn-kml-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; height: 22px;
+  margin-left: 6px;
+  padding: 0;
+  border: 1px solid #4ade80;
+  background: rgba(74, 222, 128, 0.18);
+  color: #4ade80;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  vertical-align: middle;
+}
+.btn-kml-edit:hover { background: #4ade80; color: #064e3b; }
+
+/* ── Modal de edicion KML ─────────────────────────── */
+.kml-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.kml-modal.hidden { display: none; }
+.kml-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(2px);
+}
+.kml-modal-panel {
+  position: relative;
+  background: var(--bg-panel);
+  border: 1px solid var(--ea-azul-claro);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  width: 100%;
+  max-width: 560px;
+  max-height: 88vh;
+  overflow: auto;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+}
+.kml-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.kml-modal-head h2 { margin: 0; font-size: 16px; color: var(--ea-amarillo); }
+.kml-modal-close {
+  background: transparent;
+  border: none;
+  color: var(--ea-azul-palido);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.kml-modal-close:hover { color: #fff; }
+.kml-modal-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.kml-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ea-azul-palido);
+  font-weight: 600;
+}
+.kml-modal-field input,
+.kml-modal-field textarea {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: #fff;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 13px;
+  padding: 7px 9px;
+}
+.kml-modal-field input:focus,
+.kml-modal-field textarea:focus {
+  outline: none;
+  border-color: var(--ea-amarillo);
+  box-shadow: 0 0 0 2px rgba(250, 194, 0, 0.18);
+}
+.kml-modal-field textarea { resize: vertical; min-height: 80px; }
+.kml-modal-row { display: flex; gap: 12px; }
+.kml-modal-row .kml-modal-field { flex: 1; }
+.kml-modal-hint { margin: 0; font-size: 11px; }
+.kml-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.15);
+}
+/* Altitudes: valor numerico + selector de unidad */
+.kml-alt-row {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.kml-alt-val {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.kml-alt-unit {
+  flex: 0 0 auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: #fff;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  padding: 6px 8px;
+  min-width: 92px;
+}
+.kml-alt-unit:focus {
+  outline: none;
+  border-color: var(--ea-amarillo);
+  box-shadow: 0 0 0 2px rgba(250, 194, 0, 0.18);
+}
+/* Ventanas horarias */
+.kml-windows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.kml-window-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.kml-window-row input[type="datetime-local"] {
+  flex: 1 1 0;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: #fff;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  padding: 6px 8px;
+  color-scheme: dark;
+}
+.kml-window-row input[type="datetime-local"]:focus {
+  outline: none;
+  border-color: var(--ea-amarillo);
+  box-shadow: 0 0 0 2px rgba(250, 194, 0, 0.18);
+}
+.kml-win-sep {
+  color: var(--ea-azul-palido);
+  font-weight: 700;
+  user-select: none;
+}
+.btn-kml-win-del {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--ea-azul-palido);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 8px;
+}
+.btn-kml-win-del:hover {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+.kml-add-window {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+/* ── Pestanya NOTAMs + Weather Hold ───────────────── */
+
+/* Toolbar superior: tarjeta con campo + botones + status */
+.notam-toolbar-card {
+  background: linear-gradient(180deg, rgba(14,165,233,0.12) 0%, rgba(0,55,100,0.35) 100%);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 18px;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.15);
+}
+.notam-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 8px;
+}
+.notam-toolbar-row .notam-input-label {
+  flex: 1 1 280px;
+  min-width: 220px;
+}
+.notam-toolbar-row .notam-input-label > span {
+  font-size: 12px;
+  color: var(--ea-azul-palido);
+  font-weight: 600;
+}
+.notam-toolbar-row .notam-input-label input {
+  margin-top: 4px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: #fff;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 14px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  width: 100%;
+}
+.notam-toolbar-row .notam-input-label input:focus {
+  outline: none;
+  border-color: var(--ea-amarillo);
+  box-shadow: 0 0 0 2px rgba(250, 194, 0, 0.2);
+}
+.notam-toolbar-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.notam-status-bar { margin: 0; padding: 6px 0 0; font-size: 12px; }
+
+/* Sección con cabecera estructurada */
+.notam-section { margin-bottom: 24px; }
+.notam-section-header {
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+}
+.notam-section-title {
+  font-size: 18px;
+  margin: 0 0 6px;
+  color: var(--ea-amarillo);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+.notam-section-icon { font-size: 22px; line-height: 1; }
+.notam-section-sub {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ea-azul-palido);
+  line-height: 1.6;
+}
+.notam-section-sub .legend-pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-left: 6px;
+  color: #fff;
+  white-space: nowrap;
+}
+.legend-pill-green  { background: #16a34a; }
+.legend-pill-yellow { background: #fbbf24; color: #1a1a1a; }
+.legend-pill-red    { background: #dc2626; }
+
+/* Tags / chips para NOTAM cards */
+.notam-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--ea-rojo);
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+.notam-tag-red    { background: var(--ea-rojo); color: #fff; }
+.notam-tag-amber  { background: var(--ea-amarillo); color: #1a1a1a; }
+.notam-tag-grey   { background: #475569; color: #e2e8f0; }
+.notam-tag-area   { background: var(--ea-amarillo); color: #1a1a1a; }
+.notam-tag-inline {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--ea-rojo);
+  color: #fff;
+}
+.badge-red   { background: var(--ea-rojo) !important; color: #fff !important; }
+.badge-amber { background: var(--ea-amarillo) !important; color: #1a1a1a !important; }
+
+/* Chips de metadata en la cabecera del card */
+.notam-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(255,255,255,0.08);
+  color: var(--ea-azul-palido);
+  border: 1px solid var(--border);
+}
+.notam-chip-icao {
+  background: var(--ea-amarillo);
+  color: #1a1a1a;
+  border-color: var(--ea-amarillo);
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  letter-spacing: 0.5px;
+}
+.notam-chip-series {
+  background: rgba(14, 165, 233, 0.18);
+  color: var(--ea-azul-cielo);
+  border-color: rgba(14, 165, 233, 0.4);
+}
+
+/* Bucket por ICAO con cabecera y body */
+.notam-bucket {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.notam-bucket-fir { border-left: 4px solid var(--ea-azul-cielo); }
+.notam-bucket-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(0,0,0,0.05));
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.notam-bucket-head h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  letter-spacing: 1px;
+}
+.notam-bucket-prefix {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(14, 165, 233, 0.18);
+  color: var(--ea-azul-cielo);
+  letter-spacing: 0.5px;
+  font-family: 'Archivo', Arial, sans-serif;
+}
+.notam-bucket-fir .notam-bucket-prefix {
+  background: rgba(141, 198, 232, 0.2);
+  color: var(--ea-azul-cielo);
+}
+.notam-bucket-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.notam-bucket-body { padding: 10px 14px 12px; }
+
+/* Card individual de NOTAM */
+.notam-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.notam-card:hover { border-color: var(--ea-azul-claro); }
+.notam-card:last-child { margin-bottom: 0; }
+.notam-card-closure {
+  border-left-color: var(--ea-rojo);
+  background: rgba(173, 46, 28, 0.06);
+}
+.notam-card-area {
+  border-left-color: var(--ea-amarillo);
+  background: rgba(250, 194, 0, 0.04);
+}
+.notam-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.notam-card-head-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.notam-id {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+.notam-card-window {
+  font-size: 11px;
+  color: var(--ea-azul-palido);
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  white-space: nowrap;
+}
+.notam-window-label {
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  color: var(--ea-azul-claro);
+  margin-right: 2px;
+}
+.notam-window-arrow {
+  color: var(--ea-azul-claro);
+  margin: 0 4px;
+}
+.notam-body {
+  margin: 4px 0 0;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 8px 10px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #e2e8f0;
+  border: 1px solid rgba(255,255,255,0.04);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+/* ── Barra de filtros sobre la lista de NOTAMs ── */
+.notam-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.notam-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.notam-filter-chips { gap: 6px; }
+.notam-chip-btn {
+  background: rgba(255,255,255,0.04);
+  color: var(--ea-azul-palido);
+  border: 1px solid var(--border);
+}
+.notam-chip-btn:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: var(--ea-azul-claro);
+  color: #fff;
+}
+.notam-chip-btn.is-active {
+  background: var(--ea-amarillo);
+  color: #1a1200;
+  border-color: var(--ea-amarillo);
+}
+.notam-chip-btn-red.is-active    { background: #ef4444; color: #fff; border-color: #ef4444; }
+.notam-chip-btn-green.is-active  { background: #22c55e; color: #00200a; border-color: #22c55e; }
+.notam-chip-btn-amber.is-active  { background: #f59e0b; color: #1a1200; border-color: #f59e0b; }
+.notam-chip-btn-grey.is-active   { background: #64748b; color: #fff; border-color: #64748b; }
+.notam-chip-count {
+  display: inline-block;
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+}
+.notam-chip-btn:not(.is-active) .notam-chip-count {
+  background: rgba(255,255,255,0.12);
+  color: var(--ea-azul-cielo);
+}
+.notam-filter-select {
+  background: var(--bg);
+  color: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.notam-filter-select:focus {
+  outline: none;
+  border-color: var(--ea-amarillo);
+  box-shadow: 0 0 0 2px rgba(250, 194, 0, 0.18);
+}
+
+/* ── Badge de categoria NOTAM (en notam-tag dentro del head) ── */
+.notam-cat-tag {
+  background: rgba(255,255,255,0.08);
+  color: var(--ea-azul-palido);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+.notam-cat-RWY  { background: #fb7185; color: #1a0a0d; border-color: #fb7185; }
+.notam-cat-TWY  { background: #fbbf24; color: #1a1200; border-color: #fbbf24; }
+.notam-cat-LGT  { background: #facc15; color: #1a1200; border-color: #facc15; }
+.notam-cat-NAV  { background: #38bdf8; color: #0a1a22; border-color: #38bdf8; }
+.notam-cat-GPS  { background: #c084fc; color: #1a0a22; border-color: #c084fc; }
+.notam-cat-COMM { background: #a78bfa; color: #0e0a1a; border-color: #a78bfa; }
+.notam-cat-ATC  { background: #60a5fa; color: #0a1024; border-color: #60a5fa; }
+.notam-cat-OBST { background: #f97316; color: #1a0a00; border-color: #f97316; }
+.notam-cat-FAC  { background: #64748b; color: #e2e8f0; border-color: #64748b; }
+.notam-cat-FUEL { background: #22c55e; color: #00200a; border-color: #22c55e; }
+.notam-cat-WIP  { background: #d97706; color: #ffffff; border-color: #d97706; }
+.notam-cat-PROC { background: #94a3b8; color: #0a1424; border-color: #94a3b8; }
+.notam-cat-AIP  { background: #64748b; color: #e2e8f0; border-color: #64748b; }
+.notam-cat-WARN { background: #f59e0b; color: #1a1200; border-color: #f59e0b; }
+.notam-cat-OTHER { background: rgba(255,255,255,0.08); color: var(--ea-azul-palido); border-color: rgba(255,255,255,0.16); }
+
+/* Borde izquierdo del card teñido por categoria (suave) */
+.notam-card-cat-RWY  { border-left-color: #fb7185; }
+.notam-card-cat-TWY  { border-left-color: #fbbf24; }
+.notam-card-cat-LGT  { border-left-color: #facc15; }
+.notam-card-cat-NAV  { border-left-color: #38bdf8; }
+.notam-card-cat-GPS  { border-left-color: #c084fc; }
+.notam-card-cat-COMM { border-left-color: #a78bfa; }
+.notam-card-cat-ATC  { border-left-color: #60a5fa; }
+.notam-card-cat-OBST { border-left-color: #f97316; }
+.notam-card-cat-FUEL { border-left-color: #22c55e; }
+.notam-card-cat-WIP  { border-left-color: #d97706; }
+.notam-card-cat-PROC { border-left-color: #94a3b8; }
+.notam-card-cat-AIP  { border-left-color: #64748b; }
+.notam-card-cat-WARN { border-left-color: #f59e0b; }
+
+/* Chip de estado temporal (Activo / Termina / Inicia) */
+.notam-card-window {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.notam-window-dates {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+}
+.notam-status-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  font-family: 'Archivo', Arial, sans-serif;
+  border: 1px solid transparent;
+}
+.notam-status-active  { background: var(--c-ok-bg);     color: #86efac; border-color: var(--c-ok-bd); }
+.notam-status-perm    { background: var(--c-mute-bg);   color: #cbd5e1; border-color: var(--c-mute-bd); }
+.notam-status-soon    { background: var(--c-warn-bg);   color: #fde68a; border-color: var(--c-warn-bd); }
+.notam-status-urgent  { background: var(--c-danger-bg); color: #fca5a5; border-color: var(--c-danger-bd); }
+.notam-status-future  { background: var(--c-info-bg);   color: #bae6fd; border-color: var(--c-info-bd); }
+.notam-status-expired { background: var(--c-mute-bg);   color: #cbd5e1; border-color: var(--c-mute-bd); }
+
+/* Highlight de tokens dentro del cuerpo del NOTAM */
+.notam-body .hl-rwy {
+  color: #fda4af;
+  font-weight: 700;
+  background: rgba(251,113,133,0.10);
+  padding: 0 3px;
+  border-radius: 2px;
+}
+.notam-body .hl-twy {
+  color: #fcd34d;
+  font-weight: 700;
+  background: rgba(252,211,77,0.10);
+  padding: 0 3px;
+  border-radius: 2px;
+}
+.notam-body .hl-freq {
+  color: #c4b5fd;
+  font-weight: 700;
+  background: rgba(167,139,250,0.10);
+  padding: 0 3px;
+  border-radius: 2px;
+}
+.notam-body .hl-fl {
+  color: #7dd3fc;
+  font-weight: 700;
+}
+.notam-body .hl-bad {
+  color: #fca5a5;
+  font-weight: 700;
+  background: rgba(239,68,68,0.12);
+  padding: 0 3px;
+  border-radius: 2px;
+}
+.notam-body .hl-good {
+  color: #86efac;
+  font-weight: 700;
+}
+.notam-body .hl-warn {
+  color: #fde68a;
+  font-weight: 700;
+}
+
+/* Empty / loading / error states */
+.notam-empty {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  border-radius: 8px;
+  background: var(--bg-panel);
+  border: 1px dashed var(--border);
+  color: var(--ea-azul-palido);
+  font-size: 13px;
+}
+.notam-empty.hint    { border-color: rgba(14,165,233,0.4); }
+.notam-empty.loading { border-color: var(--ea-amarillo); }
+.notam-empty.error   { border-color: var(--ea-rojo); color: #fecaca; background: rgba(173,46,28,0.08); }
+.notam-empty-icon { font-size: 28px; line-height: 1; }
+.notam-empty-mini {
+  padding: 8px 10px;
+  font-size: 12px;
+  font-style: italic;
+  text-align: center;
+}
+
+/* Weather Hold table */
+#notam-wx-board { margin-bottom: 18px; }
+.wx-board {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  table-layout: fixed;
+}
+.wx-board th, .wx-board td {
+  padding: 6px 4px;
+  text-align: center;
+  font-size: 13px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.wx-board th:last-child, .wx-board td:last-child { border-right: none; }
+.wx-board thead th {
+  background: var(--bg-elev);
+  color: var(--ea-azul-palido);
+  font-weight: 700;
+}
+.wx-board .wx-th-icao {
+  width: 18%;
+  min-width: 130px;
+  text-align: left;
+  padding-left: 10px;
+  vertical-align: middle;
+}
+.wx-board .wx-th-icao .dim {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  margin-top: 2px;
+  color: var(--ea-azul-claro);
+}
+.wx-board .wx-th-dep {
+  outline: 2px solid var(--ea-amarillo);
+  outline-offset: -2px;
+}
+.wx-board .wx-band td {
+  background: #1a4575;
+  color: var(--ea-azul-palido);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  text-align: left;
+  padding-left: 12px;
+  border-right: none;
+}
+.wx-board .wx-icao {
+  text-align: left;
+  padding-left: 12px;
+  font-weight: 700;
+  color: var(--ea-amarillo);
+  background: var(--bg);
+}
+.wx-board .wx-cell {
+  cursor: help;
+  position: relative;
+  font-weight: 600;
+  font-size: 11px;
+}
+.wx-board .wx-green   { background: #16a34a; color: #fff; }
+.wx-board .wx-yellow  { background: #facc15; color: #1a1a1a; }
+.wx-board .wx-red     { background: #dc2626; color: #fff; }
+.wx-board .wx-unknown { background: #475569; color: #cbd5e1; }
+.wx-board .wx-cell:hover { filter: brightness(1.15); }
+.wx-board .wx-cell-text { display: inline-block; min-height: 16px; }
+
+/* ── Popover Weather Hold (tooltip custom) ──────────
+   Tema CLARO sobre fondo oscuro de la app, para que el METAR/TAF
+   decodificado se lea bien sin forzar la vista. Una sola instancia
+   compartida (posicionada dinamicamente al hover de cada celda). */
+.wx-popover {
+  position: absolute;
+  z-index: 9999;
+  width: 380px;
+  max-width: 92vw;
+  max-height: 70vh;
+  overflow: auto;
+  background: #f8fafc;
+  color: #0f172a;
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  padding: 10px 12px;
+  font-family: 'Archivo', Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1.45;
+  pointer-events: auto;
+}
+.wx-pop-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #cbd5e1;
+}
+.wx-pop-icao {
+  font-weight: 700;
+  font-size: 14px;
+  color: #0f172a;
+  letter-spacing: 0.5px;
+}
+.wx-pop-time {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  color: #475569;
+}
+.wx-pop-source {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: #e2e8f0;
+  color: #334155;
+}
+.wx-pop-source.green   { background: #16a34a; color: #fff; }
+.wx-pop-source.yellow  { background: #fbbf24; color: #1a1a1a; }
+.wx-pop-source.red     { background: #dc2626; color: #fff; }
+.wx-pop-source.unknown { background: #cbd5e1; color: #334155; }
+
+.wx-pop-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.wx-chip {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: #e0e7ef;
+  color: #1e293b;
+  font-size: 11px;
+  font-weight: 600;
+}
+.wx-chip-ok { background: #16a34a; color: #fff; }
+
+.wx-pop-reasons {
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.wx-pop-reasons-yellow  { background: #fef3c7; color: #78350f; border-left: 3px solid #f59e0b; }
+.wx-pop-reasons-red     { background: #fee2e2; color: #7f1d1d; border-left: 3px solid #dc2626; }
+.wx-pop-reasons-green   { background: #d1fae5; color: #065f46; border-left: 3px solid #16a34a; }
+.wx-pop-reasons-unknown { background: #e2e8f0; color: #334155; border-left: 3px solid #94a3b8; }
+
+.wx-pop-decoded ul.meteo-decoded {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 12px;
+}
+.wx-pop-decoded ul.meteo-decoded li {
+  padding: 2px 0;
+  color: #1e293b;
+}
+.wx-pop-decoded ul.meteo-decoded li.lvl-1 { padding-left: 12px; color: #334155; }
+.wx-pop-decoded ul.meteo-decoded li.lvl-2 { padding-left: 24px; color: #475569; font-size: 11px; }
+.wx-pop-decoded ul.meteo-decoded .lbl {
+  font-weight: 700;
+  color: #475569;
+  margin-right: 4px;
+}
+.wx-pop-decoded .dim { color: #64748b; font-style: italic; }
+
+.wx-pop-raw {
+  margin-top: 6px;
+  border-top: 1px solid #cbd5e1;
+  padding-top: 4px;
+}
+.wx-pop-raw summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: #475569;
+  font-weight: 600;
+}
+.wx-pop-raw pre {
+  white-space: pre-wrap;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+  margin: 4px 0 0;
+  background: #f1f5f9;
+  color: #1e293b;
+  padding: 6px 8px;
+  border-radius: 3px;
+  max-height: 160px;
+  overflow: auto;
+}
+
+/* Legacy NOTAMs CSS reemplazado por el bloque rediseñado al inicio
+   de esta sección. Mantenemos solo unas reglas de utilidad: */
+#notam-results { display: flex; flex-direction: column; gap: 14px; }
+.notam-hint { font-size: 12px; margin: 4px 0 12px; }
+.notam-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.notam-meta-chip {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg-elev);
+  color: var(--ea-azul-palido);
+  font-size: 10px;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+/* ── SIGMETs en el mapa ───────────────────────────── */
+.sigmet-popup {
+  font-family: 'Archivo', Arial, sans-serif;
+  font-size: 12px;
+  color: #1f2937;
+  min-width: 300px;
+}
+.sigmet-popup-head {
+  background: #1f2937;
+  color: #fff;
+  padding: 6px 10px;
+  margin: -10px -10px 8px;
+  border-radius: 3px 3px 0 0;
+  font-size: 13px;
+}
+.sigmet-popup-multi { max-height: 70vh; overflow-y: auto; }
+.sigmet-popup .sigmet-card + .sigmet-card,
+.sigmet-popup .sigmet-divider {
+  margin: 8px 0;
+  border: 0;
+  border-top: 1px dashed #94a3b8;
+}
+.sigmet-popup .sigmet-card {
+  padding-top: 2px;
+}
+.sigmet-popup .sigmet-haz {
+  font-weight: 700;
+  font-size: 14px;
+  margin: 0 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 2px solid currentColor;
+}
+.sigmet-popup .sigmet-haz.ts   { color: #dc2626; }
+.sigmet-popup .sigmet-haz.turb { color: #c2410c; }
+.sigmet-popup .sigmet-haz.ice  { color: #0369a1; }
+.sigmet-popup .sigmet-haz.mtw  { color: #78350f; }
+.sigmet-popup .sigmet-haz.va   { color: #6d28d9; }
+.sigmet-popup .sigmet-haz.other { color: #334155; }
+.sigmet-popup .sigmet-grid {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 4px 10px;
+  margin-bottom: 6px;
+}
+.sigmet-popup .sigmet-row {
+  display: contents;
+}
+.sigmet-popup .sigmet-k {
+  color: #64748b;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.sigmet-popup .sigmet-v { color: #0f172a; }
+.sigmet-popup .sigmet-raw {
+  margin-top: 4px;
+  border-top: 1px solid #cbd5e1;
+  padding-top: 4px;
+}
+.sigmet-popup .sigmet-raw summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 600;
+}
+.sigmet-popup .sigmet-raw pre {
+  white-space: pre-wrap;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 10.5px;
+  margin: 4px 0 0;
+  max-height: 180px;
+  overflow: auto;
+  background: #f1f5f9;
+  padding: 4px 6px;
+  border-radius: 3px;
+  color: #1e293b;
+}
+
+/* ── Accesibilidad: focus visible ──────────────────
+   Anillo amarillo institucional alrededor de cualquier elemento
+   focado con teclado (Tab). Solo se aplica con :focus-visible,
+   asi no aparece al hacer click con el raton — evita ruido
+   visual y mejora la navegacion por teclado de pilotos en EFB
+   con teclado externo. */
+:focus-visible {
+  /* 3px en lugar de 2px para que el anillo de foco sea visible
+     incluso sobre fondos amarillos/claros (los chips activos). */
+  outline: 3px solid var(--ea-amarillo);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+button:focus-visible,
+.btn:focus-visible,
+.notam-chip-btn:focus-visible,
+.tsa-chip:focus-visible,
+.btn-kml-edit:focus-visible,
+.btn-kml-win-del:focus-visible,
+.kml-modal-close:focus-visible {
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px var(--ea-amarillo);
+}
+/* Para inputs y textarea, el box-shadow existente ya hace de
+   ring; preservamos su estetica. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
+/* ── Skeletons (loading placeholders) ───────────────
+   Bloques pulsantes que ocupan el sitio real del contenido
+   final, para evitar layout jump cuando el fetch termina y
+   dar sensacion de progreso continuo. */
+@keyframes skel-shimmer {
+  0%   { background-position: -200px 0; }
+  100% { background-position: calc(200px + 100%) 0; }
+}
+.skel-bar,
+.skel-block {
+  display: inline-block;
+  background-color: rgba(255,255,255,0.06);
+  background-image: linear-gradient(90deg,
+    rgba(255,255,255,0)    0%,
+    rgba(255,255,255,0.10) 50%,
+    rgba(255,255,255,0)   100%);
+  background-size: 200px 100%;
+  background-repeat: no-repeat;
+  border-radius: var(--r-sm);
+  animation: skel-shimmer 1.4s ease-in-out infinite;
+  vertical-align: middle;
+}
+.skel-block {
+  display: block;
+  width: 100%;
+  height: 64px;
+  border-radius: var(--r-md);
+  margin-top: 8px;
+}
+.skel-bar-id     { width: 78px;  height: 14px; }
+.skel-bar-chip   { width: 60px;  height: 12px; border-radius: var(--r-pill); }
+.skel-bar-window { width: 180px; height: 12px; margin-left: auto; }
+.skel-bar-title  { width: 140px; height: 18px; }
+.skel-bar-badge  { width: 36px;  height: 14px; border-radius: var(--r-pill); }
+.skel-bar-wxcell { display: block; width: 100%; height: 28px; border-radius: var(--r-sm); }
+.skel-bar-sm     { width: 40px;  height: 10px; }
+
+.notam-skeleton { display: block; }
+.skel-bucket {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.skel-bucket-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.skel-bucket-body { padding: 10px 14px; }
+.skel-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.skel-card:last-child { margin-bottom: 0; }
+.skel-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.wx-board-skeleton th,
+.wx-board-skeleton td {
+  background: transparent !important;
+}
+
+/* Solo accesible para lectores de pantalla */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0);
+  white-space: nowrap; border: 0;
+}
+
+/* ── Utility ──────────────────────────────────────── */
+.hidden { display: none !important; }
+
+/* ── Responsive (tablet y movil) ─────────────────────
+   Breakpoint principal a 960px (tablets en landscape y abajo).
+   El objetivo es que la app sea utilizable en iPad/EFB en cabina
+   y briefing room. La columna de tabla de TSAs se hace scroll
+   horizontal en lugar de comprimir el contenido (mas legible). */
+@media (max-width: 960px) {
+  .tab-content { padding: 12px; gap: 12px; }
+
+  /* Filter bar: chips arriba, fechas debajo, acciones al final.
+     "filter-summary" se oculta para ahorrar altura. */
+  .filter-bar {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+  .filter-bar .filter-chips { width: 100%; }
+  .filter-bar .filter-group { width: 100%; }
+  .filter-bar .filter-actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: space-between;
+  }
+  .filter-bar label { font-size: 10px; flex: 1 1 calc(50% - 8px); min-width: 0; }
+  .filter-bar input { width: 100%; }
+  .filter-summary { display: none; }
+
+  /* Tabla de TSAs: scroll horizontal en lugar de comprimir. */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  #tsa-table { min-width: 760px; }
+  #tsa-table th, #tsa-table td { padding: 6px 8px; font-size: 12px; }
+
+  /* Mapa: ocupa toda la pantalla vertical disponible. */
+  #map { min-height: 420px; }
+
+  /* Modal KML: full width con margen lateral. */
+  .kml-modal-panel { max-width: calc(100vw - 24px); max-height: 92vh; }
+  .kml-modal-row { flex-direction: column; gap: 10px; }
+
+  /* NOTAMs filter bar: en tablet desactivamos sticky para no robar
+     altura util y dejamos que los chips fluyan. */
+  .notam-filter-bar { position: static; }
+  .notam-filter-bar .notam-filter-group { width: 100%; }
+  .notam-filter-select { flex: 1 1 calc(50% - 6px); min-width: 0; }
+
+  /* Wx board: scroll horizontal interno (las 6 columnas horarias
+     no se comprimen, se desplazan). */
+  #notam-wx-board { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .wx-board { min-width: 640px; }
+
+  /* Notam toolbar (input ICAOs + botones): apila los botones debajo. */
+  .notam-toolbar-row { flex-wrap: wrap; }
+  .notam-toolbar-buttons { width: 100%; justify-content: flex-end; }
+
+  /* Cabeceras de bucket NOTAM: nombre arriba, badges debajo. */
+  .notam-bucket-head { gap: 6px; }
+  .notam-bucket-head h3 { font-size: 14px; }
+
+  /* Cards de NOTAM: cabecera apilada (chips arriba, ventana debajo). */
+  .notam-card-head { flex-direction: column; align-items: stretch; }
+  .notam-card-window {
+    justify-content: flex-start;
+    padding-top: 4px;
+    border-top: 1px dashed rgba(255,255,255,0.08);
+  }
+
+  /* Tabs principales: scroll horizontal con snap suave. */
+  nav.tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  nav.tabs button { flex-shrink: 0; }
+}
+
+@media (max-width: 600px) {
+  .tab-content { padding: 10px; }
+  .filter-bar label { flex: 1 1 100%; }
+  .notam-filter-chips .notam-chip-btn { font-size: 10px; padding: 3px 8px; }
+  .kml-modal-panel { max-width: 100vw; border-radius: 0; max-height: 100vh; height: 100vh; }
+  .kml-windows .kml-window-row { flex-wrap: wrap; }
+  .kml-window-row input[type="datetime-local"] { flex: 1 1 100%; }
+}
