@@ -1,0 +1,27 @@
+{
+  "name": "TSAgestor — Visor TSA & Planificador",
+  "short_name": "TSAgestor",
+  "description": "Visor de Temporary Segregated Areas (TSA) y planificador de vuelos del Ejército del Aire y del Espacio. Lectura de NOTAM ICARO XXI, mapa offline, plan de vuelo, log de combustible, meteorología y exportación PDF.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a1f33",
+  "theme_color": "#003764",
+  "categories": ["productivity", "utilities", "navigation"],
+  "icons": [
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

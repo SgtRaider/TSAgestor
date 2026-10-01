@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TSAgestor — Visor de TSAs · EA</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#003764">
+  <meta name="application-name" content="TSAgestor">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="TSAgestor">
+  <link rel="icon" type="image/svg+xml" href="assets/icon.svg">
+  <link rel="apple-touch-icon" href="assets/icon.svg">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Archivo+Narrow:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<!-- Modal de bienvenida (aviso de seguridad + acceso a herramientas) -->
+<div id="welcome-modal" class="welcome-modal" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+  <div class="welcome-card">
+    <div class="welcome-head">
+      <img src="assets/rokiski-blanco.svg" alt="" class="welcome-logo">
+      <div>
+        <h2 id="welcome-title">TSAgestor</h2>
+        <div class="welcome-sub">Ejército del Aire y del Espacio · Visor TSA &amp; planificador</div>
+      </div>
+    </div>
+
+    <div class="welcome-body">
+      <div class="home-disclaimer disclaimer-warn">
+        <div class="disc-head">
+          <span class="disc-icon" aria-hidden="true">⚠</span>
+          <span class="disc-title">AVISO DE SEGURIDAD — INFORMACIÓN NO CLASIFICADA</span>
+        </div>
+        <p>
+          Esta aplicación <b>no está autorizada</b> para el tratamiento de información
+          clasificada. Bajo ningún concepto se introducirán datos catalogados como
+          <b>DIFUSIÓN LIMITADA, CONFIDENCIAL, RESERVADO</b> o categorías superiores en
+          ninguno de los campos de entrada (planes de vuelo, rutas, NOTAMs propios,
+          credenciales operativas, identificadores de aeronave, etc.).
+        </p>
+        <p>
+          Toda la información tratada debe corresponder a documentación de carácter
+          <b>público</b> (publicaciones AIP/NOTAM oficiales, datos meteorológicos
+          abiertos) o a ejercicios de instrucción sin valor operativo real.
+          La responsabilidad del cumplimiento de esta norma recae en el usuario.
+        </p>
+      </div>
+
+      <div class="home-disclaimer disclaimer-info">
+        <div class="disc-head">
+          <span class="disc-icon" aria-hidden="true">🔐</span>
+          <span class="disc-title">ACCESO A LAS HERRAMIENTAS METEOROLÓGICAS</span>
+        </div>
+        <p>
+          Para que las APIs externas integradas (METAR/TAF de AWC, capa de nubosidad
+          RainViewer, Cloud Top Height de EUMETView, GRAMET de Autorouter y datos
+          de Open-Meteo) funcionen correctamente, deberás haber <b>iniciado sesión
+          previamente con tu cuenta corporativa de acceso a Internet</b> del Ejército
+          del Aire y del Espacio.
+        </p>
+        <p>
+          De no estar autenticado en la red, las capas seguirán mostrándose pero las
+          consultas a servicios externos fallarán y verás avisos de error en cada
+          panel correspondiente. Las funciones puramente locales (cargar NOTAM,
+          mapa offline, corte transversal de TSAs, exportación PDF) <b>seguirán
+          funcionando sin acceso</b> a Internet.
+        </p>
+      </div>
+    </div>
+
+    <div class="welcome-footer">
+      <label class="welcome-confirm">
+        <input type="checkbox" id="welcome-check">
+        He leído y acepto las condiciones anteriores.
+      </label>
+      <button id="welcome-accept" class="btn btn-primary" type="button" disabled>
+        Aceptar y continuar
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="app">
+
+  <header class="app-header">
+    <div class="brand">
+      <img src="assets/rokiski-blanco.svg" alt="Ejército del Aire y del Espacio"
+           class="brand-logo" height="120">
+      <div class="brand-text">
+        <h1>TSAgestor</h1>
+        <span class="brand-sub">Ejército del Aire y del Espacio · Visor TSA &amp; planificador</span>
+      </div>
+    </div>
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="home">Inicio</button>
+      <button class="tab-btn" data-tab="upload">Cargar</button>
+      <button class="tab-btn" data-tab="map">Mapa</button>
+      <button class="tab-btn" data-tab="cross">Corte transversal</button>
+      <button class="tab-btn" data-tab="plan">Plan de vuelo</button>
+      <button class="tab-btn" data-tab="notams">NOTAMs</button>
+      <button class="tab-btn" data-tab="export">Exportar</button>
+      <button class="tab-btn" data-tab="settings">Ajustes</button>
+    </nav>
+  </header>
+
+  <section id="filter-bar" class="filter-bar hidden">
+    <div class="filter-chips" id="tsa-filter-chips">
+      <button type="button" class="tsa-chip is-active" data-tsa-filter="all">Todas <span class="tsa-chip-count" data-count="all">0</span></button>
+      <button type="button" class="tsa-chip tsa-chip-work"    data-tsa-filter="work">Work <span class="tsa-chip-count" data-count="work">0</span></button>
+      <button type="button" class="tsa-chip tsa-chip-transit" data-tsa-filter="transit">Transit <span class="tsa-chip-count" data-count="transit">0</span></button>
+      <button type="button" class="tsa-chip tsa-chip-now"     data-tsa-filter="active-now">Activas ahora <span class="tsa-chip-count" data-count="active-now">0</span></button>
+    </div>
+    <div class="filter-group">
+      <label>Fecha desde
+        <input type="date" id="filter-date-from">
+      </label>
+      <label>Fecha hasta
+        <input type="date" id="filter-date-to">
+      </label>
+      <label>Hora desde (UTC)
+        <input type="time" id="filter-time-from">
+      </label>
+      <label>Hora hasta (UTC)
+        <input type="time" id="filter-time-to">
+      </label>
+    </div>
+    <div class="filter-actions">
+      <button id="btn-filter-apply" class="btn">Aplicar</button>
+      <button id="btn-filter-clear" class="btn btn-ghost">Limpiar</button>
+      <span id="filter-summary" class="filter-summary"></span>
+    </div>
+  </section>
+
+  <main>
+
+    <!-- INICIO -->
+    <section id="tab-home" class="tab-content active">
+      <div class="home-hero">
+        <h2>Visor de TSAs y planificador de vuelos</h2>
+        <p class="home-lead">
+          Aplicación web para la consulta de <b>Temporary Segregated Areas (TSA)</b>
+          publicadas en NOTAMs ICARO XXI, planificación de rutas, log de combustible y
+          consulta meteorológica integrada.
+        </p>
+      </div>
+
+      <div class="home-features">
+        <h3>Funcionalidades</h3>
+        <div class="feature-grid">
+          <div class="feature">
+            <div class="feature-title">Carga de NOTAM</div>
+            <div class="feature-desc"><b>Descarga directa</b> desde NotamHub (API ICARO nacional):
+              TSAs activas a la hora elegida, sin necesidad del boletín PDF.
+              Alternativa: lectura local de PDF/TXT del boletín ICARO XXI con
+              extracción automática de TSAs (vértices, cota vertical y ventanas
+              horarias agrupadas). Tabla con agrupación por nombre+FL para
+              seleccionar familias enteras (CORREDOR&nbsp;SUR&nbsp;4–6) con un clic.</div>
+          </div>
+          <div class="feature">
+            <div class="feature-title">Mapa offline</div>
+            <div class="feature-desc">Cartografía Natural Earth integrada con
+              relieve detallado de Iberia, Baleares y Canarias. Aerovías AIP
+              (low/high), TMAs, CTRs y meteo activables por capa. Leyenda
+              flotante de TSAs activas <em>hoy y mañana</em>. Filtrado por
+              zoom: ciudades, NAVAIDs y RNAVs aparecen al ampliar para mantener
+              el mapa limpio en vista regional.</div>
+          </div>
+          <div class="feature">
+            <div class="feature-title">Plan de vuelo</div>
+            <div class="feature-desc">Ruta por aerovías o trazado manual sobre el
+              mapa (con botón <em>Vuelta</em> para circuitos). Sub-tramos
+              automáticos cada 5000 ft en ascenso y descenso, fijados dentro de
+              la TSA cuando se vuela en banda vertical. Esperas como filas
+              independientes en el log. Exportar / importar plan completo en
+              JSON.</div>
+          </div>
+          <div class="feature">
+            <div class="feature-title">Log de combustible</div>
+            <div class="feature-desc">Tabla por tramos con velocidad y consumo
+              editables. Viento en ruta interpolado vectorialmente entre 21
+              niveles ISA (de 1000 hPa a 100 hPa) según el FL real de cada
+              sub-tramo. Marca JOKER y BINGO y avisa de combustible insuficiente.</div>
+          </div>
+          <div class="feature">
+            <div class="feature-title">Corte transversal</div>
+            <div class="feature-desc">Sección vertical de la ruta con las TSAs
+              cruzadas en su posición real, perfil del FL por waypoint y
+              cobertura nubosa por capas (Open-Meteo). Solapes resueltos
+              clusterizando por contacto + reparto en X.</div>
+          </div>
+          <div class="feature">
+            <div class="feature-title">Meteorología</div>
+            <div class="feature-desc">METAR/TAF decodificados al español, capa
+              Cloud Top Height (MSG 0°), tormentas eléctricas (MTG LI AFA), RGB
+              Convección (MSG SEVIRI), RainViewer IR y SIGMETs internacionales
+              (AWC) sobre el mapa. GRAMET vía Autorouter con duración real del
+              vuelo (holds + viento).</div>
+          </div>
+          <div class="feature">
+            <div class="feature-title">NOTAMs</div>
+            <div class="feature-desc">Consulta de NOTAMs por aeródromo (origen
+              y destino del plan o ICAOs manuales) vía Autorouter. Detección
+              automática de <b>showstoppers</b> (aeródromo cerrado, pista
+              cerrada) y avisos (ILS, fuel, TWY, plataforma) leyendo el Q-code
+              y patrones del texto.</div>
+          </div>
+          <div class="feature">
+            <div class="feature-title">Informe PDF</div>
+            <div class="feature-desc">Exportación con cabecera institucional EA,
+              plan de vuelo, log de combustible (con vientos y esperas), METAR/TAF
+              decodificados y corte transversal en un único documento.</div>
+          </div>
+          <div class="feature">
+            <div class="feature-title">PWA + identidad EA</div>
+            <div class="feature-desc">App instalable, funciona offline tras la
+              primera carga (Service Worker). Adaptada al manual de identidad
+              corporativa del Ejército del Aire y del Espacio (paleta, Rokiski
+              y tipografía Archivo).</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="home-cta">
+        <p class="hint">Empieza por la pestaña <b>Cargar</b> para subir un NOTAM,
+          o salta directamente a <b>Plan de vuelo</b> o <b>Mapa</b>.</p>
+      </div>
+    </section>
+
+    <!-- CARGAR -->
+    <section id="tab-upload" class="tab-content">
+
+      <!-- Opción primaria: descarga directa de NotamHub (API ICARO nacional) -->
+      <div class="notamhub-card">
+        <div class="notamhub-head">
+          <span class="notamhub-tag">RECOMENDADO</span>
+          <h2 class="notamhub-title">Carga directa NotamHub (territorio nacional)</h2>
+        </div>
+        <p class="notamhub-desc">Descarga las <b>TSAs activas</b> y NOTAMs publicados por ENAIRE / ICARO XXI sin
+          necesidad de descargar el boletín PDF. Acepta hora puntual o <b>rango de fechas</b> (devuelve TSAs
+          con alguna ventana solapando el periodo). La conexión va vía el proxy del servidor con token de
+          API. <a href="https://notamhub.duckdns.org/docs" target="_blank" rel="noopener noreferrer">Doc del API ↗</a></p>
+        <div class="notamhub-actions">
+          <label class="notamhub-input-label">Desde (UTC, opcional)
+            <input type="datetime-local" id="notamhub-at" autocomplete="off">
+          </label>
+          <label class="notamhub-input-label">Hasta (UTC, opcional)
+            <input type="datetime-local" id="notamhub-at-to" autocomplete="off">
+          </label>
+          <button id="btn-notamhub-load" class="btn btn-primary" type="button">📡 Cargar TSAs activas</button>
+        </div>
+        <div class="notamhub-presets">
+          <span class="notamhub-presets-label">Presets:</span>
+          <button class="btn btn-ghost btn-sm" type="button" data-notamhub-preset="now">Ahora</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-notamhub-preset="next6">Próximas 6 h</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-notamhub-preset="next24">Próximas 24 h</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-notamhub-preset="next48">Próximas 48 h</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-notamhub-preset="next7d">Próximos 7 días</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-notamhub-preset="clear">Limpiar</button>
+        </div>
+        <div id="notamhub-status" class="status"></div>
+      </div>
+
+      <!-- Importar / Exportar KML -->
+      <div class="kml-card">
+        <div class="kml-head">
+          <span class="kml-tag">KML</span>
+          <h2 class="kml-title">Añadir / exportar TSAs en KML</h2>
+        </div>
+        <p class="kml-desc">Importa polígonos KML de otras FIRs (Portugal, Francia, ejercicios OTAN…) para complementar las TSAs nacionales. Tras importar puedes <b>editar altitud y validez</b> de cada TSA en la tabla. Todas las TSAs KML (importadas + editadas) se pueden volver a exportar como un único archivo KML.</p>
+        <div class="kml-actions">
+          <input type="file" id="kml-input" accept=".kml,application/vnd.google-earth.kml+xml,application/xml,text/xml" hidden multiple>
+          <label for="kml-input" class="btn btn-primary">📁 Importar KML</label>
+          <button id="btn-kml-export" class="btn" type="button" title="Descarga un .kml con todas las TSAs marcadas como KML">💾 Exportar KML</button>
+          <span id="kml-counter" class="kml-counter dim">0 TSAs KML cargadas</span>
+        </div>
+        <div id="kml-status" class="status"></div>
+      </div>
+
+      <div class="notamhub-divider"><span>o cargar desde fichero</span></div>
+
+      <div id="dropzone" class="dropzone">
+        <div class="drop-icon">📄</div>
+        <p class="drop-primary">Arrastra un PDF o TXT aquí</p>
+        <p class="drop-secondary">o selecciónalo desde tu equipo</p>
+        <label class="btn btn-primary" for="file-input">Seleccionar archivo</label>
+        <input type="file" id="file-input" accept=".pdf,.txt,application/pdf,text/plain" hidden>
+        <p class="drop-skip">Opcional — puedes ir directamente a <b>Mapa</b> o <b>Plan de vuelo</b> sin cargar ningún NOTAM.</p>
+      </div>
+
+      <div class="notam-source">
+        <div class="notam-source-text">
+          <b>¿No tienes el PIB descargado?</b>
+          <span class="dim">Solicítalo en ICARO XXI (requiere tu cuenta de ENAIRE) y arrastra el PDF aquí cuando lo tengas.</span>
+        </div>
+        <a class="btn" href="https://notampib.enaire.es" target="_blank" rel="noopener noreferrer">
+          Abrir ICARO XXI ↗
+        </a>
+      </div>
+      <div id="parse-status" class="status"></div>
+      <div id="tsa-table-wrap" class="table-wrap hidden">
+        <div class="table-header">
+          <h2>TSAs detectadas <span id="tsa-count" class="badge"></span></h2>
+          <div class="table-actions">
+            <span id="selection-summary" class="chip"></span>
+            <button id="btn-select-all" class="btn btn-ghost" type="button">Todas</button>
+            <button id="btn-select-none" class="btn btn-ghost" type="button">Ninguna</button>
+          </div>
+        </div>
+        <p class="hint">Marca cada TSA para incluirla en el Mapa, el Corte transversal y el PDF. Las filas atenuadas están fuera del filtro de fecha/hora.</p>
+        <div id="tsa-quickselect" class="tsa-quickselect hidden" aria-label="Selección rápida de TSAs por grupo">
+          <span class="quickselect-label">Selección rápida:</span>
+          <div class="quickselect-chips" id="tsa-quickselect-chips"></div>
+          <span class="quickselect-hint dim">clic = toggle (marca/desmarca todas las del grupo)</span>
+        </div>
+        <div class="table-scroll">
+          <table id="tsa-table">
+            <thead>
+              <tr>
+                <th class="col-check"><input type="checkbox" id="tsa-select-all-cb" checked title="Seleccionar todas"></th>
+                <th>Nombre</th>
+                <th>Formato</th>
+                <th>Lím. inferior</th>
+                <th>Lím. superior</th>
+                <th>Vértices</th>
+                <th>Ventanas horarias</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- MAPA -->
+    <section id="tab-map" class="tab-content">
+      <div class="toolbar">
+        <span id="map-count" class="chip"></span>
+        <button id="btn-fit-bounds" class="btn btn-ghost" type="button"
+          aria-label="Centrar mapa en las TSAs visibles"
+          title="Centrar mapa en las TSAs visibles">Centrar</button>
+        <button id="btn-map-legend" class="btn btn-ghost" type="button"
+          aria-pressed="false" aria-label="Mostrar u ocultar leyenda de TSAs"
+          title="Leyenda de TSAs visibles">Leyenda TSAs</button>
+        <button id="btn-map-layers" class="btn btn-ghost is-active" type="button"
+          aria-pressed="true" aria-label="Mostrar u ocultar control de capas del mapa"
+          title="Capas del mapa (meteo, aerovías, etc.)">Capas</button>
+        <button id="btn-traffic" class="btn btn-ghost" type="button"
+          aria-pressed="false" aria-label="Activar tráfico aéreo en vivo (airplanes.live)"
+          title="Tráfico aéreo en vivo (airplanes.live)">✈ Tráfico</button>
+        <div id="traffic-panel" class="traffic-panel hidden" role="group" aria-label="Capa de tráfico aéreo">
+          <label class="traffic-panel-label">
+            <span>Aeródromo ICAO</span>
+            <input type="text" id="traffic-icao" maxlength="4" placeholder="GCRR" autocomplete="off" spellcheck="false" inputmode="latin" pattern="[A-Za-z]{4}">
+          </label>
+          <button id="btn-traffic-go" class="btn btn-sm btn-primary" type="button">Iniciar</button>
+          <button id="btn-traffic-stop" class="btn btn-sm" type="button" disabled>Parar</button>
+          <span id="traffic-status" class="traffic-status"></span>
+        </div>
+      </div>
+      <div id="draw-banner" class="draw-banner hidden">
+        <div class="draw-banner-text">
+          <b>Modo dibujo:</b> haz clic en el mapa para añadir waypoints intermedios.
+          <span id="draw-banner-count">0 puntos</span> ·
+          <span class="dim">doble clic o «Listo» para terminar.</span>
+        </div>
+        <div class="draw-banner-actions">
+          <button id="btn-draw-undo" class="btn btn-ghost" type="button">Deshacer</button>
+          <button id="btn-draw-return" class="btn btn-ghost" type="button" title="Añade los waypoints en orden inverso para cerrar el circuito hasta el origen">Vuelta</button>
+          <button id="btn-draw-finish" class="btn btn-primary" type="button">Listo</button>
+          <button id="btn-draw-cancel" class="btn btn-ghost" type="button">Cancelar</button>
+        </div>
+      </div>
+      <div id="map"></div>
+    </section>
+
+    <!-- CORTE -->
+    <section id="tab-cross" class="tab-content">
+      <div class="toolbar">
+        <span id="cross-info" class="chip"></span>
+        <button id="btn-cross-clouds" class="btn btn-ghost" type="button">Cargar nubes (Open-Meteo)</button>
+        <button id="btn-cross-clouds-clear" class="btn btn-ghost" type="button" disabled>Quitar nubes</button>
+        <button id="btn-cross-gramet" class="btn btn-ghost" type="button">Cargar GRAMET (Autorouter)</button>
+        <button id="btn-download-cross" class="btn btn-ghost" disabled>Descargar imagen (PNG)</button>
+      </div>
+      <div id="cross-wrap">
+        <svg id="cross-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+        <p id="cross-empty" class="empty">
+          Calcula un plan de vuelo (pestaña <b>Plan de vuelo</b>) o carga ≥2 TSAs para generar el corte.
+          <br>«Cargar nubes» y «Cargar GRAMET» requieren un plan calculado (no necesitan TSAs).
+        </p>
+      </div>
+      <div id="gramet-container" class="gramet-container hidden"></div>
+    </section>
+
+    <!-- PLAN DE VUELO -->
+    <section id="tab-plan" class="tab-content">
+
+      <div class="saved-plans">
+        <div class="saved-plans-head">
+          <h3>Planes guardados</h3>
+          <div class="save-row">
+            <input type="text" id="saved-plan-name" placeholder="Nombre del plan…" maxlength="40" autocomplete="off">
+            <button id="btn-save-plan" class="btn" type="button">Guardar plan actual</button>
+            <button id="btn-import-plan" class="btn btn-ghost" type="button" title="Cargar un plan exportado previamente desde un archivo .json">Importar plan…</button>
+            <input id="file-import-plan" type="file" accept="application/json,.json" hidden>
+          </div>
+        </div>
+        <div id="saved-plans-list" class="saved-plans-list"></div>
+      </div>
+
+      <div class="plan-form">
+        <div class="plan-fields">
+          <label>Origen
+            <input type="text" id="plan-origin" list="plan-wps" value="LEBZ" placeholder="LEMD" autocomplete="off">
+          </label>
+          <label>Destino
+            <input type="text" id="plan-dest" list="plan-wps" value="LEBZ" placeholder="LEBL" autocomplete="off">
+          </label>
+          <label>Nivel (FL)
+            <input type="number" id="plan-fl" value="250" min="50" max="600" step="10">
+          </label>
+          <label title="Velocidad indicada (IAS / KIAS). La TAS la calcula la app por tramo a partir del FL real usando una tabla.">IAS (kt)
+            <input type="number" id="plan-speed" value="120" min="50" max="900" step="10">
+          </label>
+          <label>Salida (UTC)
+            <input type="datetime-local" id="plan-departure">
+          </label>
+          <datalist id="plan-wps"></datalist>
+        </div>
+        <div class="plan-via">
+          <label>Vía (opcional, waypoints separados por espacio o coma)
+            <div class="plan-via-row">
+              <input type="text" id="plan-via" placeholder="vacío = ruta automática · ej: LEMD CCS BCN LEBL  · admite 40.5,-3.5">
+              <button id="btn-plan-draw" class="btn" type="button">Dibujar en mapa</button>
+            </div>
+          </label>
+          <p class="hint plan-via-hint">El planificador usa los waypoints de las capas de aerovías que estén <b>activadas en el mapa</b> (alta cota, baja cota o ambas). Sin ninguna activada, la ruta es DCT entre tus puntos.</p>
+        </div>
+        <div class="plan-fuel">
+          <h4>Combustible</h4>
+          <div class="plan-fields">
+            <label>Inicial
+              <input type="number" id="plan-fuel-initial" value="2500" min="0" step="50">
+            </label>
+            <label>Consumo (/h)
+              <input type="number" id="plan-fuel-flow" value="200" min="0" step="10">
+            </label>
+            <label>Unidad
+              <input type="text" id="plan-fuel-unit" value="lb" maxlength="6" autocomplete="off">
+            </label>
+            <label>JOKER
+              <input type="number" id="plan-joker" value="1500" min="0" step="50">
+            </label>
+            <label>BINGO
+              <input type="number" id="plan-bingo" value="400" min="0" step="50">
+            </label>
+          </div>
+        </div>
+        <div class="plan-actions">
+          <button id="btn-plan-calc" class="btn btn-primary" type="button">Calcular ruta</button>
+          <button id="btn-plan-clear" class="btn btn-ghost" type="button">Limpiar</button>
+          <span class="hint inline">Detecta conflictos contra las TSAs visibles (selección ∩ filtro).</span>
+        </div>
+        <div id="plan-error" class="plan-error hidden"></div>
+      </div>
+
+      <div id="plan-results" class="plan-results hidden">
+        <div class="plan-summary"></div>
+
+        <div class="plan-narrative">
+          <div class="plan-block-head">
+            <h3>Cadena de ruta</h3>
+            <button id="btn-plan-copy" class="btn btn-ghost" type="button">Copiar</button>
+          </div>
+          <pre id="plan-narrative-text"></pre>
+        </div>
+
+        <div class="plan-remarks">
+          <div class="plan-block-head">
+            <h3>Remarks <span id="plan-remarks-count" class="badge"></span></h3>
+            <button id="btn-plan-remarks-copy" class="btn btn-ghost" type="button">Copiar</button>
+          </div>
+          <pre id="plan-remarks-text"></pre>
+          <p class="hint">TSAs sobrevoladas lateralmente por la ruta, sin duplicar en vuelos de ida y vuelta.</p>
+        </div>
+
+        <div class="plan-conflicts">
+          <h3>Conflictos con TSAs activas <span id="plan-conflicts-count" class="badge"></span></h3>
+          <ul id="plan-conflicts-list"></ul>
+        </div>
+
+        <div class="plan-meteo">
+          <div class="plan-block-head">
+            <h3>Meteorología en ruta <span id="plan-meteo-count" class="badge"></span></h3>
+            <div class="plan-meteo-actions">
+              <label class="plan-meteo-radius">Radio
+                <input type="number" id="plan-meteo-radius" value="50" min="10" max="300" step="10"> NM
+              </label>
+              <button id="btn-plan-meteo" class="btn" type="button">Cargar METAR / TAF</button>
+              <button id="btn-plan-winds" class="btn" type="button" title="Vientos en altura al FL del plan (Open-Meteo)">Cargar vientos en altura</button>
+            </div>
+          </div>
+          <div id="plan-meteo-content" class="plan-meteo-content"></div>
+        </div>
+
+        <div class="plan-coords">
+          <h3>Waypoints y coordenadas</h3>
+          <div class="table-scroll">
+            <table id="plan-coords-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Waypoint</th>
+                  <th>FL</th>
+                  <th>Aerovía</th>
+                  <th>Latitud</th>
+                  <th>Longitud</th>
+                  <th>Tramo (NM)</th>
+                  <th>Acumulado (NM)</th>
+                  <th>ETA UTC</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="plan-log">
+          <h3>Log de vuelo y combustible</h3>
+          <div id="plan-log-summary" class="plan-log-summary"></div>
+          <div class="table-scroll">
+            <table id="plan-log-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Waypoint</th>
+                  <th title="Rumbo geodésico (heading verdadero) / distancia del tramo en millas náuticas. Ejemplo 150/8.6 = rumbo 150° y 8.6 NM.">Tramo (HDG°/NM)</th>
+                  <th title="Indicated Airspeed (entrada del piloto, KIAS)">IAS (kt)</th>
+                  <th title="True Airspeed = IAS corregida por altitud densidad (tabla)">TAS (kt)</th>
+                  <th title="Viento del tramo: dirección/velocidad">Viento</th>
+                  <th title="Ground Speed: TAS corregida con componente de viento">GS (kt)</th>
+                  <th title="Minutos de espera/hold sobre este waypoint. Se suma al tiempo de tramo y consume al ritmo de la columna Consumo.">Espera (min)</th>
+                  <th>Tiempo tramo</th>
+                  <th>Tiempo total</th>
+                  <th title="Consumo por hora en este tramo">Consumo (/h)</th>
+                  <th>Combustible tramo</th>
+                  <th>Combustible restante</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- NOTAMs -->
+    <section id="tab-notams" class="tab-content">
+      <div class="notam-toolbar-card">
+        <div class="notam-toolbar-row">
+          <label class="notam-input-label">
+            <span>Aeródromos <span class="dim">(ICAO, separados por espacio)</span></span>
+            <input type="text" id="notam-icaos" placeholder="LEMD LEBL" autocomplete="off" spellcheck="false">
+          </label>
+          <div class="notam-toolbar-buttons">
+            <button id="btn-notam-load" class="btn btn-primary" type="button">🔍 Consultar</button>
+            <button id="btn-notam-from-plan" class="btn" type="button" title="Usa origen y destino del plan de vuelo actual">Origen + destino del plan</button>
+          </div>
+        </div>
+        <div id="notam-status" class="status notam-status-bar"></div>
+      </div>
+
+      <section class="notam-section">
+        <header class="notam-section-header">
+          <h2 class="notam-section-title"><span class="notam-section-icon">⛅</span> Weather Hold</h2>
+          <p class="notam-section-sub">METAR / TAF vs mínimos configurados en <b>Ajustes → Mínimos meteorológicos</b>.
+            <span class="legend-pill legend-pill-green">Verde · sin limitaciones</span>
+            <span class="legend-pill legend-pill-yellow">Amarillo · marginal</span>
+            <span class="legend-pill legend-pill-red">Rojo · no go</span></p>
+        </header>
+        <div id="notam-wx-board"></div>
+      </section>
+
+      <section class="notam-section">
+        <header class="notam-section-header">
+          <h2 class="notam-section-title"><span class="notam-section-icon">📋</span> NOTAMs del aeródromo</h2>
+          <p class="notam-section-sub">Lista de NOTAMs operativos publicados en ICARO XXI para los aeródromos consultados. <span class="dim">Apartados de áreas / espacio aéreo segregado omitidos automáticamente.</span> Fuente: <b>NotamHub</b>.</p>
+        </header>
+        <div id="notam-results"></div>
+      </section>
+    </section>
+
+    <!-- EXPORTAR -->
+    <section id="tab-export" class="tab-content">
+      <div class="export-card">
+        <h2>Generar informe PDF</h2>
+        <p>Incluirá la tabla de TSAs filtradas (nombre, apertura, cierre, altitudes) y la imagen del corte transversal.</p>
+        <div id="export-summary" class="export-summary"></div>
+        <button id="btn-export-pdf" class="btn btn-primary" disabled>Generar PDF</button>
+        <p id="export-hint" class="hint">Carga un documento para habilitar la exportación.</p>
+      </div>
+    </section>
+
+    <!-- AJUSTES -->
+    <section id="tab-settings" class="tab-content">
+
+      <div class="settings-card">
+        <h3>Opacidad de capas del mapa</h3>
+        <p class="hint">Cambios aplicados al instante. Los valores se guardan localmente en este navegador.</p>
+        <div class="settings-grid">
+          <label class="settings-row">
+            <span class="settings-name">Fondo de países</span>
+            <input type="range" min="0" max="100" data-setting="opacity.country">
+            <output class="settings-value"></output>
+          </label>
+          <label class="settings-row">
+            <span class="settings-name">TSAs (relleno)</span>
+            <input type="range" min="0" max="100" data-setting="opacity.tsaFill">
+            <output class="settings-value"></output>
+          </label>
+          <label class="settings-row">
+            <span class="settings-name">Aerovías</span>
+            <input type="range" min="0" max="100" data-setting="opacity.airway">
+            <output class="settings-value"></output>
+          </label>
+          <label class="settings-row">
+            <span class="settings-name">TMAs (relleno)</span>
+            <input type="range" min="0" max="100" data-setting="opacity.tma">
+            <output class="settings-value"></output>
+          </label>
+          <label class="settings-row">
+            <span class="settings-name">CTRs (relleno)</span>
+            <input type="range" min="0" max="100" data-setting="opacity.ctr">
+            <output class="settings-value"></output>
+          </label>
+          <label class="settings-row">
+            <span class="settings-name">Capa nubes RainViewer IR</span>
+            <input type="range" min="0" max="100" data-setting="opacity.cloudRV">
+            <output class="settings-value"></output>
+          </label>
+          <label class="settings-row">
+            <span class="settings-name">Capa Cloud Top Height (EUMETSAT)</span>
+            <input type="range" min="0" max="100" data-setting="opacity.cloudCTH">
+            <output class="settings-value"></output>
+          </label>
+          <label class="settings-row">
+            <span class="settings-name">Tormentas eléctricas (MTG LI AFA)</span>
+            <input type="range" min="0" max="100" data-setting="opacity.cloudLI">
+            <output class="settings-value"></output>
+          </label>
+          <label class="settings-row">
+            <span class="settings-name">RGB Convección (MSG SEVIRI)</span>
+            <input type="range" min="0" max="100" data-setting="opacity.cloudConv">
+            <output class="settings-value"></output>
+          </label>
+          <label class="settings-row">
+            <span class="settings-name">SIGMETs (relleno)</span>
+            <input type="range" min="0" max="100" data-setting="opacity.sigmet">
+            <output class="settings-value"></output>
+          </label>
+          <label class="settings-row">
+            <span class="settings-name">Ruta del plan de vuelo</span>
+            <input type="range" min="0" max="100" data-setting="opacity.route">
+            <output class="settings-value"></output>
+          </label>
+        </div>
+      </div>
+
+      <div class="settings-card">
+        <h3>Valores por defecto del Plan de vuelo</h3>
+        <p class="hint">Se cargan al abrir la pestaña Plan o pulsar Limpiar. Cualquier cambio aquí no afecta a un plan ya calculado.</p>
+        <div class="settings-fields">
+          <label>Origen
+            <input type="text" data-setting="plan.origin" maxlength="5" autocomplete="off">
+          </label>
+          <label>Destino
+            <input type="text" data-setting="plan.destination" maxlength="5" autocomplete="off">
+          </label>
+          <label>Nivel (FL)
+            <input type="number" data-setting="plan.flightLevel" min="50" max="600" step="10">
+          </label>
+          <label>Velocidad (kt)
+            <input type="number" data-setting="plan.speedKt" min="50" max="900" step="10">
+          </label>
+          <label>Combustible inicial
+            <input type="number" data-setting="plan.fuelInitial" min="0" step="50">
+          </label>
+          <label>Consumo (/h)
+            <input type="number" data-setting="plan.fuelFlow" min="0" step="10">
+          </label>
+          <label>Unidad
+            <input type="text" data-setting="plan.fuelUnit" maxlength="6" autocomplete="off">
+          </label>
+          <label>JOKER
+            <input type="number" data-setting="plan.joker" min="0" step="50">
+          </label>
+          <label>BINGO
+            <input type="number" data-setting="plan.bingo" min="0" step="50">
+          </label>
+        </div>
+      </div>
+
+      <div class="settings-card">
+        <h3>Mínimos meteorológicos (Weather Hold)</h3>
+        <p class="hint">Umbrales que la pestaña NOTAMs usa para clasificar METAR/TAF del aeródromo en verde / amarillo / rojo.
+          <b>Hard</b> = límite absoluto (rojo, no-go). <b>Marginal</b> = a partir de aquí amarillo.</p>
+        <div class="settings-fields">
+          <label>Techo HARD (ft AGL)
+            <input type="number" data-setting="wxLimits.ceilingHardFt" min="0" step="100">
+          </label>
+          <label>Techo MARGINAL (ft AGL)
+            <input type="number" data-setting="wxLimits.ceilingMarginalFt" min="0" step="100">
+          </label>
+          <label>Visibilidad HARD (m)
+            <input type="number" data-setting="wxLimits.visibilityHardM" min="0" step="100">
+          </label>
+          <label>Visibilidad MARGINAL (m)
+            <input type="number" data-setting="wxLimits.visibilityMarginalM" min="0" step="100">
+          </label>
+          <label>Viento HARD (kt)
+            <input type="number" data-setting="wxLimits.windHardKt" min="0" step="1">
+          </label>
+          <label>Viento MARGINAL (kt)
+            <input type="number" data-setting="wxLimits.windMarginalKt" min="0" step="1">
+          </label>
+        </div>
+      </div>
+
+      <div class="settings-card">
+        <h3>Otros</h3>
+        <div class="settings-actions">
+          <button id="btn-settings-show-welcome" class="btn" type="button">Mostrar el aviso de seguridad la próxima vez</button>
+          <button id="btn-settings-reset" class="btn" type="button">Restaurar valores de fábrica</button>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+</div>
+
+<!-- Librerías (CDN) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<!-- Módulos TSAgestor -->
+<script src="js/geom.js"></script>
+<script src="js/offlineGeo.js"></script>
+<script src="js/aipData.js"></script>
+<script src="js/airways.js"></script>
+<script src="js/airspace.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/savedPlans.js"></script>
+<script src="js/meteoApi.js"></script>
+<script src="js/metarDecode.js"></script>
+<script src="js/parser.js"></script>
+<script src="js/scheduleFmt.js"></script>
+<script src="js/filters.js"></script>
+<script src="js/notamHub.js?v=183"></script>
+<script src="js/kmlIO.js?v=183"></script>
+<script src="js/notamView.js?v=183"></script>
+<script src="js/mapView.js?v=183"></script>
+<script src="js/trafficLayer.js?v=183"></script>
+<script src="js/crossSection.js"></script>
+<script src="js/flightPlan.js"></script>
+<script src="js/pdfExport.js"></script>
+<script src="js/app.js"></script>
+
+<!-- Service Worker (PWA) -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch((err) => {
+        console.warn('[PWA] No se pudo registrar el Service Worker:', err);
+      });
+    });
+    // Cuando el nuevo SW activa (skipWaiting + claim), recargamos la pagina
+    // para que el JS/CSS frescos entren en vigor sin que el usuario tenga
+    // que hacer hard refresh tras cada deploy.
+    let _swRefreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (_swRefreshing) return;
+      _swRefreshing = true;
+      console.info('[PWA] Service Worker actualizado - recargando pagina.');
+      window.location.reload();
+    });
+  }
+</script>
+
+<!-- Modal de edición de TSA KML -->
+<div id="kml-edit-modal" class="kml-modal hidden" role="dialog" aria-modal="true" aria-labelledby="kml-edit-title">
+  <div class="kml-modal-backdrop"></div>
+  <div class="kml-modal-panel">
+    <header class="kml-modal-head">
+      <h2 id="kml-edit-title">Editar TSA KML</h2>
+      <button type="button" class="kml-modal-close" aria-label="Cerrar">×</button>
+    </header>
+    <div class="kml-modal-body">
+      <label class="kml-modal-field">
+        <span>Nombre</span>
+        <input type="text" id="kml-edit-name" autocomplete="off">
+      </label>
+      <div class="kml-modal-row">
+        <div class="kml-modal-field">
+          <span>Límite inferior</span>
+          <div class="kml-alt-row">
+            <input type="number" id="kml-edit-lower-val" placeholder="0" min="0" step="100" class="kml-alt-val">
+            <select id="kml-edit-lower-unit" class="kml-alt-unit">
+              <option value="GND">GND</option>
+              <option value="FT_AMSL">ft AMSL</option>
+              <option value="FT_AGL">ft AGL</option>
+              <option value="FL">FL</option>
+              <option value="UNL">UNL</option>
+            </select>
+          </div>
+        </div>
+        <div class="kml-modal-field">
+          <span>Límite superior</span>
+          <div class="kml-alt-row">
+            <input type="number" id="kml-edit-upper-val" placeholder="245" min="0" step="100" class="kml-alt-val">
+            <select id="kml-edit-upper-unit" class="kml-alt-unit">
+              <option value="GND">GND</option>
+              <option value="FT_AMSL">ft AMSL</option>
+              <option value="FT_AGL">ft AGL</option>
+              <option value="FL" selected>FL</option>
+              <option value="UNL">UNL</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="kml-modal-field">
+        <span>Ventanas horarias <span class="dim">(UTC, calendario)</span></span>
+        <div id="kml-edit-windows" class="kml-windows"></div>
+        <button type="button" id="btn-kml-add-window" class="btn btn-sm kml-add-window">+ Añadir ventana</button>
+      </div>
+      <p class="dim kml-modal-hint">Los cambios se aplican inmediatamente al mapa, la tabla y los filtros. Para conservarlos entre sesiones, exporta el KML.</p>
+    </div>
+    <footer class="kml-modal-foot">
+      <button type="button" id="btn-kml-edit-cancel" class="btn">Cancelar</button>
+      <button type="button" id="btn-kml-edit-save"   class="btn btn-primary">Guardar</button>
+    </footer>
+  </div>
+</div>
+</body>
+</html>
