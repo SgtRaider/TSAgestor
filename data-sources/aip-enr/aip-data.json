@@ -1,6 +1,6 @@
 {
  "source": "AIP Espana - eAIP ENAIRE (ENR 3.2 + 4.1 + 4.4) [scraper]",
- "airac": "WEF 03-SEP-26",
+ "airac": "WEF 01-OCT-26",
  "generated_from": [
   "https://aip.enaire.es/AIP/contenido_AIP/ENR/LE_ENR_3_2_es.html",
   "https://aip.enaire.es/AIP/contenido_AIP/ENR/LE_ENR_4_1_es.html",
@@ -512,7 +512,7 @@
    "name": "PALMA DE MALLORCA"
   },
   "JOA": {
-   "lat": 39.56467,
+   "lat": 39.56469,
    "lon": 2.74664,
    "type": "NAVAID",
    "name": "PALMA-SON SANT JOAN"
@@ -1356,6 +1356,12 @@
    "lon": -5.55306,
    "type": "RNAV",
    "name": "BALDA"
+  },
+  "BALEK": {
+   "lat": 37.31972,
+   "lon": -4.06611,
+   "type": "RNAV",
+   "name": "BALEK"
   },
   "BALIO": {
    "lat": 39.64833,
@@ -2683,6 +2689,12 @@
    "type": "RNAV",
    "name": "FOFUS"
   },
+  "FOLNI": {
+   "lat": 39.46861,
+   "lon": 2.54556,
+   "type": "RNAV",
+   "name": "FOLNI"
+  },
   "FORNO": {
    "lat": 42.46806,
    "lon": -7.48139,
@@ -3288,6 +3300,12 @@
    "lon": 3.14083,
    "type": "RNAV",
    "name": "KENAS"
+  },
+  "KENCA": {
+   "lat": 37.3175,
+   "lon": -3.44389,
+   "type": "RNAV",
+   "name": "KENCA"
   },
   "KERIP": {
    "lat": 40.9375,
@@ -8492,6 +8510,7 @@
     "AMR",
     "ESILA",
     "UNTOS",
+    "KENCA",
     "VIBAS",
     "TINEK",
     "BLN",
@@ -8505,7 +8524,7 @@
     "UNGAS",
     "DELOG"
    ],
-   "lowerFL": 95,
+   "lowerFL": 85,
    "upperFL": 660
   },
   {
